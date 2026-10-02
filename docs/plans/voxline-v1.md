@@ -18,13 +18,14 @@
 
 [VXL-046](https://github.com/users/yamakze/projects/1/views/1?pane=issue&itemId=260521032) 的 Task 模型、参数快照、系统文档读写与旧数据迁移已交付，证据见 [Task 验证](../optimize/m1-task-document-validation.md)。当前界面可保存多媒体条目与关联视频，尚无实际处理队列。
 
-1. [VXL-047](https://github.com/users/yamakze/projects/1/views/1?pane=issue&itemId=260521035)：完整任务列表、创建参数、任务详情与媒体详情的原生界面；Liquid Glass／Material。
+1. [VXL-047](https://github.com/users/yamakze/projects/1/views/1?pane=issue&itemId=260521035) 界面阶段已人工验收：任务列表、准备参数、概览与媒体导航已实现。系统 26 运行视觉和队列／播放校对连接继续跟踪，整体 Status 为 In Progress，证据见 [原生任务界面验证](../optimize/m1-task-ui-validation.md)。
 2. VXL-006／034：本地视频多选与独立音频输入，复用已有媒体检查和访问能力；减少重复全文件扫描。
 3. VXL-007／008／009／010／012／026：模型、音频提取、字幕切分、顺序队列与持久恢复。
 4. VXL-013／014／015／016／017：翻译、媒体详情播放校对与三种 SRT。
 5. VXL-020：Mac MVP 批处理完整验收；VXL-030 随后交付 iOS 原生播放与校对。
 
 独立工作可按已满足的前置推进。阶段不是工期承诺；原有单媒体基础通过的检查不代替 Task 工作流完成。
+VXL-047 的本地 Task 准备入口已实现，VXL-006／034 可继续媒体输入工作；VXL-047 的实时队列和播放校对连接在相应能力交付后返回验收，避免把整体验收作为其自身依赖的开发前置。
 
 ## 跟踪规则
 

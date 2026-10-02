@@ -19,6 +19,9 @@ final class TaskLibrary {
     }
 
     func register(_ task: ProcessingTask, at url: URL?) {
+        if let url, openTasks[task.id]?.url != url {
+            NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        }
         openTasks[task.id] = Entry(id: task.id.uuidString, url: url, task: task, error: nil)
         entries.removeAll { $0.id == task.id.uuidString || (url != nil && $0.url == url) }
         if let entry = openTasks[task.id] { entries.insert(entry, at: 0) }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 import VoxlineCore
 import VoxlineMedia
@@ -16,15 +17,17 @@ struct TaskConfigurationView: View {
     @State private var targetLanguage: String
     @State private var outputs: Set<SRTOutputKind>
     @State private var candidates: [ImportCandidate] = []
-    @State private var isImporting = false
     @State private var isInspecting = false
+    @State private var importTask: Task<Void, Never>?
     @State private var isSaving = false
     @State private var error: String?
     private let inspector = MediaInspector()
+    private let originalTask: ProcessingTask
 
     init(task: Binding<ProcessingTask>) {
         _task = task
         let value = task.wrappedValue
+        originalTask = value
         _draft = State(initialValue: value)
         _modelID = State(initialValue: value.parameters.transcription.modelID)
         _languageMode = State(initialValue: value.parameters.transcription.languageMode)
@@ -92,7 +95,7 @@ struct TaskConfigurationView: View {
                             } else { Text("等待媒体检查…").foregroundStyle(.secondary) }
                         }
                     }
-                    Button("添加本地视频…", systemImage: "plus") { isImporting = true }
+                    Button("添加本地视频…", systemImage: "plus") { chooseVideos() }
                         .disabled(isInspecting)
                     if isInspecting { ProgressView("正在逐个检查媒体…") }
                     Text("MP4 / MOV / M4V · 文件保持在原位置。独立音频输入尚未接通。")
@@ -132,7 +135,7 @@ struct TaskConfigurationView: View {
             VStack(alignment: .leading, spacing: 10) {
                 if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
                 HStack {
-                    Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                    Button("取消") { importTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                     Spacer()
                     Button("保存任务准备") { Task { await saveDraft() } }
                         .keyboardShortcut(.defaultAction).disabled(isInspecting || isSaving)
@@ -141,17 +144,30 @@ struct TaskConfigurationView: View {
         }
         .frame(width: 720, height: 760)
         .disabled(isSaving).interactiveDismissDisabled(isInspecting || isSaving)
+        .onDisappear { importTask?.cancel() }
         .onChange(of: translates) { _, enabled in if !enabled { outputs = [.source] } }
-        .fileImporter(isPresented: $isImporting,
-                      allowedContentTypes: [.mpeg4Movie, .quickTimeMovie, UTType(importedAs: "com.apple.m4v-video")],
-                      allowsMultipleSelection: true) { result in
-            switch result {
-            case .success(let urls):
-                Task {
+    }
+
+    private func chooseVideos() {
+        guard let window = NSApp.keyWindow else {
+            error = "任务窗口不可用，请重新打开任务准备。"
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie, UTType(importedAs: "com.apple.m4v-video")]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.prompt = "添加视频"
+        panel.beginSheetModal(for: window) { response in
+            panel.orderOut(nil)
+            if response == .OK {
+                let urls = panel.urls
+                importTask = Task {
                     isInspecting = true
                     defer { isInspecting = false }
                     let additions = urls.filter { url in !candidates.contains { $0.url == url } }
                     for url in additions {
+                        if Task.isCancelled { return }
                         let candidate = ImportCandidate(url: url)
                         candidates.append(candidate)
                         do {
@@ -166,7 +182,6 @@ struct TaskConfigurationView: View {
                         }
                     }
                 }
-            case .failure(let problem): error = problem.localizedDescription
             }
         }
     }
@@ -174,6 +189,7 @@ struct TaskConfigurationView: View {
     /// Commit validated parameters and media together; dismissal never changes the document.
     private func saveDraft() async {
         isSaving = true
+        error = nil
         defer { isSaving = false }
         do {
             let transcription = TranscriptionSettings(modelID: modelID, languageMode: languageMode,
@@ -182,12 +198,13 @@ struct TaskConfigurationView: View {
             if translates {
                 guard let url = URL(string: serviceURL) else { throw ProjectValidationError.invalidTranslationSettings }
                 let previous = draft.parameters.translation
-                let serviceID = previous?.baseURL == url && previous?.modelID == translationModel ? previous?.serviceID : nil
+                let serviceID = previous?.baseURL == url ? previous?.serviceID : nil
                 translation = try TranslationSettings(baseURL: url, modelID: translationModel,
                                                       targetLanguage: targetLanguage, serviceID: serviceID)
             }
-            try draft.updateParameters(TaskParameters(transcription: transcription, translation: translation,
-                                                      srtOutputs: [.source, .translation, .bilingual].filter { outputs.contains($0) }))
+            var updated = draft
+            try updated.updateParameters(TaskParameters(transcription: transcription, translation: translation,
+                                                        srtOutputs: [.source, .translation, .bilingual].filter { outputs.contains($0) }))
             var added: [(TaskMediaItem, URL)] = []
             for candidate in candidates {
                 guard let inspection = candidate.inspection, let trackID = candidate.trackID else {
@@ -199,16 +216,20 @@ struct TaskConfigurationView: View {
                 try item.associateMedia(inspection.identity(audioTrackID: trackID))
                 added.append((item, candidate.url))
             }
-            var updated = draft
             updated.items.append(contentsOf: added.map(\.0))
             try updated.validate()
             for (item, url) in added {
                 guard let identity = item.media else { throw TaskValidationError.unassociatedMedia(item.id) }
                 try await LocalMediaStore.shared.save(projectID: item.id, identity: identity, url: url)
             }
-            guard task.id == updated.id, task.startedAt == nil else { throw TaskValidationError.parametersFrozen }
+            guard task == originalTask else { throw PreparationError.taskChanged }
             task = updated
             dismiss()
         } catch { self.error = error.localizedDescription }
+    }
+
+    private enum PreparationError: LocalizedError {
+        case taskChanged
+        var errorDescription: String? { "任务在准备期间已发生变化，请重新打开任务准备，保留最新成果。" }
     }
 }

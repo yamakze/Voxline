@@ -16,5 +16,6 @@
 - [M1 工程与文档基础验证](optimize/m1-foundation-validation.md)
 - [M1 视频导入与本地关联验证](optimize/m1-media-import-validation.md)
 - [M1 Task 文档与迁移验证](optimize/m1-task-document-validation.md)
+- [M1 原生 Task 界面验证](optimize/m1-task-ui-validation.md)
 
 文档职责：architecture 保存当前依赖边界和禁止模式；ADR 保存接受的长期决策；RFC 保存方案与讨论状态；plans 保存活跃执行顺序和验收；optimize 保存质量审计与后续治理建议。完成或废弃的 RFC、计划归档，避免保留多份活跃基准。
