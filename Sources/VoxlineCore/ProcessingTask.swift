@@ -29,9 +29,14 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
         guard startedAt == nil else { throw TaskValidationError.parametersFrozen }
         try validate()
         guard !items.isEmpty else { throw TaskValidationError.noMedia }
+        var hasReadyMedia = false
         for item in items {
+            if case .failed = item.status { continue }
+            if item.status == .cancelled { continue }
             guard item.media != nil else { throw TaskValidationError.unassociatedMedia(item.id) }
+            hasReadyMedia = true
         }
+        guard hasReadyMedia else { throw TaskValidationError.noReadyMedia }
         if let translation = parameters.translation, translation.serviceID == nil {
             throw TaskValidationError.unconfiguredTranslationService
         }
@@ -194,15 +199,17 @@ public enum ProcessingTaskStatus: Sendable {
 }
 
 public enum TaskValidationError: Error, LocalizedError, Equatable {
-    case emptyTitle, parametersFrozen, noMedia, invalidOutputs, translationRequired, unconfiguredTranslationService
+    case emptyTitle, taskChanged, parametersFrozen, noMedia, noReadyMedia, invalidOutputs, translationRequired, unconfiguredTranslationService
     case duplicateMedia(UUID), emptyMediaTitle(UUID), invalidSource(UUID), unassociatedMedia(UUID)
     case workBeforeStart(UUID), emptyFailureReason(UUID)
 
     public var errorDescription: String? {
         switch self {
         case .emptyTitle: "任务名称不能为空。"
+        case .taskChanged: "提交期间任务已改变，请重新打开任务准备。"
         case .parametersFrozen: "本次参数已固定；更换参数需新建任务或明确重跑。"
         case .noMedia: "请先添加本地媒体。"
+        case .noReadyMedia: "任务没有可开始的媒体，请修复失败条目或添加可用媒体。"
         case .invalidOutputs: "请选择不重复的 SRT 输出类型。"
         case .translationRequired: "译文和双语输出需要开启翻译。"
         case .unconfiguredTranslationService: "请为本次翻译选择已配置的本地服务。"

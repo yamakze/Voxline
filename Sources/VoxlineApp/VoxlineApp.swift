@@ -1,23 +1,36 @@
 import SwiftUI
+import AppKit
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        VoxlineIconManager.shared.ensureDockIconIsSet()
+    }
+}
 
 @main
 struct VoxlineApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
+    init() {
+        VoxlineIconManager.shared.ensureDockIconIsSet()
+    }
+
     var body: some Scene {
-        Window("Voxline · 任务", id: "tasks") {
-            TaskLibraryView()
-        }.defaultSize(width: 1060, height: 700)
-        DocumentGroup(newDocument: VoxlineDocument()) { configuration in
-            TaskDocumentView(document: configuration.$document, fileURL: configuration.fileURL)
+        Window("Voxline", id: "main") {
+            MainWindowView()
+                .tint(Color.voxlineAccent)
         }
-        .commands { TaskNavigationCommands() }
+        .defaultSize(width: 1140, height: 740)
+        .commands {
+            TaskNavigationCommands()
+        }
     }
 }
 
 struct TaskNavigationCommands: Commands {
-    @Environment(\.openWindow) private var openWindow
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            Button("任务列表") { openWindow(id: "tasks") }.keyboardShortcut("1", modifiers: [.command])
+            Divider()
         }
     }
 }

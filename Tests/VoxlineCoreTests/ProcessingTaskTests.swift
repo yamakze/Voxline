@@ -4,6 +4,22 @@ import Testing
 
 @Suite("Task documents and parameter snapshots")
 struct ProcessingTaskTests {
+    @Test func failedInputDoesNotBlockHealthyMediaOrEraseExistingCues() throws {
+        var healthy = try associatedItem(kind: .audio, name: "lecture.wav")
+        healthy.cues = [try SubtitleCue(id: UUID(), startMilliseconds: 0, endMilliseconds: 500, sourceText: "Keep")]
+        let failed = TaskMediaItem(title: "Broken", kind: .video, source: .localFile(fileName: "broken.mov"),
+                                   status: .failed(reason: "Empty file"))
+        var task = ProcessingTask(items: [failed, healthy])
+        try task.freezeParameters()
+        let reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task))
+        #expect(reopened.items == [failed, healthy])
+        #expect(reopened.startedAt != nil)
+        #expect(reopened.completedCount == 0)
+        var unusable = ProcessingTask(items: [failed])
+        #expect(throws: TaskValidationError.noReadyMedia) { try unusable.freezeParameters() }
+        #expect(unusable.startedAt == nil)
+    }
+
     @Test func orderedAudioAndVideoKeepIndependentResultsAcrossSave() throws {
         var first = try associatedItem(kind: .audio, name: "lecture.wav")
         var second = try associatedItem(kind: .video, name: "movie.mp4")

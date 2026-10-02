@@ -12,6 +12,7 @@ public struct MediaTrack: Identifiable, Equatable, Sendable {
 
 public struct MediaInspection: Sendable {
     public let url: URL
+    public let kind: TaskMediaKind
     public let byteCount: Int64
     public let sha256: String
     public let durationMilliseconds: Int64
@@ -29,18 +30,41 @@ public struct MediaInspection: Sendable {
 
 /// AVFoundation and streamed hashing stay off the main actor; no whole-video copy or allocation.
 public actor MediaInspector {
+    public static let shared = MediaInspector()
+    private var inspectedFiles: [URL: (size: Int, modified: Date, inspection: MediaInspection)] = [:]
     public init() {}
 
-    public func inspect(_ url: URL) async throws -> MediaInspection {
-        guard url.isFileURL, ["mp4", "mov", "m4v"].contains(url.pathExtension.lowercased()) else {
-            throw MediaAccessError.unsupportedFormat
+    public nonisolated static func kind(of url: URL) throws -> TaskMediaKind {
+        guard url.isFileURL else { throw MediaAccessError.unsupportedFormat }
+        switch url.pathExtension.lowercased() {
+        case "mp4", "mov", "m4v": return .video
+        case "m4a", "mp3", "wav": return .audio
+        default: throw MediaAccessError.unsupportedFormat
         }
+    }
+
+    public func inspect(_ url: URL) async throws -> MediaInspection {
+        let kind = try Self.kind(of: url)
+        try Task.checkCancellation()
         let accessStarted = url.startAccessingSecurityScopedResource()
         defer { if accessStarted { url.stopAccessingSecurityScopedResource() } }
         // Unscoped URLs can be directly accessible in tools. Actual reads still throw on denial.
-        let before = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey])
+        var freshURL = url
+        freshURL.removeAllCachedResourceValues()
+        let before = try freshURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey])
         guard before.isRegularFile == true, let size = before.fileSize, size > 0,
               let modified = before.contentModificationDate else { throw MediaAccessError.invalidFile }
+        // Always test actual access. Cached metadata must not hide revoked file permission.
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let cacheKey = url.standardizedFileURL
+        if let cached = inspectedFiles[cacheKey], cached.size == size, cached.modified == modified {
+            let previous = cached.inspection
+            return MediaInspection(url: url, kind: kind, byteCount: previous.byteCount, sha256: previous.sha256,
+                                   durationMilliseconds: previous.durationMilliseconds,
+                                   videoTracks: previous.videoTracks, audioTracks: previous.audioTracks)
+        }
+        inspectedFiles[cacheKey] = nil
         let asset = AVURLAsset(url: url)
         guard try await !asset.load(.hasProtectedContent) else { throw MediaAccessError.protectedMedia }
         let duration = try await asset.load(.duration)
@@ -50,26 +74,18 @@ public actor MediaInspector {
         }
         let videos = try await asset.loadTracks(withMediaType: .video)
         let audios = try await asset.loadTracks(withMediaType: .audio)
-        guard !videos.isEmpty else { throw MediaAccessError.noVideo }
+        if kind == .video, videos.isEmpty { throw MediaAccessError.noVideo }
         guard !audios.isEmpty else { throw MediaAccessError.noAudio }
         let videoTracks = try await trackInformation(videos)
         let audioTracks = try await trackInformation(audios)
         guard videoTracks.allSatisfy(\.isDecodable) else { throw MediaAccessError.undecodableVideo }
         guard audioTracks.contains(where: \.isDecodable) else { throw MediaAccessError.undecodableAudio }
-        let handle = try FileHandle(forReadingFrom: url)
         var hasher = SHA256()
         var readBytes: Int64 = 0
-        do {
-            while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty {
-                try Task.checkCancellation()
-                hasher.update(data: data)
-                readBytes += Int64(data.count)
-            }
-            try handle.close()
-        } catch {
-            // Preserve the original read/cancellation error; closing cannot turn it into success.
-            try? handle.close()
-            throw error
+        while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty {
+            try Task.checkCancellation()
+            hasher.update(data: data)
+            readBytes += Int64(data.count)
         }
         var refreshedURL = url
         refreshedURL.removeAllCachedResourceValues()
@@ -77,10 +93,20 @@ public actor MediaInspector {
         guard readBytes == Int64(size), after.fileSize == size,
               after.contentModificationDate == modified else { throw MediaAccessError.fileChanged }
         try Task.checkCancellation()
-        return MediaInspection(url: url, byteCount: readBytes,
-                               sha256: hasher.finalize().map { String(format: "%02x", $0) }.joined(),
-                               durationMilliseconds: Int64((seconds * 1000).rounded()),
-                               videoTracks: videoTracks, audioTracks: audioTracks)
+        let inspection = MediaInspection(url: url, kind: kind, byteCount: readBytes,
+                                         sha256: hasher.finalize().map { String(format: "%02x", $0) }.joined(),
+                                         durationMilliseconds: Int64((seconds * 1000).rounded()),
+                                         videoTracks: videoTracks, audioTracks: audioTracks)
+        inspectedFiles[cacheKey] = (size, modified, inspection)
+        return inspection
+    }
+
+    /// Confirmation reuses unchanged inspections, but rejects a file replaced since selection.
+    public func confirm(_ inspection: MediaInspection, audioTrackID: Int32) async throws -> MediaIdentity {
+        let selected = try inspection.identity(audioTrackID: audioTrackID)
+        let current = try await inspect(inspection.url).identity(audioTrackID: audioTrackID)
+        guard selected.matchesContent(of: current) else { throw MediaAccessError.fileChanged }
+        return current
     }
 
     private func trackInformation(_ tracks: [AVAssetTrack]) async throws -> [MediaTrack] {
@@ -107,17 +133,17 @@ public enum MediaAccessError: Error, LocalizedError, Equatable {
     case undecodableVideo, undecodableAudio, invalidAudioTrack, fileChanged, invalidBookmark, itemChanged
     public var errorDescription: String? {
         switch self {
-        case .unsupportedFormat: "请选择本地 MP4、MOV 或 M4V 视频。"
-        case .invalidFile: "视频为空或不是普通文件。"
-        case .protectedMedia: "视频受保护，无法转写。"
-        case .invalidDuration: "无法取得有效的视频时长。"
+        case .unsupportedFormat: "请选择本地 MP4／MOV／M4V 视频或 M4A／MP3／WAV 音频。"
+        case .invalidFile: "媒体为空或不是普通文件。"
+        case .protectedMedia: "媒体受保护，无法转写。"
+        case .invalidDuration: "无法取得有效的媒体时长。"
         case .noVideo: "文件中没有视频轨。"
-        case .noAudio: "视频中没有音轨。"
+        case .noAudio: "媒体中没有音轨。"
         case .undecodableVideo: "当前系统无法解码视频轨。"
         case .undecodableAudio: "当前系统无法解码任何音轨。"
         case .invalidAudioTrack: "所选音轨不存在或无法解码，请重新选择。"
-        case .fileChanged: "检查期间视频发生变化，请重试。"
-        case .invalidBookmark: "本地媒体关联记录无效，请重新关联视频。"
+        case .fileChanged: "检查期间媒体发生变化，请重试。"
+        case .invalidBookmark: "本地媒体关联记录无效，请重新关联媒体。"
         case .itemChanged: "确认期间媒体条目已改变，请重新关联。"
         }
     }
