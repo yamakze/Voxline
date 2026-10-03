@@ -542,8 +542,10 @@ public struct TaskConfigurationView: View {
             }
             .disabled(isInspecting || isSaving)
 
-            Text(ProcessingAvailability.reason)
-                .font(.caption).foregroundStyle(.secondary)
+            if translates {
+                Text(ProcessingAvailability.translationUnavailableReason)
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

@@ -20,6 +20,11 @@ public struct MediaDetailProofreadingView: View {
 
     public init(item: Binding<TaskMediaItem>) {
         _item = item
+        let hasTranslation = item.wrappedValue.cues.contains { cue in
+            if case .succeeded = cue.translation { return true }
+            return false
+        }
+        _previewMode = State(initialValue: hasTranslation ? .bilingual : .source)
     }
 
     private var activeCueID: UUID? {
@@ -357,7 +362,7 @@ public struct MediaDetailProofreadingView: View {
                 .background(Color.secondary.opacity(0.1), in: .capsule)
                 .frame(width: 170)
 
-                if item.cues.contains(where: { !$0.hasCurrentTranslation }) {
+                if previewMode != .source, item.cues.contains(where: { !$0.hasCurrentTranslation }) {
                     Text("API 翻译尚未接通")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -450,7 +455,7 @@ public struct MediaDetailProofreadingView: View {
                     .buttonStyle(.plain)
 
                     // Status chip
-                    if !cue.hasCurrentTranslation {
+                    if case .succeeded = cue.translation, !cue.hasCurrentTranslation {
                         Text("待重译")
                             .font(.system(size: 9, weight: .bold))
                             .padding(.horizontal, 5)
@@ -538,6 +543,8 @@ public struct MediaDetailProofreadingView: View {
                                     .onTapGesture {
                                         playbackController.seek(toMilliseconds: cue.startMilliseconds)
                                     }
+                            } else if case .failed(let reason) = cue.translation {
+                                Text("翻译失败：\(reason)").font(.caption).foregroundStyle(.red)
                             } else {
                                 Text("未翻译")
                                     .font(.caption)

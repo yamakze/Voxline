@@ -79,4 +79,14 @@ VOXLINE_AUDIO_CACHE_MANIFEST="/absolute/path/S001-chunks/audio.json" \
 swift test --filter 'ProcessingCheckpoint|TaskLibraryTests'
 ```
 
-选择与提取清单逐块匹配的一份 S001 原始证据，包含成功与失败范围；30 秒片段不会匹配完整清单。测试逐块保存、重开 Task，删除临时证据缓存副本后再次读取，检查恢复仅列出未完成块。源证据与实际音频缓存保留。翻译批次测试只验证持久化与编辑保护，使用测试数据，不调用网络服务；完整真实执行由队列与翻译接入验证。
+选择与提取清单逐块匹配的一份 S001 原始证据，包含成功与失败范围；30 秒片段不会匹配完整清单。测试逐块保存、重开 Task，删除临时证据缓存副本后再次读取，检查恢复仅列出未完成块。源证据与实际音频缓存保留。翻译批次测试只验证持久化与编辑保护，使用测试数据，不调用网络服务。
+
+## 原生顺序队列验证
+
+```sh
+VOXLINE_QUEUE_MEDIA="/absolute/path/short-English-audio.wav" \
+VOXLINE_MODEL_DIRECTORY="/absolute/path/Models" \
+swift test --filter nativeMediaAndWhisperPipelinePersistsRealBatchResults
+```
+
+使用已安装模型，对同一短英语样本创建两个独立媒体条目，经本机书签解析、身份检查、PCM 提取、真实推理、字幕切分与 Task 保存后重开验证。产物位于忽略目录 tmp/queue-validation；默认测试跳过此入口。此验证不代替长视频、网络翻译或人工字幕质量验收。普通队列测试在外部调用边界控制返回顺序与取消时机，验证失败隔离、取消等待、恢复跳过成功块、校对冲突和写入失败；产品始终使用原生处理链路。

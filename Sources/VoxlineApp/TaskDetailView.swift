@@ -6,7 +6,8 @@ public struct TaskDetailView: View {
     @Binding var isConfiguring: Bool
     @Binding var selectedMediaID: UUID?
 
-    @State private var expandedFailureIDs: Set<UUID> = []
+    @State private var queue = TaskProcessingQueue.shared
+    @State private var errorMessage: String?
 
     public init(task: Binding<ProcessingTask>, isConfiguring: Binding<Bool>, selectedMediaID: Binding<UUID?>) {
         _task = task
@@ -27,9 +28,18 @@ public struct TaskDetailView: View {
                 xcodeBuildTasksQueue
             }
             .padding(24)
-            Text(ProcessingAvailability.reason)
-                .font(.callout).foregroundStyle(.secondary).padding()
+            if let reason = ProcessingAvailability.reason(for: task) {
+                Text(reason).font(.callout).foregroundStyle(.secondary).padding()
+            }
+            if let error = queue.errorMessage {
+                Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled).padding()
+            }
         }
+        .alert("处理未开始或取消失败", isPresented: Binding(
+            get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("好", role: .cancel) { errorMessage = nil }
+        } message: { Text(errorMessage ?? "") }
     }
 
     // MARK: - Xcode Organizer Summary Card
@@ -71,10 +81,20 @@ public struct TaskDetailView: View {
                         }
                         .buttonStyle(.bordered)
                     }
-                    Button("开始顺序处理", systemImage: "play.fill") {}
+                    if queue.taskID == task.id {
+                        Button(queue.isCancelling ? "正在取消…" : "取消任务", systemImage: "stop.fill") {
+                            do { try queue.cancel() }
+                            catch { errorMessage = error.localizedDescription }
+                        }
+                        .buttonStyle(.bordered).disabled(queue.isCancelling)
+                    } else {
+                        Button(task.startedAt == nil ? "开始顺序处理" : "继续未完成项", systemImage: "play.fill") {
+                            do { try queue.start(taskID: task.id) }
+                            catch { errorMessage = error.localizedDescription }
+                        }
                         .buttonStyle(.borderedProminent)
-                        .disabled(true)
-                        .help(ProcessingAvailability.reason)
+                        .disabled(queue.taskID != nil || ProcessingAvailability.reason(for: task) != nil || task.status == .completed)
+                    }
                 }
             }
 
@@ -223,6 +243,13 @@ public struct TaskDetailView: View {
                                     }
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
+                                    if queue.taskID == task.id, queue.mediaID == item.id {
+                                        Text(queue.isCancelling ? "正在取消，等待当前操作结束" : queue.progressText ?? "处理中")
+                                            .font(.caption2).foregroundStyle(.tint)
+                                        if let fraction = queue.extractionFraction {
+                                            ProgressView(value: fraction).frame(width: 180)
+                                        }
+                                    }
                                 }
 
                                 Spacer()
@@ -236,11 +263,23 @@ public struct TaskDetailView: View {
                                 // In-line Action Buttons
                                 HStack(spacing: 6) {
                                     if item.status.isRetryable {
-                                        Button("重试", systemImage: "arrow.clockwise") {}
+                                        Button("重试", systemImage: "arrow.clockwise") {
+                                            do { try queue.start(taskID: task.id, mediaID: item.id) }
+                                            catch { errorMessage = error.localizedDescription }
+                                        }
                                             .buttonStyle(.bordered)
                                             .controlSize(.small)
-                                            .disabled(true)
-                                            .help(ProcessingAvailability.reason)
+                                            .disabled(queue.taskID != nil || ProcessingAvailability.reason(for: task) != nil)
+                                    }
+
+                                    if queue.taskID == task.id,
+                                       item.status == .pending || queue.mediaID == item.id {
+                                        Button("取消") {
+                                            do { try queue.cancel(mediaID: item.id) }
+                                            catch { errorMessage = error.localizedDescription }
+                                        }
+                                        .controlSize(.small)
+                                        .disabled(queue.isCancelling && queue.mediaID == item.id)
                                     }
 
                                     Button("校对", systemImage: "chevron.right") {
@@ -264,11 +303,6 @@ public struct TaskDetailView: View {
                                         .font(.caption2)
                                         .foregroundStyle(.red)
                                     Spacer()
-                                    Button("重试本项", systemImage: "arrow.clockwise") {}
-                                    .disabled(true)
-                                    .help(ProcessingAvailability.reason)
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.mini)
                                 }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
