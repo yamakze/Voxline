@@ -90,3 +90,24 @@ swift test --filter nativeMediaAndWhisperPipelinePersistsRealBatchResults
 ```
 
 使用已安装模型，对同一短英语样本创建两个独立媒体条目，经本机书签解析、身份检查、PCM 提取、真实推理、字幕切分与 Task 保存后重开验证。产物位于忽略目录 tmp/queue-validation；默认测试跳过此入口。此验证不代替长视频、网络翻译或人工字幕质量验收。普通队列测试在外部调用边界控制返回顺序与取消时机，验证失败隔离、取消等待、恢复跳过成功块、校对冲突和写入失败；产品始终使用原生处理链路。
+
+## 翻译协议与本地凭据验证
+
+```sh
+swift test --filter 'SubtitleTranslationTests|TranslationServiceStoreTests'
+VOXLINE_KEYCHAIN_TEST=1 swift test --filter realKeychainRoundTripKeepsCredentialOutOfMetadata
+```
+
+普通测试使用隔离的网络／凭据边界，验证 ID、上下文容量、HTTP 错误、批次恢复、明文迁移和配置保存失败保护。Keychain 可选入口只读写随机测试服务名下的测试字符串，完成后删除测试项，不访问实际服务密钥。真实连接在应用服务页使用当前模型验证；任务验收使用明确选择的服务与字幕文本。
+
+客户端独立真实验收需要指定服务元数据文件，并通过终端隐藏输入提供测试密钥；配置文件和验证产物均不包含密钥：
+
+```sh
+read -s VOXLINE_TRANSLATION_API_KEY
+export VOXLINE_TRANSLATION_API_KEY
+VOXLINE_TRANSLATION_SERVICE_FILE="/absolute/path/TranslationServices.json" \
+  swift test --filter realConfiguredServiceTranslatesSubtitleIDs
+unset VOXLINE_TRANSLATION_API_KEY
+```
+
+使用元数据文件中的首个服务与默认模型，将短字幕翻译为简体中文；只核验实际协议、ID 和结果，不替代人工质量验收。测试会调用所选外部服务，产物位于忽略目录 tmp/translation-validation。默认测试跳过真实网络和 Keychain 入口。

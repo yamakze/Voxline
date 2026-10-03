@@ -5,12 +5,18 @@ public struct TranslationServicesSettingsView: View {
     @State private var store = TranslationServiceStore.shared
     @State private var isAddingService = false
     @State private var editingService: TranslationServiceConfig?
+    @State private var errorMessage: String?
 
     public init() {}
 
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                if store.isLoading { ProgressView("读取服务与 Keychain…") }
+                if let error = store.errorMessage {
+                    Text(error).foregroundStyle(.red).textSelection(.enabled)
+                    Button("重新读取") { Task { await store.load() } }.disabled(store.isLoading || store.isSaving)
+                }
                 // Header
                 HStack(alignment: .center) {
                     Text("翻译服务")
@@ -20,6 +26,7 @@ public struct TranslationServicesSettingsView: View {
                         isAddingService = true
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(store.isLoading || store.isSaving)
                 }
 
                 // Inset Grouped Service Cards
@@ -42,15 +49,18 @@ public struct TranslationServicesSettingsView: View {
             .padding(28)
         }
         .sheet(isPresented: $isAddingService) {
-            ServiceEditorModal(service: nil) { newService in
-                try? store.addOrUpdate(newService)
+            ServiceEditorModal(service: nil, store: store) { newService, key in
+                try await store.addOrUpdate(newService, apiKey: key)
             }
         }
         .sheet(item: $editingService) { service in
-            ServiceEditorModal(service: service) { updated in
-                try? store.addOrUpdate(updated)
+            ServiceEditorModal(service: service, store: store) { updated, key in
+                try await store.addOrUpdate(updated, apiKey: key)
             }
         }
+        .alert("服务配置未修改", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("好", role: .cancel) { errorMessage = nil }
+        } message: { Text(errorMessage ?? "") }
     }
 
     @ViewBuilder
@@ -95,11 +105,15 @@ public struct TranslationServicesSettingsView: View {
                 // Test connection button
                 VStack(alignment: .trailing, spacing: 4) {
                     Button("测试连接") {
-                        Task { await store.testConnection(service: service) }
+                        Task {
+                            do { _ = try await store.testConnection(service: service) }
+                            catch { errorMessage = error.localizedDescription }
+                        }
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(store.testingServiceID == service.id)
+                    .disabled(store.testingServiceID != nil || store.isLoading || store.isSaving)
+                    .help("向服务发送一条短文本，调用当前模型验证聊天接口。")
 
                     if store.testingServiceID == service.id {
                         HStack(spacing: 4) {
@@ -128,7 +142,7 @@ public struct TranslationServicesSettingsView: View {
 
                 HStack(spacing: 6) {
                     Text("API 密钥：").font(.caption2).foregroundStyle(.secondary)
-                    Text(service.maskedAPIKey).font(.caption.monospaced())
+                    Text(store.credentialPresence[service.id] == true ? "已保存在 Keychain" : "未设置（无鉴权）").font(.caption)
                 }
 
                 Spacer()
@@ -139,13 +153,18 @@ public struct TranslationServicesSettingsView: View {
                 .buttonStyle(.plain)
                 .font(.caption)
                 .foregroundStyle(.tint)
+                .disabled(store.isLoading || store.isSaving)
 
                 Button("删除", systemImage: "trash") {
-                    store.remove(id: service.id)
+                    Task {
+                        do { try await store.remove(id: service.id) }
+                        catch { errorMessage = error.localizedDescription }
+                    }
                 }
                 .buttonStyle(.plain)
                 .font(.caption)
                 .foregroundStyle(.red)
+                .disabled(store.isLoading || store.isSaving)
             }
         }
         .padding(16)
@@ -156,7 +175,8 @@ public struct TranslationServicesSettingsView: View {
 // MARK: - Service Editor Modal with PasswordVisibilityField
 private struct ServiceEditorModal: View {
     let original: TranslationServiceConfig?
-    let onSave: (TranslationServiceConfig) -> Void
+    let store: TranslationServiceStore
+    let onSave: (TranslationServiceConfig, String) async throws -> Void
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String
@@ -166,14 +186,20 @@ private struct ServiceEditorModal: View {
     @State private var errorMessage: String?
     @State private var isTesting = false
     @State private var testSuccessMessage: String?
+    @State private var isLoadingKey: Bool
+    @State private var isSaving = false
+    @State private var keyReadFailed = false
 
-    init(service: TranslationServiceConfig?, onSave: @escaping (TranslationServiceConfig) -> Void) {
+    init(service: TranslationServiceConfig?, store: TranslationServiceStore,
+         onSave: @escaping (TranslationServiceConfig, String) async throws -> Void) {
         self.original = service
+        self.store = store
         self.onSave = onSave
         _name = State(initialValue: service?.name ?? "")
         _baseURLString = State(initialValue: service?.baseURL.absoluteString ?? "https://api.openai.com/v1")
         _modelID = State(initialValue: service?.modelID ?? "gpt-4o-mini")
-        _apiKey = State(initialValue: service?.apiKey ?? "")
+        _apiKey = State(initialValue: "")
+        _isLoadingKey = State(initialValue: service != nil)
     }
 
     var body: some View {
@@ -183,7 +209,7 @@ private struct ServiceEditorModal: View {
                 Text(original == nil ? "添加翻译服务" : "编辑翻译服务")
                     .font(.headline)
                 Spacer()
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction).disabled(isSaving)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -199,10 +225,15 @@ private struct ServiceEditorModal: View {
                 }
 
                 Section("API 凭据") {
-                    PasswordVisibilityField("输入 sk-... 密钥", text: $apiKey)
+                    PasswordVisibilityField("输入 API 密钥", text: $apiKey)
+                    Text("密钥保存到 Keychain。留空时不发送鉴权头，仅适用于无需密钥的服务。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
             .formStyle(.grouped)
+            .disabled(isLoadingKey || isSaving)
+            if isLoadingKey { ProgressView("读取 Keychain…") }
+            if keyReadFailed { Button("重新读取密钥") { Task { await loadCredential() } } }
 
             if let errorMessage {
                 Text(errorMessage).font(.caption).foregroundStyle(.red).padding(.horizontal, 20)
@@ -218,7 +249,8 @@ private struct ServiceEditorModal: View {
                 Button("测试接口连通性") {
                     testConnection()
                 }
-                .disabled(isTesting)
+                .disabled(isTesting || isLoadingKey || isSaving)
+                .help("向服务发送一条短文本，调用当前模型验证聊天接口。")
 
                 if isTesting {
                     ProgressView().controlSize(.small)
@@ -231,12 +263,14 @@ private struct ServiceEditorModal: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
+                .disabled(isSaving || isLoadingKey || isTesting)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
             .background(.regularMaterial)
         }
-        .frame(width: 520, height: 460)
+        .frame(width: 520, height: 490)
+        .task { await loadCredential() }
     }
 
     private func buildConfig() throws -> TranslationServiceConfig {
@@ -247,8 +281,7 @@ private struct ServiceEditorModal: View {
             id: original?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             baseURL: url,
-            modelID: modelID.trimmingCharacters(in: .whitespacesAndNewlines),
-            apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            modelID: modelID.trimmingCharacters(in: .whitespacesAndNewlines)
         )
         try config.validate()
         return config
@@ -263,24 +296,7 @@ private struct ServiceEditorModal: View {
             defer { isTesting = false }
             do {
                 let config = try buildConfig()
-                var request = URLRequest(url: config.baseURL.appendingPathComponent("models"))
-                request.httpMethod = "GET"
-                request.timeoutInterval = 10
-                if !config.apiKey.isEmpty {
-                    request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
-                }
-
-                let (_, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse else {
-                    throw TranslationServiceError.connectionFailed("无效的 HTTP 响应")
-                }
-                if http.statusCode == 401 || http.statusCode == 403 {
-                    throw TranslationServiceError.authFailed
-                } else if http.statusCode >= 200 && http.statusCode < 300 {
-                    testSuccessMessage = "测试连接成功 (HTTP \(http.statusCode))"
-                } else {
-                    throw TranslationServiceError.serviceUnavailable("HTTP 状态码 \(http.statusCode)")
-                }
+                testSuccessMessage = try await store.testConnection(service: config, apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines))
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -288,12 +304,29 @@ private struct ServiceEditorModal: View {
     }
 
     private func saveService() {
-        do {
-            let config = try buildConfig()
-            onSave(config)
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
+        guard !keyReadFailed || !apiKey.isEmpty else {
+            errorMessage = "旧密钥尚未读取，重试读取或填写新密钥后再保存。"
+            return
         }
+        isSaving = true
+        Task {
+            defer { isSaving = false }
+            do {
+                let config = try buildConfig()
+                try await onSave(config, apiKey)
+                dismiss()
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func loadCredential() async {
+        guard let original else { return }
+        isLoadingKey = true
+        defer { isLoadingKey = false }
+        do {
+            apiKey = try await store.editingAPIKey(serviceID: original.id)
+            keyReadFailed = false
+            errorMessage = nil
+        } catch { keyReadFailed = true; errorMessage = error.localizedDescription }
     }
 }

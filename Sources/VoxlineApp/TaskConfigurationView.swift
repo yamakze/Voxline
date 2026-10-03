@@ -121,6 +121,11 @@ public struct TaskConfigurationView: View {
                 translationModel = first.modelID
             }
         }
+        .onChange(of: selectedServiceID) { _, id in
+            if let service = serviceStore.services.first(where: { $0.id == id }) {
+                translationModel = service.modelID
+            }
+        }
         .onDisappear {
             importTask?.cancel()
             saveTask?.cancel()
@@ -563,6 +568,8 @@ public struct TaskConfigurationView: View {
             }
         }
         if translates {
+            if serviceStore.isLoading || serviceStore.isSaving { return "翻译服务配置正在读取或保存。" }
+            if let error = serviceStore.errorMessage { return error }
             if selectedServiceID == nil || serviceStore.services.isEmpty {
                 return "开启翻译时需选择已配置的翻译服务。"
             }

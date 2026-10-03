@@ -1,55 +1,37 @@
 import Foundation
 import Observation
 import VoxlineCore
+import VoxlineTranslation
 
+/// Persisted service metadata. Credentials are exclusively stored in Keychain.
 public struct TranslationServiceConfig: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public var name: String
     public var baseURL: URL
     public var modelID: String
-    public var apiKey: String
 
-    public init(id: UUID = UUID(), name: String, baseURL: URL, modelID: String, apiKey: String = "") {
-        self.id = id
-        self.name = name
-        self.baseURL = baseURL
-        self.modelID = modelID
-        self.apiKey = apiKey
-    }
-
-    public var maskedAPIKey: String {
-        if apiKey.isEmpty { return "未设置密钥" }
-        if apiKey.count <= 6 { return String(repeating: "•", count: apiKey.count) }
-        let start = apiKey.prefix(3)
-        let end = apiKey.suffix(3)
-        return "\(start)••••••••\(end)"
+    public init(id: UUID = UUID(), name: String, baseURL: URL, modelID: String) {
+        self.id = id; self.name = name; self.baseURL = baseURL; self.modelID = modelID
     }
 
     public func validate() throws {
-        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw TranslationServiceError.emptyName
-        }
-        guard let scheme = baseURL.scheme?.lowercased(), scheme == "http" || scheme == "https",
-              let host = baseURL.host, !host.isEmpty else {
-            throw TranslationServiceError.invalidBaseURL
-        }
-        guard !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw TranslationServiceError.emptyModel
-        }
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw TranslationServiceError.emptyName }
+        _ = try TranslationSettings(baseURL: baseURL, modelID: modelID, targetLanguage: "zh-Hans", serviceID: id)
     }
 }
 
-public enum TranslationServiceError: LocalizedError, Equatable {
-    case emptyName, invalidBaseURL, emptyModel, connectionFailed(String), authFailed, serviceUnavailable(String)
-
+public enum TranslationServiceError: Error, LocalizedError, Equatable {
+    case emptyName, invalidBaseURL, busy, unknownService, changedEndpoint, duplicateService, configurationUnavailable, rollbackFailed(String)
     public var errorDescription: String? {
         switch self {
         case .emptyName: "服务名称不能为空。"
-        case .invalidBaseURL: "请输入有效的 HTTP 或 HTTPS 服务地址，如 https://api.openai.com/v1。"
-        case .emptyModel: "模型名称不能为空。"
-        case .connectionFailed(let reason): "连接失败：\(reason)"
-        case .authFailed: "鉴权失败：API 密钥无效或未授权。"
-        case .serviceUnavailable(let reason): "服务不可用：\(reason)"
+        case .invalidBaseURL: "请输入有效的 HTTP 或 HTTPS 服务地址。"
+        case .busy: "服务配置正在读取或保存，请稍后再试。"
+        case .unknownService: "本次任务引用的翻译服务已不存在，请恢复服务配置或新建任务。"
+        case .changedEndpoint: "服务地址与任务快照不同，请恢复服务配置或新建任务。"
+        case .duplicateService: "服务配置包含重复 ID，未加载损坏配置。"
+        case .configurationUnavailable: "服务配置读取失败，请重新读取或保存有效配置后再处理。"
+        case .rollbackFailed(let reason): "配置未保存，旧密钥恢复也失败：\(reason)。请重新配置密钥。"
         }
     }
 }
@@ -58,103 +40,153 @@ public enum TranslationServiceError: LocalizedError, Equatable {
 @MainActor
 public final class TranslationServiceStore {
     public static let shared = TranslationServiceStore()
-
-    public var services: [TranslationServiceConfig] = []
-    public var testingServiceID: UUID?
-    public var testResult: [UUID: Result<String, TranslationServiceError>] = [:]
-
+    public private(set) var services: [TranslationServiceConfig] = []
+    public private(set) var credentialPresence: [UUID: Bool] = [:]
+    public private(set) var isLoading = false
+    public private(set) var isSaving = false
+    public private(set) var errorMessage: String?
+    public private(set) var testingServiceID: UUID?
+    public private(set) var testResult: [UUID: Result<String, any Error>] = [:]
     private let storageURL: URL
+    private let vault: any TranslationCredentialVault
+    private let client: OpenAICompatibleTranslationClient
 
-    private init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    init(storageURL: URL? = nil, vault: any TranslationCredentialVault = KeychainTranslationCredentialVault(),
+         client: OpenAICompatibleTranslationClient = .init(), autoLoad: Bool = true) {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        storageURL = appSupport.appendingPathComponent("Voxline/TranslationServices.json")
-        load()
+        self.storageURL = storageURL ?? support.appendingPathComponent("Voxline/TranslationServices.json")
+        self.vault = vault
+        self.client = client
+        if autoLoad { Task { await self.load() } }
     }
 
-    public func load() {
+    public func load() async {
+        guard !isSaving, !isLoading else { errorMessage = TranslationServiceError.busy.localizedDescription; return }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        struct StoredService: Decodable {
+            let id: UUID; let name: String; let baseURL: URL; let modelID: String
+            let apiKey: String? // Decode-only migration from former plaintext settings.
+        }
         do {
-            let data = try Data(contentsOf: storageURL)
-            services = try JSONDecoder().decode([TranslationServiceConfig].self, from: data)
-        } catch {
-            if services.isEmpty {
-                // Default preset
-                if let defaultURL = URL(string: "https://api.openai.com/v1") {
-                    services = [
-                        TranslationServiceConfig(
-                            name: "OpenAI 官方",
-                            baseURL: defaultURL,
-                            modelID: "gpt-4o-mini",
-                            apiKey: ""
-                        )
-                    ]
-                }
+            let data: Data
+            do { data = try Data(contentsOf: storageURL) }
+            catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                services = []; credentialPresence = [:]; return
             }
-        }
+            let records = try JSONDecoder().decode([StoredService].self, from: data)
+            let metadata = records.map { TranslationServiceConfig(id: $0.id, name: $0.name, baseURL: $0.baseURL, modelID: $0.modelID) }
+            guard Set(metadata.map(\.id)).count == metadata.count else { throw TranslationServiceError.duplicateService }
+            for service in metadata { try service.validate() }
+            for record in records {
+                if let key = record.apiKey { try await vault.write(key.isEmpty ? nil : key, serviceID: record.id) }
+            }
+            // Remove plaintext only after all Keychain writes succeed. Retry remains idempotent.
+            if records.contains(where: { $0.apiKey != nil }) { try persist(metadata) }
+            var presence: [UUID: Bool] = [:]
+            for service in metadata { presence[service.id] = try await vault.contains(serviceID: service.id) }
+            services = metadata
+            credentialPresence = presence
+            errorMessage = nil
+        } catch { errorMessage = "服务配置读取失败：\(error.localizedDescription)" }
     }
 
-    public func save() throws {
-        let directory = storageURL.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let data = try JSONEncoder().encode(services)
-        try data.write(to: storageURL, options: .atomic)
-    }
-
-    public func addOrUpdate(_ service: TranslationServiceConfig) throws {
+    public func addOrUpdate(_ service: TranslationServiceConfig, apiKey: String) async throws {
+        guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
         try service.validate()
-        if let index = services.firstIndex(where: { $0.id == service.id }) {
-            services[index] = service
-        } else {
-            services.append(service)
+        isSaving = true
+        defer { isSaving = false }
+        let previousKey = try await vault.read(serviceID: service.id)
+        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        try await vault.write(key.isEmpty ? nil : key, serviceID: service.id)
+        var updated = services
+        if let index = updated.firstIndex(where: { $0.id == service.id }) { updated[index] = service }
+        else { updated.append(service) }
+        do { try persist(updated) }
+        catch {
+            let writeError = error
+            do { try await vault.write(previousKey, serviceID: service.id) }
+            catch {
+                let failure = TranslationServiceError.rollbackFailed(error.localizedDescription)
+                errorMessage = failure.localizedDescription
+                throw failure
+            }
+            throw writeError
         }
-        try save()
+        services = updated
+        errorMessage = nil
+        credentialPresence[service.id] = !key.isEmpty
+        testResult[service.id] = nil
     }
 
-    func apiKey(for settings: TranslationSettings) throws -> String {
-        guard let service = services.first(where: { $0.id == settings.serviceID }) else {
-            throw TaskValidationError.unconfiguredTranslationService
+    public func remove(id: UUID) async throws {
+        guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
+        guard services.contains(where: { $0.id == id }) else { throw TranslationServiceError.unknownService }
+        isSaving = true
+        defer { isSaving = false }
+        let previousKey = try await vault.read(serviceID: id)
+        try await vault.write(nil, serviceID: id)
+        let updated = services.filter { $0.id != id }
+        do { try persist(updated) }
+        catch {
+            let writeError = error
+            do { try await vault.write(previousKey, serviceID: id) }
+            catch {
+                let failure = TranslationServiceError.rollbackFailed(error.localizedDescription)
+                errorMessage = failure.localizedDescription
+                throw failure
+            }
+            throw writeError
         }
-        guard service.baseURL == settings.baseURL else {
-            throw TranslationServiceError.connectionFailed("所选服务地址与任务快照不同，请恢复服务配置或新建任务。")
-        }
-        return service.apiKey
+        services = updated
+        credentialPresence[id] = nil
+        testResult[id] = nil
     }
 
-    public func remove(id: UUID) {
-        services.removeAll { $0.id == id }
-        testResult.removeValue(forKey: id)
-        try? save()
+    func apiKey(for settings: TranslationSettings) async throws -> String {
+        guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
+        guard errorMessage == nil else { throw TranslationServiceError.configurationUnavailable }
+        guard let id = settings.serviceID, let service = services.first(where: { $0.id == id }) else { throw TranslationServiceError.unknownService }
+        guard service.baseURL == settings.baseURL else { throw TranslationServiceError.changedEndpoint }
+        let key = try await vault.read(serviceID: id)
+        guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
+        guard errorMessage == nil else { throw TranslationServiceError.configurationUnavailable }
+        guard let current = services.first(where: { $0.id == id }) else { throw TranslationServiceError.unknownService }
+        guard current.baseURL == settings.baseURL else { throw TranslationServiceError.changedEndpoint }
+        credentialPresence[id] = key != nil
+        // Empty credentials explicitly use no Authorization header; authentication failures remain visible.
+        return key ?? ""
     }
 
-    public func testConnection(service: TranslationServiceConfig) async {
+    func editingAPIKey(serviceID: UUID) async throws -> String {
+        guard let service = services.first(where: { $0.id == serviceID }) else { throw TranslationServiceError.unknownService }
+        let settings = try TranslationSettings(baseURL: service.baseURL, modelID: service.modelID, targetLanguage: "zh", serviceID: serviceID)
+        return try await apiKey(for: settings)
+    }
+
+    public func testConnection(service: TranslationServiceConfig, apiKey: String? = nil) async throws -> String {
+        guard testingServiceID == nil else { throw TranslationServiceError.busy }
+        try service.validate()
         testingServiceID = service.id
         defer { testingServiceID = nil }
-
         do {
-            try service.validate()
-            var request = URLRequest(url: service.baseURL.appendingPathComponent("models"))
-            request.httpMethod = "GET"
-            request.timeoutInterval = 10
-            if !service.apiKey.isEmpty {
-                request.setValue("Bearer \(service.apiKey)", forHTTPHeaderField: "Authorization")
-            }
+            let settings = try TranslationSettings(baseURL: service.baseURL, modelID: service.modelID, targetLanguage: "zh-Hans", serviceID: service.id)
+            let key: String
+            if let apiKey { key = apiKey }
+            else { key = try await self.apiKey(for: settings) }
+            let cue = try SubtitleCue(id: UUID(), startMilliseconds: 0, endMilliseconds: 1000, sourceText: "Connection check.")
+            let input = try SubtitleTranslationRequest(inputs: [.init(cue)], cues: [cue])
+            _ = try await client.translate(settings: settings, apiKey: key, request: input)
+            let result = "模型 \(service.modelID) 的聊天接口可用"
+            testResult[service.id] = .success(result)
+            return result
+        } catch { testResult[service.id] = .failure(error); throw error }
+    }
 
-            let (_, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                throw TranslationServiceError.connectionFailed("无效的 HTTP 响应")
-            }
-
-            if http.statusCode == 401 || http.statusCode == 403 {
-                throw TranslationServiceError.authFailed
-            } else if http.statusCode >= 200 && http.statusCode < 300 {
-                testResult[service.id] = .success("连接成功 (HTTP \(http.statusCode))")
-            } else {
-                throw TranslationServiceError.serviceUnavailable("HTTP 状态码 \(http.statusCode)")
-            }
-        } catch let err as TranslationServiceError {
-            testResult[service.id] = .failure(err)
-        } catch {
-            testResult[service.id] = .failure(.connectionFailed(error.localizedDescription))
-        }
+    private func persist(_ services: [TranslationServiceConfig]) throws {
+        try FileManager.default.createDirectory(at: storageURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(services).write(to: storageURL, options: .atomic)
     }
 }

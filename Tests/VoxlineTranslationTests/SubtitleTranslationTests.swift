@@ -127,18 +127,20 @@ struct SubtitleTranslationTests {
         await #expect(throws: CancellationError.self) { try await client.translate(settings: settings, apiKey: "secret", request: input) }
     }
 
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_TRANSLATION_SERVICE_FILE"] != nil))
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_TRANSLATION_SERVICE_FILE"] != nil &&
+        ProcessInfo.processInfo.environment["VOXLINE_TRANSLATION_API_KEY"] != nil))
     func realConfiguredServiceTranslatesSubtitleIDs() async throws {
-        struct Service: Decodable { let id: UUID; let baseURL: URL; let modelID: String; let apiKey: String }
+        struct Service: Decodable { let id: UUID; let baseURL: URL; let modelID: String }
         let path = try #require(ProcessInfo.processInfo.environment["VOXLINE_TRANSLATION_SERVICE_FILE"])
         let services = try JSONDecoder().decode([Service].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         let service = try #require(services.first)
+        let apiKey = try #require(ProcessInfo.processInfo.environment["VOXLINE_TRANSLATION_API_KEY"])
         let cues = try ["Freeze!", "Oh hi.", "Put it down.", "The book?"].enumerated().map { index, text in
             try SubtitleCue(id: UUID(), startMilliseconds: Int64(index * 2000), endMilliseconds: Int64(index * 2000 + 1000), sourceText: text)
         }
         let settings = try TranslationSettings(baseURL: service.baseURL, modelID: service.modelID, targetLanguage: "zh-Hans", serviceID: service.id)
         let input = try SubtitleTranslationRequest(inputs: cues.map(TranslationBatchInput.init), cues: cues)
-        let output = try await OpenAICompatibleTranslationClient().translate(settings: settings, apiKey: service.apiKey, request: input)
+        let output = try await OpenAICompatibleTranslationClient().translate(settings: settings, apiKey: apiKey, request: input)
         #expect(Set(output.map(\.cueID)) == Set(cues.map(\.id)))
         #expect(output.allSatisfy { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
         #expect(output.contains { result in cues.contains { $0.id == result.cueID && $0.sourceText != result.text } })

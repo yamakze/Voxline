@@ -148,7 +148,7 @@ struct TaskProcessingQueueTests {
         try library.save(configured)
         try queue.start(taskID: configured.id)
         await queue.waitUntilIdle()
-        #expect(library.task(for: configured.id)?.items.allSatisfy { $0.status == .failed(reason: TaskValidationError.unconfiguredTranslationService.localizedDescription) } == true)
+        #expect(library.task(for: configured.id)?.items.allSatisfy { $0.status == .failed(reason: TranslationServiceError.unknownService.localizedDescription) } == true)
     }
 
     @Test func manualTimingConflictKeepsEditAndRawEvidenceWhileOtherMediaContinue() async throws {
