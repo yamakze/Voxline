@@ -131,6 +131,8 @@ public struct TranslationServicesSettingsView: View {
                 }
             }
 
+            Text("每批最多 \(service.batchSize) 条字幕").font(.caption).foregroundStyle(.secondary)
+
             Divider()
 
             // Service details
@@ -182,6 +184,8 @@ private struct ServiceEditorModal: View {
     @State private var name: String
     @State private var baseURLString: String
     @State private var modelID: String
+    @State private var batchSizeText: String
+    @State private var systemPrompt: String
     @State private var apiKey: String
     @State private var errorMessage: String?
     @State private var isTesting = false
@@ -198,6 +202,8 @@ private struct ServiceEditorModal: View {
         _name = State(initialValue: service?.name ?? "")
         _baseURLString = State(initialValue: service?.baseURL.absoluteString ?? "https://api.openai.com/v1")
         _modelID = State(initialValue: service?.modelID ?? "gpt-4o-mini")
+        _batchSizeText = State(initialValue: String(service?.batchSize ?? TranslationSettings.defaultBatchSize))
+        _systemPrompt = State(initialValue: service?.systemPrompt ?? TranslationSettings.defaultSystemPrompt)
         _apiKey = State(initialValue: "")
         _isLoadingKey = State(initialValue: service != nil)
     }
@@ -222,6 +228,18 @@ private struct ServiceEditorModal: View {
                     TextField("显示名称（如 OpenAI 官方 / DeepSeek）", text: $name)
                     TextField("接口 Base URL（如 https://api.openai.com/v1）", text: $baseURLString)
                     TextField("默认模型 ID（如 gpt-4o-mini）", text: $modelID)
+                }
+
+                Section("字幕翻译参数") {
+                    TextField("每批字幕数量", text: $batchSizeText)
+                    Text("字幕和上下文容量较大时，每批可能少于此数量。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("系统提示词")
+                    TextEditor(text: $systemPrompt).frame(minHeight: 80)
+                        .accessibilityLabel("系统提示词")
+                    Button("恢复默认提示词") { systemPrompt = TranslationSettings.defaultSystemPrompt }
+                    Text("提示词控制翻译要求。字幕 ID 与 JSON 输出格式由应用固定维护；修改配置仅影响后续任务。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section("API 凭据") {
@@ -269,7 +287,7 @@ private struct ServiceEditorModal: View {
             .padding(.vertical, 12)
             .background(.regularMaterial)
         }
-        .frame(width: 520, height: 490)
+        .frame(width: 560, height: 690)
         .task { await loadCredential() }
     }
 
@@ -277,11 +295,15 @@ private struct ServiceEditorModal: View {
         guard let url = URL(string: baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             throw TranslationServiceError.invalidBaseURL
         }
+        guard let batchSize = Int(batchSizeText.trimmingCharacters(in: .whitespacesAndNewlines)), batchSize > 0 else {
+            throw ProjectValidationError.invalidTranslationBatchSize
+        }
         let config = TranslationServiceConfig(
             id: original?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             baseURL: url,
-            modelID: modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+            modelID: modelID.trimmingCharacters(in: .whitespacesAndNewlines),
+            batchSize: batchSize, systemPrompt: systemPrompt
         )
         try config.validate()
         return config

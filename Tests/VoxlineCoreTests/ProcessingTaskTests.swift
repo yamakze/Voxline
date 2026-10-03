@@ -42,7 +42,7 @@ struct ProcessingTaskTests {
     @Test func selectedParametersStayFrozenAfterReopenAndDefaultChanges() throws {
         let serviceID = UUID()
         let translation = try TranslationSettings(baseURL: URL(string: "https://example.test/v1")!,
-                                                   modelID: "selected-model", targetLanguage: "zh-Hans", serviceID: serviceID)
+                                                   modelID: "selected-model", targetLanguage: "zh-Hans", serviceID: serviceID, batchSize: 7, systemPrompt: "Keep a conversational style.")
         var parameters = TaskParameters(transcription: TranscriptionSettings(modelID: "selected-whisper",
                                           languageMode: .specified, languageCode: "en"),
                                         translation: translation, srtOutputs: [.source, .translation, .bilingual])

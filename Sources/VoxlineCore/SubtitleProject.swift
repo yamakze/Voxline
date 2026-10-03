@@ -111,20 +111,43 @@ public struct TranscriptionSettings: Codable, Equatable, Sendable {
 }
 
 public struct TranslationSettings: Codable, Equatable, Sendable {
+    public static let defaultBatchSize = 30
+    public static let defaultSystemPrompt = "Translate the subtitles into the targetLanguage in the user JSON. Preserve meaning, tone and readable subtitle phrasing."
     public let serviceID: UUID?
     public let baseURL: URL
     public let modelID: String
     public let targetLanguage: String
+    public let batchSize: Int
+    public let systemPrompt: String
 
-    public init(baseURL: URL, modelID: String, targetLanguage: String, serviceID: UUID? = nil) throws {
+    public init(baseURL: URL, modelID: String, targetLanguage: String, serviceID: UUID? = nil,
+                batchSize: Int = Self.defaultBatchSize, systemPrompt: String = Self.defaultSystemPrompt) throws {
         self.serviceID = serviceID
         self.baseURL = baseURL
         self.modelID = modelID
         self.targetLanguage = targetLanguage
+        self.batchSize = batchSize
+        self.systemPrompt = systemPrompt
         try validate()
     }
 
+    private enum CodingKeys: String, CodingKey { case serviceID, baseURL, modelID, targetLanguage, batchSize, systemPrompt }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(baseURL: values.decode(URL.self, forKey: .baseURL),
+                      modelID: values.decode(String.self, forKey: .modelID),
+                      targetLanguage: values.decode(String.self, forKey: .targetLanguage),
+                      serviceID: values.decodeIfPresent(UUID.self, forKey: .serviceID),
+                      batchSize: values.contains(.batchSize) ? values.decode(Int.self, forKey: .batchSize) : Self.defaultBatchSize,
+                      systemPrompt: values.contains(.systemPrompt) ? values.decode(String.self, forKey: .systemPrompt) : Self.defaultSystemPrompt)
+    }
+
     public func validate() throws {
+        guard batchSize > 0 else { throw ProjectValidationError.invalidTranslationBatchSize }
+        guard !systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ProjectValidationError.emptyTranslationSystemPrompt
+        }
         guard let parts = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
               parts.scheme == "https" || parts.scheme == "http", let host = parts.host, !host.isEmpty,
               parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
@@ -142,6 +165,8 @@ public enum ProjectValidationError: Error, LocalizedError, Equatable {
     case emptyModelID
     case invalidSourceLanguage
     case invalidTranslationSettings
+    case invalidTranslationBatchSize
+    case emptyTranslationSystemPrompt
     case invalidCue(UUID)
     case invalidTranslation(UUID)
     case sourceRevisionOverflow(UUID)
@@ -157,6 +182,8 @@ public enum ProjectValidationError: Error, LocalizedError, Equatable {
         case .invalidMediaIdentity: "媒体身份无效，请检查文件信息、哈希、时长和所选音轨。"
         case .emptyModelID: "转写模型不能为空。"
         case .invalidSourceLanguage: "请选择自动识别或明确的原文语言。"
+        case .invalidTranslationBatchSize: "每批字幕数量必须是正整数。"
+        case .emptyTranslationSystemPrompt: "系统提示词不能为空。"
         case .invalidTranslationSettings: "翻译设置无效。服务地址不能包含账户、密码、查询参数或片段。"
         case .invalidCue: "字幕包含空白原文、无效时间或无效原文版本。"
         case .invalidTranslation: "译文内容、原文版本或错误原因无效。"

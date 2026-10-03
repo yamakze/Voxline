@@ -39,11 +39,11 @@ public struct SubtitleTranslationRequest: Sendable {
 }
 
 public enum SubtitleTranslationBatchPlanner {
-    public static let maximumCues = 30
     public static let maximumPayloadBytes = 12_000
 
     /// Bounded UTF-8 input, including two neighboring cues on either side. This is not a token estimate.
-    public static func batches(cues: [SubtitleCue], pendingIDs: [UUID], targetLanguage: String) throws -> [[UUID]] {
+    public static func batches(cues: [SubtitleCue], pendingIDs: [UUID], targetLanguage: String, batchSize: Int = TranslationSettings.defaultBatchSize) throws -> [[UUID]] {
+        guard batchSize > 0 else { throw ProjectValidationError.invalidTranslationBatchSize }
         guard Set(pendingIDs).count == pendingIDs.count,
               Set(pendingIDs).isSubset(of: Set(cues.map(\.id))) else { throw SubtitleTranslationError.invalidRequest }
         let pending = Set(pendingIDs)
@@ -54,7 +54,7 @@ public enum SubtitleTranslationBatchPlanner {
             // Use the same serialized envelope as the client so context counts toward the limit.
             let request = try requestForPlanning(candidate, cues: cues)
             let bytes = try request.payload(targetLanguage: targetLanguage).count
-            if candidate.count > maximumCues || bytes > maximumPayloadBytes {
+            if candidate.count > batchSize || bytes > maximumPayloadBytes {
                 guard !current.isEmpty else { throw SubtitleTranslationError.requestTooLarge }
                 result.append(current.map(\.id))
                 current = [cue]

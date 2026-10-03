@@ -1,7 +1,7 @@
 import Foundation
 
 public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
-    public static let currentFormatVersion = 3
+    public static let currentFormatVersion = 4
     public let formatVersion: Int
     public let id: UUID
     public var title: String
@@ -23,7 +23,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .formatVersion)
-        guard version == 2 || version == Self.currentFormatVersion else {
+        guard version == 2 || version == 3 || version == Self.currentFormatVersion else {
             throw ProjectValidationError.unsupportedVersion(version)
         }
         formatVersion = Self.currentFormatVersion

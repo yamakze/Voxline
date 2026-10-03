@@ -10,6 +10,62 @@ struct TranslationServiceStoreTests {
         .init(id: id, name: name, baseURL: URL(string: "https://test.example/v1")!, modelID: "selected")
     }
 
+    @Test func customParametersPersistAndServiceEditsLeaveFrozenTaskSettingsIntact() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("services.json")
+        let vault = TestCredentialVault()
+        let store = TranslationServiceStore(storageURL: url, vault: vault, autoLoad: false)
+        var configured = service()
+        configured.batchSize = 7
+        configured.systemPrompt = "译为简体中文，保留专名。"
+        try await store.addOrUpdate(configured, apiKey: "test-only-secret")
+        let snapshot = try TranslationSettings(baseURL: configured.baseURL, modelID: configured.modelID,
+            targetLanguage: "zh", serviceID: configured.id, batchSize: configured.batchSize, systemPrompt: configured.systemPrompt)
+        configured.batchSize = 50
+        configured.systemPrompt = "保持口语风格。"
+        try await store.addOrUpdate(configured, apiKey: "test-only-secret")
+        let reopened = TranslationServiceStore(storageURL: url, vault: vault, autoLoad: false)
+        await reopened.load()
+        #expect(reopened.services == [configured])
+        #expect(snapshot.batchSize == 7)
+        #expect(snapshot.systemPrompt == "译为简体中文，保留专名。")
+        #expect(try await reopened.apiKey(for: snapshot) == "test-only-secret")
+        let data = try Data(contentsOf: url)
+        #expect(!String(decoding: data, as: UTF8.self).contains("test-only-secret"))
+        configured.batchSize = 0
+        await #expect(throws: ProjectValidationError.invalidTranslationBatchSize) {
+            try await reopened.addOrUpdate(configured, apiKey: "replacement-test-key")
+        }
+        #expect(try Data(contentsOf: url) == data)
+        #expect(try await vault.read(serviceID: configured.id) == "test-only-secret")
+    }
+
+    @Test func legacyServiceUsesDeclaredDefaultsAndMalformedNewValuesFailLoading() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("services.json")
+        let configured = service()
+        var object = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(configured)) as? [String: Any])
+        object.removeValue(forKey: "batchSize")
+        object.removeValue(forKey: "systemPrompt")
+        let legacy = try JSONSerialization.data(withJSONObject: [object])
+        try legacy.write(to: url)
+        let store = TranslationServiceStore(storageURL: url, vault: TestCredentialVault(), autoLoad: false)
+        await store.load()
+        #expect(store.services == [configured])
+        #expect(try Data(contentsOf: url) == legacy)
+        for invalid in [NSNull(), 0, "seven"] as [Any] {
+            object["batchSize"] = invalid
+            try JSONSerialization.data(withJSONObject: [object]).write(to: url)
+            let broken = TranslationServiceStore(storageURL: url, vault: TestCredentialVault(), autoLoad: false)
+            await broken.load()
+            #expect(broken.errorMessage != nil)
+            #expect(broken.services.isEmpty)
+        }
+    }
+
     @Test func firstTranslationWaitsForInitialMetadataLoad() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

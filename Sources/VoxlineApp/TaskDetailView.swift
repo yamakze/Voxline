@@ -161,6 +161,10 @@ public struct TaskDetailView: View {
                         if let translation = task.parameters.translation {
                             Text("\(translation.modelID) (\(translation.targetLanguage))")
                                 .font(.caption.bold())
+                            Text("每批最多 \(translation.batchSize) 条字幕").font(.caption2)
+                            DisclosureGroup("系统提示词") {
+                                Text(translation.systemPrompt).font(.caption2).textSelection(.enabled)
+                            }
                             Text(translation.baseURL.absoluteString)
                                 .font(.caption2).foregroundStyle(.secondary)
                         } else {

@@ -21,7 +21,7 @@ public enum TaskDocumentCodec {
             let task = ProcessingTask(id: project.id, title: project.title, items: items, parameters: parameters)
             try task.validate()
             return task
-        case 2, ProcessingTask.currentFormatVersion:
+        case 2, 3, ProcessingTask.currentFormatVersion:
             let task = try decoder.decode(ProcessingTask.self, from: data)
             try task.validate()
             return task

@@ -20,6 +20,47 @@ struct ProcessingCheckpointTests {
         return task
     }
 
+    @Test func versionThreeMigratesTranslationDefaultsInTaskAndCheckpointWithoutChangingResults() throws {
+        var original = try task(translates: true)
+        _ = try complete(&original, index: 0)
+        var object = try #require(try JSONSerialization.jsonObject(with: TaskDocumentCodec.encode(original)) as? [String: Any])
+        object["formatVersion"] = 3
+        var parameters = try #require(object["parameters"] as? [String: Any])
+        var translation = try #require(parameters["translation"] as? [String: Any])
+        translation.removeValue(forKey: "batchSize")
+        translation.removeValue(forKey: "systemPrompt")
+        parameters["translation"] = translation
+        object["parameters"] = parameters
+        var items = try #require(object["items"] as? [[String: Any]])
+        var checkpoint = try #require(items[0]["checkpoint"] as? [String: Any])
+        checkpoint["parameters"] = parameters
+        items[0]["checkpoint"] = checkpoint
+        object["items"] = items
+        let legacy = try JSONSerialization.data(withJSONObject: object)
+        let migrated = try TaskDocumentCodec.decode(legacy)
+        #expect(migrated == original)
+        #expect(migrated.formatVersion == 4)
+        #expect(migrated.parameters.translation?.batchSize == 30)
+        #expect(migrated.parameters.translation?.systemPrompt == TranslationSettings.defaultSystemPrompt)
+        #expect(migrated.items[0].checkpoint?.parameters == migrated.parameters)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(migrated)) == migrated)
+        for invalid in [NSNull(), 0, "seven"] as [Any] {
+            translation["batchSize"] = invalid
+            parameters["translation"] = translation
+            object["parameters"] = parameters
+            #expect(throws: (any Error).self) {
+                try TaskDocumentCodec.decode(JSONSerialization.data(withJSONObject: object))
+            }
+        }
+        translation["batchSize"] = 30
+        translation["systemPrompt"] = "  "
+        parameters["translation"] = translation
+        object["parameters"] = parameters
+        #expect(throws: ProjectValidationError.emptyTranslationSystemPrompt) {
+            try TaskDocumentCodec.decode(JSONSerialization.data(withJSONObject: object))
+        }
+    }
+
     private func evidence(range: TranscriptionChunkRange, settings: TranscriptionSettings = .whisperKitBaseline,
                           outcome: TranscriptionEvidence.Outcome = .completed) throws -> TranscriptionEvidence {
         let audio = try TranscriptionAudio(localURL: URL(fileURLWithPath: "/tmp/not-needed.wav"),
@@ -272,7 +313,7 @@ struct ProcessingCheckpointTests {
         object["formatVersion"] = 2
         let data = try JSONSerialization.data(withJSONObject: object)
         let reopened = try TaskDocumentCodec.decode(data)
-        #expect(reopened.formatVersion == 3)
+        #expect(reopened.formatVersion == ProcessingTask.currentFormatVersion)
         #expect(reopened.id == original.id)
         #expect(reopened.items == original.items)
         #expect(reopened.items[0].checkpoint == nil)

@@ -107,7 +107,7 @@ final class TaskProcessingQueue {
             if case .succeeded = cue.translation { return selected.contains(cue.id) }
             return false
         }) { throw CheckpointError.existingResults }
-        let batches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: cueIDs, targetLanguage: settings.targetLanguage)
+        let batches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: cueIDs, targetLanguage: settings.targetLanguage, batchSize: settings.batchSize)
         let batchIDs = try updateMedia(taskID: taskID, mediaID: mediaID) { current in
             try batches.map { try current.prepareTranslationBatch(cueIDs: $0, replacingExistingTranslations: replacingExistingTranslations) }
         }
@@ -307,7 +307,7 @@ final class TaskProcessingQueue {
                 return true
             }
             newBatches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: pendingIDs,
-                targetLanguage: settings.targetLanguage)
+                targetLanguage: settings.targetLanguage, batchSize: settings.batchSize)
         } catch {
             try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .failed(reason: error.localizedDescription) }
             return

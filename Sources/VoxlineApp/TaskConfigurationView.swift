@@ -16,6 +16,8 @@ public struct TaskConfigurationView: View {
     @State private var selectedServiceID: UUID?
     @State private var translationModel: String
     @State private var targetLanguage: String
+    @State private var translationBatchSize: Int
+    @State private var translationSystemPrompt: String
     @State private var outputs: Set<SRTOutputKind>
 
     @State private var existingItems: [TaskMediaItem]
@@ -47,6 +49,8 @@ public struct TaskConfigurationView: View {
         _selectedServiceID = State(initialValue: value.parameters.translation?.serviceID)
         _translationModel = State(initialValue: value.parameters.translation?.modelID ?? "gpt-4o-mini")
         _targetLanguage = State(initialValue: value.parameters.translation?.targetLanguage ?? "zh-Hans")
+        _translationBatchSize = State(initialValue: value.parameters.translation?.batchSize ?? TranslationSettings.defaultBatchSize)
+        _translationSystemPrompt = State(initialValue: value.parameters.translation?.systemPrompt ?? TranslationSettings.defaultSystemPrompt)
         _outputs = State(initialValue: Set(value.parameters.srtOutputs))
         _existingItems = State(initialValue: value.items)
     }
@@ -169,6 +173,14 @@ public struct TaskConfigurationView: View {
         .onChange(of: selectedServiceID) { _, id in
             if let service = serviceStore.services.first(where: { $0.id == id }) {
                 translationModel = service.modelID
+                translationBatchSize = service.batchSize
+                translationSystemPrompt = service.systemPrompt
+            }
+        }
+        .onChange(of: serviceStore.services) { _, services in
+            if let service = services.first(where: { $0.id == selectedServiceID }) {
+                translationBatchSize = service.batchSize
+                translationSystemPrompt = service.systemPrompt
             }
         }
         .onDisappear {
@@ -525,6 +537,12 @@ public struct TaskConfigurationView: View {
 
                             TextField("目标语言（默认 zh-Hans）", text: $targetLanguage)
                                 .textFieldStyle(.roundedBorder)
+                            Text("每批最多 \(translationBatchSize) 条字幕").font(.caption)
+                            DisclosureGroup("系统提示词") {
+                                Text(translationSystemPrompt).font(.caption).textSelection(.enabled)
+                            }
+                            Button("编辑服务参数…") { showTranslationSettings = true }
+                                .buttonStyle(.borderless)
                         }
                     }
                     .padding(.top, 6)
@@ -538,12 +556,12 @@ public struct TaskConfigurationView: View {
                 // Group 4: Output SRT Options
                 DisclosureGroup(isExpanded: .constant(true)) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Toggle("原文 SRT (.en.srt)", isOn: Binding(
+                        Toggle("原文 SRT (.source.srt)", isOn: Binding(
                             get: { outputs.contains(.source) },
                             set: { if $0 { outputs.insert(.source) } else { outputs.remove(.source) } }
                         ))
 
-                        Toggle("译文 SRT (.zh.srt)", isOn: Binding(
+                        Toggle("译文 SRT (.translation.srt)", isOn: Binding(
                             get: { outputs.contains(.translation) },
                             set: { if $0 { outputs.insert(.translation) } else { outputs.remove(.translation) } }
                         ))
@@ -647,7 +665,8 @@ public struct TaskConfigurationView: View {
                     baseURL: service.baseURL,
                     modelID: translationModel,
                     targetLanguage: targetLanguage,
-                    serviceID: serviceID
+                    serviceID: serviceID,
+                    batchSize: translationBatchSize, systemPrompt: translationSystemPrompt
                 )
             }
 

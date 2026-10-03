@@ -9,14 +9,29 @@ public struct TranslationServiceConfig: Identifiable, Codable, Equatable, Sendab
     public var name: String
     public var baseURL: URL
     public var modelID: String
+    public var batchSize: Int
+    public var systemPrompt: String
 
-    public init(id: UUID = UUID(), name: String, baseURL: URL, modelID: String) {
+    public init(id: UUID = UUID(), name: String, baseURL: URL, modelID: String,
+                batchSize: Int = TranslationSettings.defaultBatchSize, systemPrompt: String = TranslationSettings.defaultSystemPrompt) {
         self.id = id; self.name = name; self.baseURL = baseURL; self.modelID = modelID
+        self.batchSize = batchSize; self.systemPrompt = systemPrompt
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, baseURL, modelID, batchSize, systemPrompt }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(id: try values.decode(UUID.self, forKey: .id), name: try values.decode(String.self, forKey: .name),
+                  baseURL: try values.decode(URL.self, forKey: .baseURL), modelID: try values.decode(String.self, forKey: .modelID),
+                  batchSize: try values.contains(.batchSize) ? values.decode(Int.self, forKey: .batchSize) : TranslationSettings.defaultBatchSize,
+                  systemPrompt: try values.contains(.systemPrompt) ? values.decode(String.self, forKey: .systemPrompt) : TranslationSettings.defaultSystemPrompt)
+        try validate()
     }
 
     public func validate() throws {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw TranslationServiceError.emptyName }
-        _ = try TranslationSettings(baseURL: baseURL, modelID: modelID, targetLanguage: "zh-Hans", serviceID: id)
+        _ = try TranslationSettings(baseURL: baseURL, modelID: modelID, targetLanguage: "zh-Hans", serviceID: id, batchSize: batchSize, systemPrompt: systemPrompt)
     }
 }
 
@@ -68,8 +83,13 @@ public final class TranslationServiceStore {
         errorMessage = nil
         defer { isLoading = false }
         struct StoredService: Decodable {
-            let id: UUID; let name: String; let baseURL: URL; let modelID: String
+            let config: TranslationServiceConfig
             let apiKey: String? // Decode-only migration from former plaintext settings.
+            enum CodingKeys: String, CodingKey { case apiKey }
+            init(from decoder: any Decoder) throws {
+                config = try TranslationServiceConfig(from: decoder)
+                apiKey = try decoder.container(keyedBy: CodingKeys.self).decodeIfPresent(String.self, forKey: .apiKey)
+            }
         }
         do {
             let data: Data
@@ -78,11 +98,10 @@ public final class TranslationServiceStore {
                 services = []; credentialPresence = [:]; return
             }
             let records = try JSONDecoder().decode([StoredService].self, from: data)
-            let metadata = records.map { TranslationServiceConfig(id: $0.id, name: $0.name, baseURL: $0.baseURL, modelID: $0.modelID) }
+            let metadata = records.map(\.config)
             guard Set(metadata.map(\.id)).count == metadata.count else { throw TranslationServiceError.duplicateService }
-            for service in metadata { try service.validate() }
             for record in records {
-                if let key = record.apiKey { try await vault.write(key.isEmpty ? nil : key, serviceID: record.id) }
+                if let key = record.apiKey { try await vault.write(key.isEmpty ? nil : key, serviceID: record.config.id) }
             }
             // Remove plaintext only after all Keychain writes succeed. Retry remains idempotent.
             if records.contains(where: { $0.apiKey != nil }) { try persist(metadata) }
@@ -164,7 +183,7 @@ public final class TranslationServiceStore {
 
     func editingAPIKey(serviceID: UUID) async throws -> String {
         guard let service = services.first(where: { $0.id == serviceID }) else { throw TranslationServiceError.unknownService }
-        let settings = try TranslationSettings(baseURL: service.baseURL, modelID: service.modelID, targetLanguage: "zh", serviceID: serviceID)
+        let settings = try TranslationSettings(baseURL: service.baseURL, modelID: service.modelID, targetLanguage: "zh", serviceID: serviceID, batchSize: service.batchSize, systemPrompt: service.systemPrompt)
         return try await apiKey(for: settings)
     }
 
@@ -174,7 +193,7 @@ public final class TranslationServiceStore {
         testingServiceID = service.id
         defer { testingServiceID = nil }
         do {
-            let settings = try TranslationSettings(baseURL: service.baseURL, modelID: service.modelID, targetLanguage: "zh-Hans", serviceID: service.id)
+            let settings = try TranslationSettings(baseURL: service.baseURL, modelID: service.modelID, targetLanguage: "zh-Hans", serviceID: service.id, batchSize: service.batchSize, systemPrompt: service.systemPrompt)
             let key: String
             if let apiKey { key = apiKey }
             else { key = try await self.apiKey(for: settings) }

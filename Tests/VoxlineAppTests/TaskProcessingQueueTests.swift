@@ -177,6 +177,36 @@ struct TaskProcessingQueueTests {
         #expect(queue.errorMessage == nil)
     }
 
+    @Test func normalTranslationAndRetranslationUsePersistedCountAndPrompt() async throws {
+        let (directory, library, initial) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        var parameters = task.parameters
+        let settings = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!, modelID: "frozen-model",
+            targetLanguage: "zh", serviceID: UUID(), batchSize: 1, systemPrompt: "保留角色称呼。")
+        parameters.translation = settings
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let transcription = ControlledPipeline()
+        let translation = ControlledTranslationPipeline()
+        let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation)
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        let completed = try #require(library.task(for: task.id))
+        #expect(completed.status == .completed)
+        #expect(await translation.requests.map(\.count) == [1, 1, 1, 1])
+        #expect(completed.items.allSatisfy { $0.checkpoint?.parameters.translation == settings })
+        let reopened = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        #expect(reopened.parameters.translation == settings)
+        let previousEvents = await transcription.events
+        try queue.startRetranslation(taskID: task.id, mediaID: completed.items[0].id,
+            cueIDs: completed.items[0].cues.map(\.id), replacingExistingTranslations: true)
+        await queue.waitUntilIdle()
+        #expect(await translation.requests.map(\.count) == [1, 1, 1, 1, 1, 1])
+        #expect(await translation.settingsUsed.allSatisfy { $0 == settings })
+        #expect(await transcription.events == previousEvents)
+    }
+
     @Test func translationFailureRetriesOnlyUncommittedBatchAndPreservesManualTranslation() async throws {
         let (directory, library, initial) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -448,6 +478,7 @@ private actor ControlledTranslationPipeline: SubtitleTranslationPipeline {
     private var held: CheckedContinuation<Void, Never>?
     private var observer: CheckedContinuation<Void, Never>?
     private(set) var requests: [[UUID]] = []
+    private(set) var settingsUsed: [TranslationSettings] = []
     init(failCall: Int? = nil, holdFirstCall: Bool = false) { self.failCall = failCall; holdFirst = holdFirstCall }
     func waitForRequest() async {
         if held != nil { return }
@@ -455,6 +486,7 @@ private actor ControlledTranslationPipeline: SubtitleTranslationPipeline {
     }
     func releaseRequest() { held?.resume(); held = nil }
     func translate(settings: TranslationSettings, request: SubtitleTranslationRequest) async throws -> [TranslationBatchOutput] {
+        settingsUsed.append(settings)
         requests.append(request.inputs.map(\.cueID))
         if holdFirst {
             holdFirst = false

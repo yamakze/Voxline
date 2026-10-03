@@ -66,10 +66,36 @@ struct SubtitleTranslationTests {
         }
     }
 
+    @Test func configurableCountRespectsCapacityAndRejectsInvalidOrOversizedClientInput() async throws {
+        let cues = try cues(count: 65)
+        for (limit, counts) in [(1, Array(repeating: 1, count: 65)), (7, Array(repeating: 7, count: 9) + [2]), (50, [50, 15])] {
+            let batches = try SubtitleTranslationBatchPlanner.batches(cues: cues, pendingIDs: cues.map(\.id), targetLanguage: "zh", batchSize: limit)
+            #expect(batches.map(\.count) == counts)
+            #expect(batches.flatMap { $0 } == cues.map(\.id))
+        }
+        #expect(throws: ProjectValidationError.invalidTranslationBatchSize) {
+            try SubtitleTranslationBatchPlanner.batches(cues: cues, pendingIDs: cues.map(\.id), targetLanguage: "zh", batchSize: 0)
+        }
+        let long = try self.cues(count: 8, text: String(repeating: "中", count: 550))
+        let bounded = try SubtitleTranslationBatchPlanner.batches(cues: long, pendingIDs: long.map(\.id), targetLanguage: "zh", batchSize: 100)
+        #expect(bounded.count > 1)
+        let input = try SubtitleTranslationRequest(inputs: cues.prefix(3).map(TranslationBatchInput.init), cues: cues)
+        let settings = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!, modelID: "test", targetLanguage: "zh", batchSize: 2)
+        let connection = session()
+        defer { connection.invalidateAndCancel() }
+        TranslationStubProtocol.handler.withLock { $0 = { _ in
+            Issue.record("Oversized input must fail before sending HTTP")
+            throw URLError(.badURL)
+        } }
+        await #expect(throws: SubtitleTranslationError.requestTooLarge) {
+            try await OpenAICompatibleTranslationClient(session: connection).translate(settings: settings, apiKey: "test-only", request: input)
+        }
+    }
+
     @Test func actualHTTPBodyUsesFrozenSettingsAndNoTimestamps() async throws {
         let cues = try cues(count: 2)
         let input = try SubtitleTranslationRequest(inputs: cues.map(TranslationBatchInput.init), cues: cues)
-        let settings = try TranslationSettings(baseURL: URL(string: "https://test.example/v1/")!, modelID: "chosen-model", targetLanguage: "zh-Hans")
+        let settings = try TranslationSettings(baseURL: URL(string: "https://test.example/v1/")!, modelID: "chosen-model", targetLanguage: "zh-Hans", batchSize: 2, systemPrompt: "Use concise Simplified Chinese and retain names.")
         let json = try response(String(data: JSONSerialization.data(withJSONObject: ["translations": cues.map { ["id": $0.id.uuidString, "text": "放下它。"] }]), encoding: .utf8)!)
         TranslationStubProtocol.handler.withLock { $0 = { request in
             #expect(request.url?.path == "/v1/chat/completions")
@@ -94,6 +120,10 @@ struct SubtitleTranslationTests {
             let body = try #require(try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
             #expect(body["model"] as? String == settings.modelID)
             let messages = try #require(body["messages"] as? [[String: String]])
+            #expect(messages[0]["role"] == "system")
+            let instructions = try #require(messages[0]["content"])
+            #expect(instructions.hasPrefix(settings.systemPrompt + "\n"))
+            #expect(instructions.contains("Include every subtitles ID exactly once"))
             let payload = try #require(try JSONSerialization.jsonObject(with: Data(messages[1]["content"]!.utf8)) as? [String: Any])
             #expect(payload["targetLanguage"] as? String == settings.targetLanguage)
             let subtitles = try #require(payload["subtitles"] as? [[String: String]])
@@ -116,7 +146,7 @@ struct SubtitleTranslationTests {
         defer { connection.invalidateAndCancel() }
         let client = OpenAICompatibleTranslationClient(session: connection)
         for (status, expected) in [(401, SubtitleTranslationError.authenticationFailed), (403, .authenticationFailed),
-            (429, .rateLimited(retryAfter: "10")), (500, .httpFailure(500))] {
+            (429, .rateLimited(retryAfter: "10")), (500, .httpFailure(500)), (503, .httpFailure(503))] {
             TranslationStubProtocol.handler.withLock { $0 = { _ in (status, ["Retry-After": "10"], Data("sensitive-upstream-message".utf8)) } }
             await #expect(throws: expected) { try await client.translate(settings: settings, apiKey: "secret", request: input) }
             #expect(!expected.localizedDescription.contains("sensitive-upstream-message"))
