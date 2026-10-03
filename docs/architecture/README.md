@@ -6,8 +6,8 @@ iOS 只链接同一份 Core 源码，复用 Task 状态显示文本，不链接�
 
 ## 模块职责
 
-- VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证及转写协议。只依赖 Foundation，不保存设备路径、书签或密钥。
-- VoxlineWhisperKit：固定版本模型清单、下载与安装校验、本地目录占用和 WhisperKit 实例生命周期。SDK 类型只存在于该模块；应用接收文件下载进度、安装和加载状态。Provider 与恢复由后续条目接入，同一进程复用已加载实例。
+- VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证、转写协议与原始窗口证据。只依赖 Foundation，不保存设备路径、书签或密钥。
+- VoxlineWhisperKit：固定版本模型清单、下载与安装校验、本地目录占用、WhisperKit 实例生命周期及有界输入的转写 Provider。SDK 类型只存在于该模块；应用接收真实下载、加载和推理状态。同一进程复用唯一已加载实例。
 - VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地只读书签及有界 PCM 提取。AVFoundation 类型不进入 Core 或 Task 文件；媒体保持引用，书签与媒体条目 ID、内容及音轨绑定。
 - VoxlineApp：单窗口导航、TaskLibrary、任务准备、详情、原生播放、字幕校对及模型／服务管理界面。绑定修改 Task，TaskLibrary 通过 TaskDocumentCodec 原子保存唯一任务文件。UI 不导入 WhisperKit。
 
@@ -45,11 +45,25 @@ AVAssetReader 只读取所选轨道，从第一个非空轨道段开始。输出
 
 完整解码、源文件检查和结果验证通过后原子写入 audio.json；取消或失败不提交缓存记录。复用前检查内容身份、版本、每块时间与 PCM 文件格式和帧数。缺失或不完整缓存发出明确失效原因并重新提取；权限、解码和写入错误传播给调用者。缓存仅在设备本地，不进入 Task 文档。
 
+## 转写 Provider
+
+WhisperKitTranscriptionProvider 固定使用 Task 参数中的模型与语言，未知型号或语言代码明确拒绝。输入为 VXL-008 生成的最多 120 秒、16 kHz 单声道 Float32 PCM，实际帧数必须匹配声明时长。每次只读取一个有界音频块，使用一秒缓冲循环读取全部帧，单次短读不视为 EOF；读取后复用 WhisperModelStore 的唯一模型和单 worker。下载、加载或推理期间，其他模型修改明确返回忙碌错误。
+
+推理直接使用 SDK 音频数组入口及 none 策略，不进入增量读取器、VAD 并发分块及可能跳过失败的合并路径。SDK 内部仍按模型窗口顺序解码；末尾 seek 小于 20 毫秒时不重复发起解码，同时验证实际窗口已覆盖全部输入，防止浮点取整产生仅一帧的重复窗口。不足 20 毫秒的独立输入不能冒充已转写。局部重转写需要先提取目标音频范围并提供正确源偏移，当前 Provider 不接受可被忽略的 SDK 范围参数；Task 范围提取与重转写入口另行接入。
+
+TranscriptionEvidenceSeeker 在 SDK 过滤前记录每个窗口的原始文本、词元、实际帧范围、语言、静音判定及对齐前后段。DTW 输入仅保留真实音频对应的 20 毫秒列；不在输出后修改时间。固定 SDK 的对齐字节处理要求 Float16，其他类型明确失败。非空零时长段、时间回退／重叠、窗口越界、置信度异常、覆盖缺失或 SDK 遗漏非空文本都返回失败，保留原文和范围为待校时证据；不自动重识别或宣告字幕质量通过。
+
+RawTranscriptionSegment 与词时间都使用源媒体绝对秒数；20 毫秒量化误差仅用于边界验证，不排序、截断或消除重复文本。缺失词级信息用 nil 表示，不按字符插值。空文本和静音判定保留在原始记录，字幕切分独立决定其展示规则。
+
+自动语言在每块首个模型窗口显式检测；检测失败或未知代码直接失败，再以确定的代码转写该块，避开 SDK 转写循环的默认语言路径。读取、模型加载、语言检测和解码词元进度来自实际工作，推理错误或协作取消传播为 TranscriptionFailure；失败包含完整输入范围、已收集窗口、尚未提交窗口的解码文本／词元及取消状态。诊断证据以原子 JSON 保存于本地 Caches/Voxline/Transcription，写入失败同时保留内存证据和存储错误。成功只在证据写入后发布；缓存不作为 Task 持久成果或恢复检查点，后者由 VXL-012 接入。异常浮点值以明确字符串保存，不修正成有效时间。
+
+选择与理由见 [ADR-0008](../ADR/0008-bounded-transcription-evidence.md)。
+
 ## 执行与界面
 
 MainWindowView 组织任务列表、准备表单、任务详情和媒体详情。NativeControlSurface 在系统 26 及以上使用原生 Liquid Glass，旧系统使用 Material；原生组件优先。系统 26 视觉和辅助功能设置的完整运行验收仍由 VXL-047 跟踪。
 
-真实转写、API 翻译和持久队列尚未接通。未接通的开始、重试及重译明确不可用；禁止计时模拟进度、示例字幕或伪译文。模型安装清单匹配且文件完整时显示已安装；只有当前进程中的 WhisperKit 完成加载才显示已加载。模型规则见 [ADR-0007](../ADR/0007-pinned-local-model-installation.md)。
+真实转写 Provider 已提供模块能力；Task 队列、API 翻译和持久恢复尚未接通。未接通的开始、重试及重译明确不可用；禁止计时模拟进度、示例字幕或伪译文。模型安装清单匹配且文件完整时显示已安装；只有当前进程中的 WhisperKit 完成加载才显示已加载。模型规则见 [ADR-0007](../ADR/0007-pinned-local-model-installation.md)。
 
 原始 ASR 证据和可读字幕分开：RawTranscriptionSegment 保留原始对齐，转换为 SubtitleCue 前验证。切分及 Provider 不能排序、裁剪或丢弃文本来伪装成功。过期译文保留旧来源并显示待重译，新的自动处理不能覆盖较新的手工编辑。
 

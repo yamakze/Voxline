@@ -51,3 +51,13 @@ VOXLINE_AUDIO_SAMPLE="/absolute/path/sample.mp4" swift test --filter realSampleE
 ```
 
 使用现有样本的首个音轨验证提取，产物位于忽略目录 tmp/audio-validation；产品处理始终使用任务明确选择的音轨。小视频测试使用仓库中的自生成夹具，不依赖视频编码器。
+
+## S001 Provider 验证
+
+```sh
+VOXLINE_MODEL_DIRECTORY="/absolute/path/Models" \
+VOXLINE_PCM_DIRECTORY="/absolute/path/S001-chunks" \
+swift test --filter 'realSampleProvider|realProviderLanguageAndCancellation'
+```
+
+模型目录是已完整安装的基准型号父目录；PCM 目录是 S001 提取出的九块缓存。验证使用真实 SDK 和本地模型，保留每个成功／对齐失败块的证据，再检查自动语言识别、解码取消、模型占用和卸载；不下载模型，不将对齐失败算作转写成功。产物位于忽略目录 tmp/provider-validation；默认 swift test 跳过此私有样本入口。

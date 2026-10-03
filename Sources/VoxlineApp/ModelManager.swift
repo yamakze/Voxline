@@ -151,8 +151,10 @@ public final class ModelManager {
 
     public func unload(modelID: String) async {
         guard operations[modelID] == nil else { return }
-        await store.unload(modelID: modelID)
-        await refresh(modelID: modelID)
+        do {
+            try await store.unload(modelID: modelID)
+            await refresh(modelID: modelID)
+        } catch { modelStatuses[modelID] = .failed(reason: error.localizedDescription) }
     }
 
     public func delete(modelID: String) async {

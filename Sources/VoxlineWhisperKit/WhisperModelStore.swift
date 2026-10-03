@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import VoxlineCore
 import WhisperKit
 
@@ -14,12 +15,13 @@ public struct WhisperModelInventory: Sendable {
     public let state: State
 }
 
-/// Owns one local model installation and the loaded SDK instance used by future transcription.
+/// Owns one local model installation and the single SDK worker used by transcription.
 public actor WhisperModelStore {
     public static let shared = WhisperModelStore()
     private let directory: URL?
     private var loadedKit: WhisperKit?
     private var loadedModelID: String?
+    private var operating = false
 
     public init(directory: URL? = nil) { self.directory = directory }
 
@@ -54,7 +56,10 @@ public actor WhisperModelStore {
                          onProgress: @escaping @Sendable (WhisperModelDownloadProgress) -> Void) async throws {
         let manifest = try ModelFileManifest.baseline()
         guard modelID == manifest.modelID else { throw WhisperModelError.unknownModel }
+        guard !operating else { throw WhisperTranscriptionError.busy }
         guard loadedModelID != modelID else { throw WhisperModelError.loadedModel }
+        operating = true
+        defer { operating = false }
         try Task.checkCancellation()
         let root = try installationDirectory(modelID: modelID)
         let parent = root.deletingLastPathComponent()
@@ -87,7 +92,10 @@ public actor WhisperModelStore {
     }
 
     public func load(modelID: String) async throws {
+        guard !operating else { throw WhisperTranscriptionError.busy }
         if loadedModelID == modelID { return }
+        operating = true
+        defer { operating = false }
         let manifest = try ModelFileManifest.baseline()
         guard modelID == manifest.modelID else { throw WhisperModelError.unknownModel }
         let inventory = try inventory(modelID: modelID)
@@ -106,14 +114,87 @@ public actor WhisperModelStore {
         loadedModelID = modelID
     }
 
-    public func unload(modelID: String) {
+    public func unload(modelID: String) throws {
+        guard !operating else { throw WhisperTranscriptionError.busy }
         if loadedModelID == modelID { loadedKit = nil; loadedModelID = nil }
     }
 
     public func delete(modelID: String) throws {
         guard modelID == TranscriptionSettings.whisperKitBaseline.modelID else { throw WhisperModelError.unknownModel }
+        guard !operating else { throw WhisperTranscriptionError.busy }
         guard loadedModelID != modelID else { throw WhisperModelError.loadedModel }
         try FileManager.default.removeItem(at: installationDirectory(modelID: modelID))
+    }
+
+    func transcribe(audio: TranscriptionAudio, settings: TranscriptionSettings, seeker: TranscriptionEvidenceSeeker,
+                    onProgress: @escaping @Sendable (VoxlineCore.TranscriptionProgress) -> Void) async throws -> [RawTranscriptionSegment] {
+        guard !operating else { throw WhisperTranscriptionError.busy }
+        try Task.checkCancellation()
+        onProgress(.readingAudio)
+        let audioArray = try Self.readPCMSamples(audio)
+        if loadedModelID != settings.modelID { onProgress(.loadingModel) }
+        try await load(modelID: settings.modelID)
+        try Task.checkCancellation()
+        guard let kit = loadedKit, loadedModelID == settings.modelID else { throw WhisperModelError.notInstalled }
+        operating = true
+        let previousSeeker = kit.segmentSeeker
+        kit.segmentSeeker = seeker
+        defer { seeker.stopProgress(); kit.segmentSeeker = previousSeeker; operating = false }
+        var language = settings.languageCode
+        if settings.languageMode == .automatic {
+            onProgress(.detectingLanguage)
+            // The SDK transcription loop silently defaults after detection errors. This entry fails explicitly.
+            let detected = try await kit.detectLangauge(audioArray: audioArray)
+            guard Constants.languageCodes.contains(detected.language) else {
+                throw WhisperTranscriptionError.unsupportedLanguage(detected.language)
+            }
+            language = detected.language
+        }
+        try Task.checkCancellation()
+        let options = DecodingOptions(language: language,
+            detectLanguage: false, skipSpecialTokens: true, wordTimestamps: true,
+            windowClipTime: 0.02, concurrentWorkerCount: 1, chunkingStrategy: ChunkingStrategy.none)
+        // Array entry bypasses the SDK incremental/VAD loader and its partial-success result merger.
+        // SDK progress is dispatched in detached tasks: cancellation must belong to the caller's operation.
+        let results = try await withTaskCancellationHandler {
+            try await kit.transcribe(audioArray: audioArray, decodeOptions: options) { progress in
+                if seeker.recordProgress(text: progress.text, tokens: progress.tokens) {
+                    onProgress(.decoding(tokenCount: progress.tokens.count))
+                }
+                return seeker.isCancelled ? false : nil
+            }
+        } onCancel: { seeker.cancel() }
+        seeker.stopProgress()
+        try Task.checkCancellation()
+        let segments = results.flatMap { $0.segments.map { TranscriptionEvidenceSeeker.raw($0, offset: seeker.sourceOffsetSeconds) } }
+        return try TranscriptionEvidenceSeeker.validatedSegments(windows: seeker.windows,
+            sourceOffsetSeconds: seeker.sourceOffsetSeconds, frameCount: audioArray.count, returnedSegments: segments)
+    }
+
+    /// AVAudioFile may return fewer frames than requested. Read until the declared PCM length is consumed.
+    static func readPCMSamples(_ audio: TranscriptionAudio) throws -> [Float] {
+        let file = try AVAudioFile(forReading: audio.localURL)
+        let format = file.processingFormat
+        guard format.sampleRate == 16_000, format.channelCount == 1,
+              file.fileFormat.commonFormat == .pcmFormatFloat32, file.length > 0, file.length <= 1_920_000,
+              audio.durationMilliseconds == (file.length + 15) / 16 else {
+            throw WhisperTranscriptionError.invalidAudio
+        }
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000) else {
+            throw WhisperTranscriptionError.invalidAudio
+        }
+        var samples = [Float]()
+        samples.reserveCapacity(Int(file.length))
+        while samples.count < Int(file.length) {
+            try Task.checkCancellation()
+            let requested = min(16_000, Int(file.length) - samples.count)
+            try file.read(into: buffer, frameCount: AVAudioFrameCount(requested))
+            guard buffer.frameLength > 0, Int(buffer.frameLength) <= requested, let data = buffer.floatChannelData?[0] else {
+                throw WhisperTranscriptionError.invalidAudio
+            }
+            samples.append(contentsOf: UnsafeBufferPointer(start: data, count: Int(buffer.frameLength)))
+        }
+        return samples
     }
 
     private func installationDirectory(modelID: String) throws -> URL {
