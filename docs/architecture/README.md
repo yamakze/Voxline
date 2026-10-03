@@ -1,8 +1,8 @@
 # 当前工程边界
 
-Voxline 采用 Swift 6.2 / SwiftPM 构建 macOS 15 应用，Scripts/build-app.sh 生成本地签名的 .app。Argmax v1.1.0 固定在确切提交，Package.resolved 锁定依赖图；只链接 WhisperKit 产品。
+Mac 采用 SwiftPM，iOS 采用 Xcode 工程。依赖提交由 Package.swift / Package.resolved 锁定，Mac 只链接 WhisperKit 产品。工具链、构建与产物统一见 [开发工作流](../development.md)。
 
-iOS 开发入口通过 Voxline.xcodeproj / VoxlineIOS 构建，基线为 iOS 18；只链接直接使用同一份 Core 源码的 VoxlineCore 框架，复用 Task 状态显示文本，不链接推理 SDK。Sources/VoxlineIOS 提供原生只读任务／字幕浏览与本地文档导入，用于模拟器和设备包的界面开发；完整播放校对由 VXL-030 继续实现。构建脚本和缓存边界见 [开发工作流](../development.md)。
+iOS 只链接同一份 Core 源码，复用 Task 状态显示文本，不链接推理 SDK。Sources/VoxlineIOS 提供只读任务／字幕浏览；手动导入 .voxline / JSON 后验证、迁移并保存到本地 Documents。同任务 ID 再次导入替换本地只读副本，原文件不写回，Mac 书签不传入 iOS。媒体关联、播放及编辑由 VXL-030 交付。
 
 ## 模块职责
 
@@ -43,6 +43,14 @@ MainWindowView 组织任务列表、准备表单、任务详情和媒体详情�
 
 原始 ASR 证据和可读字幕分开：RawTranscriptionSegment 保留原始对齐，转换为 SubtitleCue 前验证。切分及 Provider 不能排序、裁剪或丢弃文本来伪装成功。过期译文保留旧来源并显示待重译，新的自动处理不能覆盖较新的手工编辑。
 
-VXL-006 输入范围完成。VXL-034 的独立音频已进入同一 Task，完整处理链路继续验收；VXL-007 的基准模型安装与加载已实现；VXL-008/009/010/012/026 连接抽音频、转写、切分与恢复，VXL-013/014/015/016/017 连接翻译、播放校对和导出。
-
 应用打包启用 App Sandbox、用户选择文件读写、应用范围书签和网络客户端。iCloud 同步暂废弃；YouTube 来源后续实施；产品只支持 macOS 与 iOS。
+
+## 模型安装与加载
+
+BaselineModel.json 是固定仓库提交、必需文件和摘要的权威清单，打包时复制到应用 Resources。缺少清单明确失败，不读取开发目录替代。
+
+每个型号的 Application Support/Voxline/Models 目录包含 SDK 缓存、权重、分词器和 installation.json。全部文件的长度与仓库对象摘要通过后才写入安装记录；LFS 使用 SHA-256，普通文件使用 Git blob SHA-1。目录刷新检查记录、版本和文件长度，实际加载前再次校验摘要。
+
+WhisperModelStore 持有一个已加载 SDK 实例。分词器从固定本地目录预解析，实际 SDK 加载完成才显示已加载；进程重启后只识别安装状态。加载实例不可删除或重新下载，卸载释放引用。未知型号明确拒绝，Task 参数页保留旧值。
+
+下载进度是 SDK 的文件完成比例，区分权重、分词器和校验。取消等待实际操作结束，操作标识隔离迟到回调。重新下载清理对应目录后完整下载；部分文件与缓存计入占用并可清理。空间查询、网络、读写和校验错误显示实际原因。决定理由见 [ADR-0007](../ADR/0007-pinned-local-model-installation.md)。

@@ -1,8 +1,8 @@
 # ADR-0002 M1 基线与项目文档
 
-状态：接受。日期：2026-10-01。
+状态：历史决定，相关范围已被 ADR-0004／0005／0006 替代。日期：2026-10-01。
 
-范围更新：Task、平台、同步与媒体扫描策略以 [ADR-0004](0004-task-workflow-and-native-design.md) 为准；下文保存原决定及其实施背景。
+范围更新：Task、平台、同步与媒体扫描策略以 [ADR-0004](../ADR/0004-task-workflow-and-native-design.md) 为准；下文保存原决定及其实施背景。
 
 ## 决定
 
@@ -24,4 +24,4 @@ M1 从 Mac 工程、核心类型与文档读写开始。文档系统协调保存
 
 长视频验证的暂缓不移除分段恢复、错误可见和媒体重新关联要求。SDK 接入保持外部边界，Core 与项目格式不暴露 SDK 类型。
 
-依据：[首版需求](../RFC/voxline-v1.md)、[S001 运行证据](../optimize/m0-asr-first-sample.md)、[GitHub Project](https://github.com/users/yamakze/projects/1/views/1)。
+依据：[首版需求](../RFC/voxline-v1.md)、[S001 运行证据](../archive/m0-asr-first-sample.md)、[GitHub Project](https://github.com/users/yamakze/projects/1/views/1)。

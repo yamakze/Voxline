@@ -30,7 +30,7 @@ Scripts/compile_and_run_ios.sh <模拟器UDID> release
 - build-ios.sh 是两者共用的构建入口，分别保留 build/ios/device 和 build/ios/simulator 下的 DerivedData。完整日志为对应目录下的 build.log，包含总耗时和 Build Timing Summary。
 - IPA 是设备架构 arm64，不能安装到模拟器。普通真机仍需有效签名；可用现有签名工具处理 IPA，或在 Xcode 的 Signing & Capabilities 中选择开发 Team 后运行。当前没有真机签名或运行证据。
 
-当前 iOS 入口用于界面开发：导入 .voxline / JSON，验证并迁移旧格式后保存到本地 Documents，浏览 Task、媒体及原文／译文。相同任务 ID 的再次导入替换本地只读副本。原文件不被写回，Mac 书签不随任务传入 iOS。媒体关联、播放、字幕定位与编辑由 VXL-030 后续交付。
+当前 iOS 功能与文件规则见 [架构](architecture/README.md)。
 
 ## 缩短反馈时间
 
@@ -42,4 +42,4 @@ Scripts/compile_and_run_ios.sh <模拟器UDID> release
 
 Apple 说明后续构建可复用增量结果，并提供命令行耗时汇总：[增量构建](https://developer.apple.com/documentation/xcode/improving-the-speed-of-incremental-builds)、[Xcode 并行构建](https://developer.apple.com/videos/play/wwdc2022/110364/)。真机签名与安装见 [运行到设备](https://help.apple.com/xcode/mac/current/en.lproj/dev5a825a1ca.html)。
 
-验证记录见 [iOS 开发入口验证](optimize/ios-development-entry-validation.md)。
+验收结果统一记录于 [GitHub Project](https://github.com/users/yamakze/projects/1)。

@@ -1,6 +1,6 @@
 # M0 首个真实样本：本地转写与时间边界验证
 
-日期：2026-10-01。任务：[VXL-004](https://github.com/users/yamakze/projects/1/views/1?pane=issue&itemId=258840684)。
+状态：历史研究归档，不维护当前实现或执行状态。日期：2026-10-01。任务：[VXL-004](https://github.com/users/yamakze/projects/1/views/1?pane=issue&itemId=258840684)。
 
 目标 Mac 已运行本地解码、抽音频和 WhisperKit 推理。原始增量转写存在越过音频块边界的词时间；限制对齐的有效音频帧后，时间回退消失，但出现非空零时长段被 SDK 丢弃的风险。严格模式已复现并显式拦截该风险，增量转写尚未通过验收。
 
@@ -82,3 +82,16 @@ SDK 的 [addWordTimestamps](https://github.com/argmaxinc/argmax-oss-swift/blob/v
 忽略目录 tmp/m0-benchmark 保留锁定源码、构建日志、PCM 元数据、模型缓存、五组日志、验证入口快照、原始 JSON/SRT、指标、结构检查、窗口审计、边界诊断及参考对照；严格模式失败仅保留失败日志和审计。
 
 tmp/media 保存源视频、中文参考以及 Sorry_Agent_Liz.m0.fullfile.en.srt 与 Sorry_Agent_Liz.m0.cropped.en.srt。英文预览按 ASR 段展示；reference-review.csv 与 preview-audit.json 保存在对应运行目录。
+
+## 长样本验证协议
+
+验证目标 Mac 的本地转写、绝对时间轴、词级时间信息和资源占用，并与同视频 SmartSub 结果对照。模型与性能门槛经实测决定。
+
+优先覆盖一个 30 分钟级样本和一个 120 分钟级样本，包含静音、背景音乐及连续对白。较短样本可先验证工具链，长视频覆盖由独立记录体现。
+
+当前采用 S001 完成工具链与人工字幕校对，进入 M1。30／120 分钟验证暂缓；需要确认长视频资源、分段边界、恢复行为或支持范围时重启，使用本协议继续验证。
+
+每个样本登记文件哈希、媒体时长、音轨 ID、语言、实际解码状态、时间起点、音频采样格式和 SmartSub 配置。私有媒体、原始字幕与完整本地路径保存在忽略的 tmp 目录；Project 回写样本编号与结果摘要。
+
+
+记录初始化与纯转写耗时、进程峰值内存、实际 PCM 格式、源时间起点、完整文本与异常时间。比较同视频、同音轨的 SmartSub 结果；结构检查不能代替人工听录。原始日志、样本路径和字幕放在本地忽略目录，执行结果回写 VXL-045。
