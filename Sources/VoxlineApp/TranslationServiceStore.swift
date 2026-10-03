@@ -50,6 +50,7 @@ public final class TranslationServiceStore {
     private let storageURL: URL
     private let vault: any TranslationCredentialVault
     private let client: OpenAICompatibleTranslationClient
+    private var initialLoad: Task<Void, Never>?
 
     init(storageURL: URL? = nil, vault: any TranslationCredentialVault = KeychainTranslationCredentialVault(),
          client: OpenAICompatibleTranslationClient = .init(), autoLoad: Bool = true) {
@@ -58,7 +59,7 @@ public final class TranslationServiceStore {
         self.storageURL = storageURL ?? support.appendingPathComponent("Voxline/TranslationServices.json")
         self.vault = vault
         self.client = client
-        if autoLoad { Task { await self.load() } }
+        if autoLoad { initialLoad = Task { await self.load() } }
     }
 
     public func load() async {
@@ -146,6 +147,7 @@ public final class TranslationServiceStore {
     }
 
     func apiKey(for settings: TranslationSettings) async throws -> String {
+        await initialLoad?.value
         guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
         guard errorMessage == nil else { throw TranslationServiceError.configurationUnavailable }
         guard let id = settings.serviceID, let service = services.first(where: { $0.id == id }) else { throw TranslationServiceError.unknownService }

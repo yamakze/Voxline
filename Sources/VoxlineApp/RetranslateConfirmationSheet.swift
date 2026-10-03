@@ -20,11 +20,11 @@ public struct RetranslateConfirmationSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                Label("检测到 \(affectedCues.count) 条已修改原文或包含手工校对的字幕。", systemImage: "exclamationmark.triangle.fill")
+                Label("本次选择 \(affectedCues.count) 条字幕。", systemImage: "character.bubble")
                     .font(.headline)
                     .foregroundStyle(.orange)
 
-                Text("重新翻译时，您可以选择保留已有手工翻译结果，或使用新生成的译文进行覆盖。")
+                Text("仅翻译无译文的字幕将保留全部已有译文，包括手工校对和待重译内容。覆盖重译会替换所选字幕的已有译文，使用本次任务冻结的服务与模型。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
@@ -54,13 +54,17 @@ public struct RetranslateConfirmationSheet: View {
 
             HStack(spacing: 12) {
                 Spacer()
-                Button("仅重译未完成项（保留手工）") {
+                Button("仅翻译无译文字幕") {
                     onConfirm(false)
                     dismiss()
                 }
                 .buttonStyle(.bordered)
+                .disabled(!affectedCues.contains { cue in
+                    if case .succeeded = cue.translation { return false }
+                    return true
+                })
 
-                Button("全部覆盖重译") {
+                Button("覆盖所选字幕并重译") {
                     onConfirm(true)
                     dismiss()
                 }

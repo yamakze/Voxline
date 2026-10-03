@@ -255,13 +255,13 @@ public extension TaskMediaItem {
         self = updated
     }
 
-    mutating func prepareTranslationBatch(cueIDs: [UUID]) throws -> UUID {
+    mutating func prepareTranslationBatch(cueIDs: [UUID], replacingExistingTranslations: Bool = false) throws -> UUID {
         var record = try checkpointForCurrentMedia()
         guard record.parameters.translation != nil, record.chunks.allSatisfy(\.isCompleted) else { throw CheckpointError.incompleteWork }
         guard !cueIDs.isEmpty, Set(cueIDs).count == cueIDs.count else { throw CheckpointError.invalidTranslationResult }
         let inputs = try cueIDs.map { id -> TranslationBatchInput in
             guard let cue = cues.first(where: { $0.id == id }) else { throw CheckpointError.unknownWork }
-            guard !cue.hasCurrentTranslation else { throw CheckpointError.existingResults }
+            if case .succeeded = cue.translation, !replacingExistingTranslations { throw CheckpointError.existingResults }
             return TranslationBatchInput(cue)
         }
         // Failed/cancelled or edited batches remain as history; valid unfinished inputs are reused.

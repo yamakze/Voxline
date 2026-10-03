@@ -254,6 +254,98 @@ struct TaskProcessingQueueTests {
         if !cancel { #expect(library.task(for: task.id)?.items[0].cues[0].sourceText == "Current edited source") }
     }
 
+    @Test func selectedRetranslationRequiresReplacementChoiceAndDoesNotExtractAgain() async throws {
+        let (directory, library, task, transcription) = try await translatedFixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = task.items[0]
+        let selectedID = original.cues[0].id
+        try library.commitCheckpoint(taskID: task.id) {
+            $0.items[0].cues[0].translation = .succeeded(text: "Manual correction", sourceRevision: 1)
+        }
+        let translation = ControlledTranslationPipeline()
+        let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation)
+        let previousFile = try Data(contentsOf: library.defaultURL(for: task.id))
+        #expect(throws: CheckpointError.existingResults) {
+            try queue.startRetranslation(taskID: task.id, mediaID: original.id, cueIDs: [selectedID], replacingExistingTranslations: false)
+        }
+        #expect(try Data(contentsOf: library.defaultURL(for: task.id)) == previousFile)
+        let extractionEvents = await transcription.events
+        try queue.startRetranslation(taskID: task.id, mediaID: original.id, cueIDs: [selectedID], replacingExistingTranslations: true)
+        await queue.waitUntilIdle()
+        let saved = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        #expect(saved.status == .completed)
+        #expect(await transcription.events == extractionEvents)
+        #expect(await translation.requests == [[selectedID]])
+        #expect(saved.items[0].checkpoint?.chunks == original.checkpoint?.chunks)
+        #expect(saved.items[0].cues[1] == original.cues[1])
+        #expect(saved.items[1] == task.items[1])
+        #expect(saved.items[0].cues[0].translation == .succeeded(text: "Test-only translation", sourceRevision: 1))
+    }
+
+    @Test func ordinaryRetryPreservesOutdatedManualTranslationUntilExplicitReplacement() async throws {
+        let (directory, library, task, transcription) = try await translatedFixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try library.commitCheckpoint(taskID: task.id) {
+            $0.items[0].cues[0].translation = .succeeded(text: "Keep this manual translation", sourceRevision: 1)
+            try $0.items[0].cues[0].replaceSourceText(with: "Corrected source")
+            $0.items[0].status = .needsReview
+        }
+        let translation = ControlledTranslationPipeline()
+        let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation)
+        try queue.start(taskID: task.id, mediaID: task.items[0].id)
+        await queue.waitUntilIdle()
+        let saved = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        #expect(saved.items[0].status == .needsReview)
+        #expect(saved.items[0].cues[0].translation == .succeeded(text: "Keep this manual translation", sourceRevision: 1))
+        #expect(await translation.requests.isEmpty)
+        try queue.startRetranslation(taskID: task.id, mediaID: task.items[0].id,
+            cueIDs: [task.items[0].cues[0].id], replacingExistingTranslations: true)
+        await queue.waitUntilIdle()
+        #expect(library.task(for: task.id)?.items[0].cues[0].translation == .succeeded(text: "Test-only translation", sourceRevision: 2))
+    }
+
+    @Test(arguments: [true, false])
+    func retranslationKeepsLaterEditOrCancelledExistingTranslation(cancel: Bool) async throws {
+        let (directory, library, task, transcription) = try await translatedFixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let translation = ControlledTranslationPipeline(holdFirstCall: true)
+        let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation)
+        let mediaID = task.items[0].id
+        let cueID = task.items[0].cues[0].id
+        try queue.startRetranslation(taskID: task.id, mediaID: mediaID, cueIDs: [cueID], replacingExistingTranslations: true)
+        await translation.waitForRequest()
+        if cancel { try queue.cancel(mediaID: mediaID) }
+        else {
+            try library.commitCheckpoint(taskID: task.id) {
+                $0.items[0].cues[0].translation = .succeeded(text: "Later manual correction", sourceRevision: 1)
+            }
+        }
+        #expect(throws: QueueError.busy) {
+            try queue.startRetranslation(taskID: task.id, mediaID: mediaID, cueIDs: [cueID], replacingExistingTranslations: true)
+        }
+        await translation.releaseRequest()
+        await queue.waitUntilIdle()
+        let saved = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        #expect(saved.items[0].cues[0].translation == (cancel ? task.items[0].cues[0].translation : .succeeded(text: "Later manual correction", sourceRevision: 1)))
+        #expect(saved.items[1] == task.items[1])
+        #expect(saved.items[0].checkpoint?.chunks == task.items[0].checkpoint?.chunks)
+        #expect(saved.items[0].status == (cancel ? .cancelled : .failed(reason: CheckpointError.editedCue.localizedDescription)))
+    }
+
+    private func translatedFixture() async throws -> (URL, TaskLibrary, ProcessingTask, ControlledPipeline) {
+        let (directory, library, initial) = try fixture()
+        var task = initial
+        var parameters = task.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!, modelID: "frozen-model", targetLanguage: "zh-Hans", serviceID: UUID())
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let pipeline = ControlledPipeline()
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: ControlledTranslationPipeline())
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        return (directory, library, try #require(library.task(for: task.id)), pipeline)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_QUEUE_MEDIA"] != nil))
     func nativeMediaAndWhisperPipelinePersistsRealBatchResults() async throws {
         let environment = ProcessInfo.processInfo.environment

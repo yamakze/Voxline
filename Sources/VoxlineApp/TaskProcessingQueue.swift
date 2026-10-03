@@ -86,7 +86,41 @@ final class TaskProcessingQueue {
 
     func waitUntilIdle() async { await worker?.value }
 
-    private func consume(taskID: UUID, parameters: TaskParameters) async {
+    func startRetranslation(taskID: UUID, mediaID: UUID, cueIDs: [UUID], replacingExistingTranslations: Bool) throws {
+        guard worker == nil else { throw QueueError.busy }
+        guard let task = library.task(for: taskID),
+              let item = task.items.first(where: { $0.id == mediaID }),
+              let settings = task.parameters.translation else {
+            throw QueueError.unavailable("本次任务未配置翻译服务，请使用启用翻译的任务。")
+        }
+        guard let checkpoint = item.checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted) else {
+            throw QueueError.unavailable("请先完成本次任务的转写，再重译字幕。")
+        }
+        let recovery = try item.recoveryPlan(media: checkpoint.media, parameters: task.parameters, ranges: checkpoint.chunks.map(\.range))
+        guard recovery.translationBatchIDs.isEmpty else {
+            throw QueueError.unavailable("存在未完成的翻译批次，请先在队列中继续或重试。")
+        }
+        let selected = Set(cueIDs)
+        guard !selected.isEmpty, selected.count == cueIDs.count,
+              selected.isSubset(of: Set(item.cues.map(\.id))) else { throw QueueError.noWork }
+        if !replacingExistingTranslations, item.cues.contains(where: { cue in
+            if case .succeeded = cue.translation { return selected.contains(cue.id) }
+            return false
+        }) { throw CheckpointError.existingResults }
+        let batches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: cueIDs, targetLanguage: settings.targetLanguage)
+        let batchIDs = try updateMedia(taskID: taskID, mediaID: mediaID) { current in
+            try batches.map { try current.prepareTranslationBatch(cueIDs: $0, replacingExistingTranslations: replacingExistingTranslations) }
+        }
+        self.taskID = taskID
+        queuedIDs = [mediaID]
+        cancelledIDs = []
+        stopRequested = false
+        isCancelling = false
+        errorMessage = nil
+        worker = Task { await self.consume(taskID: taskID, parameters: task.parameters, translationBatchIDs: batchIDs) }
+    }
+
+    private func consume(taskID: UUID, parameters: TaskParameters, translationBatchIDs: [UUID]? = nil) async {
         defer {
             progressID = nil
             progressText = nil
@@ -103,7 +137,14 @@ final class TaskProcessingQueue {
             if cancelledIDs.contains(id) { continue }
             mediaID = id
             isCancelling = false
-            let operation = Task { try await self.transcribeMedia(taskID: taskID, mediaID: id, parameters: parameters) }
+            let operation = Task {
+                if let translationBatchIDs {
+                    guard let settings = parameters.translation else { throw QueueError.unavailable("本次任务未配置翻译服务。") }
+                    try await self.translateBatches(taskID: taskID, mediaID: id, settings: settings, batchIDs: translationBatchIDs)
+                } else {
+                    try await self.transcribeMedia(taskID: taskID, mediaID: id, parameters: parameters)
+                }
+            }
             mediaWork = operation
             do { try await operation.value }
             catch {
@@ -260,7 +301,12 @@ final class TaskProcessingQueue {
         let plan = try item.recoveryPlan(media: checkpoint.media, parameters: checkpoint.parameters, ranges: checkpoint.chunks.map(\.range))
         let newBatches: [[UUID]]
         do {
-            newBatches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: plan.untranslatedCueIDs,
+            let pendingIDs = plan.untranslatedCueIDs.filter { id in
+                guard let cue = item.cues.first(where: { $0.id == id }) else { return false }
+                if case .succeeded = cue.translation { return false }
+                return true
+            }
+            newBatches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: pendingIDs,
                 targetLanguage: settings.targetLanguage)
         } catch {
             try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .failed(reason: error.localizedDescription) }
@@ -270,9 +316,15 @@ final class TaskProcessingQueue {
             try plan.translationBatchIDs + newBatches.map { try item.prepareTranslationBatch(cueIDs: $0) }
         }
         if batchIDs.isEmpty {
-            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .completed }
+            try updateMedia(taskID: taskID, mediaID: mediaID) {
+                $0.status = $0.cues.allSatisfy(\.hasCurrentTranslation) ? .completed : .needsReview
+            }
             return
         }
+        try await translateBatches(taskID: taskID, mediaID: mediaID, settings: settings, batchIDs: batchIDs)
+    }
+
+    private func translateBatches(taskID: UUID, mediaID: UUID, settings: TranslationSettings, batchIDs: [UUID]) async throws {
         for (index, batchID) in batchIDs.enumerated() {
             if Task.isCancelled {
                 try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .cancelled }

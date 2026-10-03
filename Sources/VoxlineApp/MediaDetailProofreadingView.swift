@@ -5,6 +5,7 @@ import VoxlineCore
 import VoxlineMedia
 
 public struct MediaDetailProofreadingView: View {
+    let taskID: UUID
     @Binding var item: TaskMediaItem
     @State private var playbackController = MediaPlaybackController()
     @State private var previewMode: SRTOutputKind = .bilingual
@@ -12,13 +13,19 @@ public struct MediaDetailProofreadingView: View {
     @State private var hoveredCueID: UUID?
     @State private var errorMessage: String?
     @State private var editingCueID: UUID?
+    @State private var editingSnapshot: SubtitleCue?
+    @State private var sourceDraft = ""
+    @State private var translationDraft = ""
+    @State private var retranslationCues: [SubtitleCue]?
+    @State private var queue = TaskProcessingQueue.shared
 
     // Sheets
     @State private var showTimeOffsetSheet = false
     @State private var showSRTExportSheet = false
     @State private var showRelinkSheet = false
 
-    public init(item: Binding<TaskMediaItem>) {
+    public init(taskID: UUID, item: Binding<TaskMediaItem>) {
+        self.taskID = taskID
         _item = item
         let hasTranslation = item.wrappedValue.cues.contains { cue in
             if case .succeeded = cue.translation { return true }
@@ -87,6 +94,20 @@ public struct MediaDetailProofreadingView: View {
         }) {
             MediaRelinkSheet(item: $item)
         }
+        .sheet(isPresented: Binding(get: { retranslationCues != nil }, set: { if !$0 { retranslationCues = nil } })) {
+            if let selected = retranslationCues {
+                RetranslateConfirmationSheet(affectedCues: selected) { replaceExisting in
+                    let ids = selected.filter { cue in
+                        if case .succeeded = cue.translation { return replaceExisting }
+                        return true
+                    }.map(\.id)
+                    do {
+                        try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: ids,
+                            replacingExistingTranslations: replaceExisting)
+                    } catch { errorMessage = error.localizedDescription }
+                }
+            }
+        }
 
     }
 
@@ -126,6 +147,17 @@ public struct MediaDetailProofreadingView: View {
 
             // Header actions
             HStack(spacing: 8) {
+                if queue.taskID == taskID, queue.mediaID == item.id {
+                    Text(queue.progressText ?? "处理中").font(.caption)
+                    Button(queue.isCancelling ? "正在取消…" : "取消处理") {
+                        do { try queue.cancel(mediaID: item.id) }
+                        catch { errorMessage = error.localizedDescription }
+                    }
+                    .disabled(queue.isCancelling)
+                } else {
+                    Button("重译字幕…", systemImage: "character.bubble") { retranslationCues = item.cues }
+                        .disabled(item.cues.isEmpty || editingCueID != nil || queue.taskID != nil)
+                }
                 if item.media == nil || playbackController.isMediaUnavailable {
                     Button("重新关联", systemImage: "link.badge.plus") {
                         showRelinkSheet = true
@@ -137,13 +169,13 @@ public struct MediaDetailProofreadingView: View {
                     showTimeOffsetSheet = true
                 }
                 .buttonStyle(.bordered)
-                .disabled(item.cues.isEmpty)
+                .disabled(item.cues.isEmpty || editingCueID != nil)
 
                 Button("导出 SRT…", systemImage: "square.and.arrow.up") {
                     showSRTExportSheet = true
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(item.cues.isEmpty)
+                .disabled(item.cues.isEmpty || editingCueID != nil)
             }
         }
         .padding(.horizontal, 18)
@@ -484,16 +516,55 @@ public struct MediaDetailProofreadingView: View {
 
                     Spacer()
 
+                    if isEditing {
+                        Button("取消编辑") { editingCueID = nil; editingSnapshot = nil }
+                            .buttonStyle(.plain)
+                    }
                     Button {
-                        editingCueID = isEditing ? nil : cue.id
+                        if isEditing {
+                            guard let snapshot = editingSnapshot,
+                                  item.cues[cueIndex].sourceText == snapshot.sourceText,
+                                  item.cues[cueIndex].sourceRevision == snapshot.sourceRevision,
+                                  item.cues[cueIndex].translation == snapshot.translation else {
+                                errorMessage = "字幕在编辑期间已更新。草稿已保留，请取消编辑后重新打开当前内容。"
+                                return
+                            }
+                            var edited = item.cues[cueIndex]
+                            do {
+                                try edited.replaceSourceText(with: sourceDraft)
+                                let previous: String
+                                if case .succeeded(let text, _) = snapshot.translation { previous = text }
+                                else { previous = "" }
+                                if translationDraft != previous {
+                                    edited.translation = translationDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        ? .pending : .succeeded(text: translationDraft, sourceRevision: edited.sourceRevision)
+                                }
+                                try edited.validate()
+                                item.cues[cueIndex] = edited
+                                editingCueID = nil
+                                editingSnapshot = nil
+                            } catch { errorMessage = error.localizedDescription }
+                        } else {
+                            editingCueID = cue.id
+                            editingSnapshot = cue
+                            sourceDraft = cue.sourceText
+                            if case .succeeded(let text, _) = cue.translation { translationDraft = text }
+                            else { translationDraft = "" }
+                        }
                     } label: {
                         Image(systemName: isEditing ? "checkmark.circle.fill" : "pencil")
                             .font(.caption)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel(isEditing ? "完成编辑" : "编辑字幕")
-                    .help(isEditing ? "完成编辑" : "直接编辑本句")
+                    .accessibilityLabel(isEditing ? "保存编辑" : "编辑字幕")
+                    .help(isEditing ? "保存编辑" : "编辑本句")
+                    .disabled(editingCueID != nil && !isEditing)
+
+                    Button("重译本句") { retranslationCues = [cue] }
+                        .buttonStyle(.plain)
+                        .font(.caption)
+                        .disabled(editingCueID != nil || queue.taskID != nil)
 
                     if isHovered {
                         Button {
@@ -512,13 +583,7 @@ public struct MediaDetailProofreadingView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // Source Text
                     if isEditing {
-                        TextField("原文内容", text: Binding(
-                            get: { item.cues[cueIndex].sourceText },
-                            set: { newText in
-                                do { try item.cues[cueIndex].replaceSourceText(with: newText) }
-                                catch { errorMessage = error.localizedDescription }
-                            }
-                        ))
+                        TextField("原文内容", text: $sourceDraft)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 16, weight: .medium))
                     } else if previewMode != .translation {
@@ -532,21 +597,9 @@ public struct MediaDetailProofreadingView: View {
                     }
 
                     // Translation Text
-                    if previewMode == .translation || previewMode == .bilingual {
+                    if isEditing || previewMode == .translation || previewMode == .bilingual {
                         if isEditing {
-                            TextField("译文内容", text: Binding(
-                                get: {
-                                    if case .succeeded(let trans, _) = item.cues[cueIndex].translation {
-                                        return trans
-                                    }
-                                    return ""
-                                },
-                                set: { newTrans in
-                                    item.cues[cueIndex].translation = newTrans.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                        ? .pending
-                                        : .succeeded(text: newTrans, sourceRevision: item.cues[cueIndex].sourceRevision)
-                                }
-                            ))
+                            TextField("译文内容", text: $translationDraft)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 15))
                         } else {

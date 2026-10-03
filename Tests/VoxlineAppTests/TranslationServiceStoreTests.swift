@@ -10,6 +10,22 @@ struct TranslationServiceStoreTests {
         .init(id: id, name: name, baseURL: URL(string: "https://test.example/v1")!, modelID: "selected")
     }
 
+    @Test func firstTranslationWaitsForInitialMetadataLoad() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("services.json")
+        let configured = service()
+        try JSONEncoder().encode([configured]).write(to: url)
+        let vault = TestCredentialVault()
+        try await vault.write("test-only-key", serviceID: configured.id)
+        let store = TranslationServiceStore(storageURL: url, vault: vault)
+        let frozen = try TranslationSettings(baseURL: configured.baseURL, modelID: configured.modelID, targetLanguage: "zh", serviceID: configured.id)
+        #expect(try await store.apiKey(for: frozen) == "test-only-key")
+        #expect(store.services == [configured])
+        #expect(!store.isLoading)
+    }
+
     @Test func plaintextMigrationIsRemovedOnlyAfterAllKeychainWritesSucceed() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
