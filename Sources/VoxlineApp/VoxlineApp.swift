@@ -16,10 +16,11 @@ struct VoxlineApp: App {
     }
 
     var body: some Scene {
-        Window("Voxline", id: "main") {
+        WindowGroup {
             MainWindowView()
                 .tint(Color.voxlineAccent)
         }
+        .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1140, height: 740)
         .commands {
             TaskNavigationCommands()

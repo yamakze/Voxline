@@ -23,10 +23,13 @@ public struct MainWindowView: View {
     public var body: some View {
         NavigationSplitView {
             sidebarContent
+                .navigationTitle("")
                 .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
         } detail: {
             detailContent
+                .navigationTitle("")
         }
+        .navigationTitle("")
         .tint(Color.voxlineAccent)
         .frame(minWidth: 1100, minHeight: 700)
         .fileImporter(
@@ -73,17 +76,6 @@ public struct MainWindowView: View {
     // MARK: - Sidebar
     private var sidebarContent: some View {
         List(selection: $selectedTab) {
-            Section {
-                HStack(spacing: 8) {
-                    VoxlineAppIconView(size: 20)
-                    Text("Voxline")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                }
-                .padding(.vertical, 4)
-            }
-
             Section("任务") {
                 NavigationLink(value: NavigationItem.allTasks) {
                     HStack {
