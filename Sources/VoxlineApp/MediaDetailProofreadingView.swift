@@ -6,6 +6,7 @@ import VoxlineMedia
 
 public struct MediaDetailProofreadingView: View {
     let taskID: UUID
+    let initialOutputKind: SRTOutputKind
     @Binding var item: TaskMediaItem
     @State private var playbackController = MediaPlaybackController()
     @State private var previewMode: SRTOutputKind = .bilingual
@@ -24,8 +25,9 @@ public struct MediaDetailProofreadingView: View {
     @State private var showSRTExportSheet = false
     @State private var showRelinkSheet = false
 
-    public init(taskID: UUID, item: Binding<TaskMediaItem>) {
+    public init(taskID: UUID, initialOutputKind: SRTOutputKind, item: Binding<TaskMediaItem>) {
         self.taskID = taskID
+        self.initialOutputKind = initialOutputKind
         _item = item
         let hasTranslation = item.wrappedValue.cues.contains { cue in
             if case .succeeded = cue.translation { return true }
@@ -85,8 +87,8 @@ public struct MediaDetailProofreadingView: View {
         }
         .sheet(isPresented: $showSRTExportSheet) {
             SRTExportSheet(
-                mediaTitle: item.title,
-                cues: item.cues
+                mediaTitle: item.media?.fileName ?? item.title,
+                cues: item.cues, media: item.media, initialKind: initialOutputKind
             )
         }
         .sheet(isPresented: $showRelinkSheet, onDismiss: {

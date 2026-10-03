@@ -228,7 +228,7 @@ public struct MainWindowView: View {
             Group {
                 if let mediaID = selectedMediaID,
                    let mediaIndex = task.wrappedValue.items.firstIndex(where: { $0.id == mediaID }) {
-                    MediaDetailProofreadingView(taskID: task.wrappedValue.id, item: Binding(
+                    MediaDetailProofreadingView(taskID: task.wrappedValue.id, initialOutputKind: task.wrappedValue.parameters.srtOutputs[0], item: Binding(
                         get: { task.wrappedValue.items[mediaIndex] },
                         set: { updatedItem in
                             task.wrappedValue.items[mediaIndex] = updatedItem
