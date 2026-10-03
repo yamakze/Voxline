@@ -111,3 +111,15 @@ unset VOXLINE_TRANSLATION_API_KEY
 ```
 
 使用元数据文件中的首个服务与默认模型，将短字幕翻译为简体中文；只核验实际协议、ID 和结果，不替代人工质量验收。测试会调用所选外部服务，产物位于忽略目录 tmp/translation-validation。默认测试跳过真实网络和 Keychain 入口。
+
+## 播放与字幕定位
+
+```sh
+swift test --filter 'MediaPlaybackControllerTests|SubtitleTimeOffsetTests'
+VOXLINE_PLAYBACK_FIXTURE_DIRECTORY="$PWD/tmp/playback-validation" \
+  swift test --filter exportNativePreviewFixtureForSandboxUI
+```
+
+默认验证真实 AVPlayer 的准备、播放、暂停、结束、定位、所选音轨、媒体失败与释放，以及完整时间轴的原子偏移。可选入口将已有多音轨视频以原生直通方式扩展为 20 秒，生成 preview.mov 和 preview.voxline；打开任务并关联该 MOV 可复核画面、三种字幕预览及编辑。此任务使用明确标记的测试字幕，不能作为真实转写或 API 翻译质量证据。
+
+需要验证真实画面时，可向该可选入口传入 VOXLINE_PLAYBACK_VIDEO_SOURCE 本地视频绝对路径；任务关联原视频，不复制或转码文件，仍使用测试字幕，只验证播放和校对交互。

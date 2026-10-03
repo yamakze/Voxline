@@ -90,6 +90,11 @@ public struct MediaDetailProofreadingView: View {
 
     }
 
+    private func translationStatus(for cue: SubtitleCue) -> String {
+        if case .failed = cue.translation { return "翻译失败" }
+        return "未翻译"
+    }
+
     // MARK: - Top Bar
     private var topBar: some View {
         HStack(spacing: 16) {
@@ -153,7 +158,7 @@ public struct MediaDetailProofreadingView: View {
             Group {
                 if let player = playbackController.player, playbackController.isReady {
                     if item.kind == .video {
-                        VideoPlayer(player: player)
+                        NativeVideoPlayer(player: player)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(Color.black)
                     } else {
@@ -179,7 +184,7 @@ public struct MediaDetailProofreadingView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 } else {
-                    // Demo / Fallback canvas
+                    // Loading and actual media failures
                     ZStack {
                         Color.black.opacity(0.9)
                         VStack(spacing: 12) {
@@ -190,15 +195,20 @@ public struct MediaDetailProofreadingView: View {
                                 Image(systemName: item.kind == .video ? "video.badge.plus" : "waveform.badge.plus")
                                     .font(.system(size: 48))
                                     .foregroundStyle(.white.opacity(0.6))
-                                Text("媒体待关联或本地原文件未找到")
+                                Text(item.media == nil ? "媒体待关联" : "无法播放媒体")
                                     .font(.headline).foregroundStyle(.white)
                                 Text(playbackController.errorMessage ?? "请点击重新关联指定本地原文件。")
                                     .font(.caption).foregroundStyle(.white.opacity(0.7))
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal, 24)
 
-                                Button("关联本地媒体", systemImage: "link") {
-                                    showRelinkSheet = true
+                                HStack {
+                                    Button("重新关联", systemImage: "link") { showRelinkSheet = true }
+                                    if item.media != nil {
+                                        Button("重试播放", systemImage: "arrow.clockwise") {
+                                            Task { await playbackController.loadMedia(for: item) }
+                                        }
+                                    }
                                 }
                                 .buttonStyle(.borderedProminent)
                             }
@@ -209,7 +219,7 @@ public struct MediaDetailProofreadingView: View {
             }
 
             // Active Subtitle HUD Overlay (QuickTime cinema subtitle overlay)
-            if let activeCue = playbackController.activeCue(in: item.cues) {
+            if playbackController.isReady, let activeCue = playbackController.activeCue(in: item.cues) {
                 VStack(spacing: 4) {
                     switch previewMode {
                     case .source:
@@ -222,9 +232,8 @@ public struct MediaDetailProofreadingView: View {
                                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.white)
                         } else {
-                            Text(activeCue.sourceText)
-                                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.white)
+                            Text(translationStatus(for: activeCue))
+                                .font(.caption).foregroundStyle(.orange)
                         }
                     case .bilingual:
                         Text(activeCue.sourceText)
@@ -234,7 +243,13 @@ public struct MediaDetailProofreadingView: View {
                             Text(trans)
                                 .font(.system(size: 17, weight: .bold, design: .rounded))
                                 .foregroundStyle(.yellow)
+                        } else {
+                            Text(translationStatus(for: activeCue))
+                                .font(.caption).foregroundStyle(.orange)
                         }
+                    }
+                    if previewMode != .source, case .succeeded = activeCue.translation, !activeCue.hasCurrentTranslation {
+                        Text("译文待更新").font(.caption2).foregroundStyle(.orange)
                     }
                 }
                 .multilineTextAlignment(.center)
@@ -266,6 +281,7 @@ public struct MediaDetailProofreadingView: View {
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(playbackController.isPlaying ? "暂停" : "播放")
 
             // Skip -5s / +5s
             Button {
@@ -298,6 +314,7 @@ public struct MediaDetailProofreadingView: View {
                 in: 0...max(playbackController.durationSeconds, 1.0)
             )
             .controlSize(.mini)
+            .accessibilityLabel("播放进度")
             .frame(minWidth: 100)
 
             Text(playbackController.formattedDuration)
@@ -324,6 +341,7 @@ public struct MediaDetailProofreadingView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .liquidGlassCapsule()
+        .disabled(!playbackController.isReady)
     }
 
     // MARK: - Apple Podcasts Lyrics/Transcript Pane
@@ -388,7 +406,7 @@ public struct MediaDetailProofreadingView: View {
                                 let isActive = cue.id == activeCueID
                                 let isHovered = cue.id == hoveredCueID
                                 let isEditing = cue.id == editingCueID
-                                let isPast = cue.endMilliseconds < Int64(playbackController.currentTimeSeconds * 1000.0)
+                                let isPast = Double(cue.endMilliseconds) <= playbackController.currentTimeSeconds * 1000
 
                                 transcriptRow(
                                     cue: cue,
@@ -466,31 +484,27 @@ public struct MediaDetailProofreadingView: View {
 
                     Spacer()
 
-                    // Hover Actions
-                    if isHovered {
-                        HStack(spacing: 8) {
-                            Button {
-                                editingCueID = (editingCueID == cue.id) ? nil : cue.id
-                            } label: {
-                                Image(systemName: isEditing ? "checkmark.circle.fill" : "pencil")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help(isEditing ? "完成编辑" : "直接编辑本句")
+                    Button {
+                        editingCueID = isEditing ? nil : cue.id
+                    } label: {
+                        Image(systemName: isEditing ? "checkmark.circle.fill" : "pencil")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(isEditing ? "完成编辑" : "编辑字幕")
+                    .help(isEditing ? "完成编辑" : "直接编辑本句")
 
-                            Button {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(cue.sourceText, forType: .string)
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                                    .font(.caption)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help("复制原文")
+                    if isHovered {
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(cue.sourceText, forType: .string)
+                        } label: {
+                            Image(systemName: "doc.on.doc").font(.caption)
                         }
-                        .transition(.opacity)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("复制原文")
                     }
                 }
 
@@ -507,7 +521,7 @@ public struct MediaDetailProofreadingView: View {
                         ))
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 16, weight: .medium))
-                    } else {
+                    } else if previewMode != .translation {
                         Text(cue.sourceText)
                             .font(.system(size: isActive ? 18 : 16, weight: isActive ? .bold : .medium, design: .default))
                             .lineSpacing(3)
@@ -528,7 +542,9 @@ public struct MediaDetailProofreadingView: View {
                                     return ""
                                 },
                                 set: { newTrans in
-                                    item.cues[cueIndex].translation = .succeeded(text: newTrans, sourceRevision: cue.sourceRevision)
+                                    item.cues[cueIndex].translation = newTrans.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                        ? .pending
+                                        : .succeeded(text: newTrans, sourceRevision: item.cues[cueIndex].sourceRevision)
                                 }
                             ))
                             .textFieldStyle(.roundedBorder)
