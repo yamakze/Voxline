@@ -17,9 +17,9 @@ public struct TaskDetailView: View {
 
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Xcode Organizer Summary Card
-                xcodeOrganizerSummaryCard
+            VStack(alignment: .leading, spacing: 18) {
+                // Compact Metrics Bar
+                compactMetricsBar
 
                 // Parameter Snapshot (Read-only, clean disclosure)
                 parametersSnapshotCard
@@ -42,105 +42,56 @@ public struct TaskDetailView: View {
         } message: { Text(errorMessage ?? "") }
     }
 
-    // MARK: - Xcode Organizer Summary Card
-    private var xcodeOrganizerSummaryCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .center) {
-                HStack(spacing: 12) {
-                    Image(systemName: "square.stack.3d.up.fill")
-                        .font(.system(size: 28))
-                        .foregroundStyle(.tint)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        if task.startedAt == nil {
-                            TextField("任务名称", text: $task.title)
-                                .font(.title2.bold())
-                                .textFieldStyle(.plain)
-                        } else {
-                            Text(task.title)
-                                .font(.title2.bold())
-                        }
-
-                        HStack(spacing: 8) {
-                            TaskStatusBadge(status: task.status)
-                            if let started = task.startedAt {
-                                Text("开始于 \(started.formatted(date: .abbreviated, time: .shortened))")
-                                    .font(.caption2).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-
-                Spacer()
-
-                // Xcode Scheme Actions Bar
-                HStack(spacing: 10) {
-                    if task.startedAt == nil {
-                        Button("调整参数与媒体", systemImage: "slider.horizontal.3") {
-                            isConfiguring = true
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    if queue.taskID == task.id {
-                        Button(queue.isCancelling ? "正在取消…" : "取消任务", systemImage: "stop.fill") {
-                            do { try queue.cancel() }
-                            catch { errorMessage = error.localizedDescription }
-                        }
-                        .buttonStyle(.bordered).disabled(queue.isCancelling)
-                    } else {
-                        Button(task.startedAt == nil ? "开始顺序处理" : "继续未完成项", systemImage: "play.fill") {
-                            do { try queue.start(taskID: task.id) }
-                            catch { errorMessage = error.localizedDescription }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(queue.taskID != nil || ProcessingAvailability.reason(for: task) != nil || task.status == .completed)
-                    }
-                }
-            }
-
-            Divider()
-
-            // Organizer Metrics Grid
-            HStack(spacing: 28) {
-                metricItem(title: "媒体总数", value: "\(task.items.count)", icon: "film.stack", color: .blue)
-                metricItem(title: "已完成", value: "\(task.completedCount)", icon: "checkmark.circle.fill", color: .green)
-                if task.failedCount > 0 {
-                    metricItem(title: "失败项", value: "\(task.failedCount)", icon: "xmark.circle.fill", color: .red)
-                }
-                let totalCues = task.items.reduce(0) { $0 + $1.cues.count }
-                metricItem(title: "生成字幕句数", value: "\(totalCues)", icon: "captions.bubble", color: .purple)
-                Spacer()
-
-                // Circular / Percent indicator
-                if !task.items.isEmpty {
-                    let progress = Double(task.completedCount) / Double(task.items.count)
-                    HStack(spacing: 8) {
-                        ProgressView(value: progress)
-                            .frame(width: 120)
-                        Text(String(format: "%.0f%%", progress * 100))
-                            .font(.caption.monospacedDigit().bold())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .padding(18)
-        .liquidGlassSurface()
-    }
-
-    private func metricItem(title: String, value: String, icon: String, color: Color) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(color)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(value)
-                    .font(.headline.monospacedDigit())
-                Text(title)
-                    .font(.caption2)
+    // MARK: - Compact Metrics Bar
+    private var compactMetricsBar: some View {
+        HStack(spacing: 20) {
+            HStack(spacing: 6) {
+                Image(systemName: "film.stack")
                     .foregroundStyle(.secondary)
+                Text("\(task.items.count) 媒体")
+                    .font(.subheadline.weight(.medium))
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("\(task.completedCount) 完成")
+                    .font(.subheadline.weight(.medium))
+            }
+
+            if task.failedCount > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                    Text("\(task.failedCount) 失败")
+                        .font(.subheadline.weight(.medium))
+                }
+            }
+
+            let totalCues = task.items.reduce(0) { $0 + $1.cues.count }
+            HStack(spacing: 6) {
+                Image(systemName: "captions.bubble")
+                    .foregroundStyle(.secondary)
+                Text("\(totalCues) 句字幕")
+                    .font(.subheadline.weight(.medium))
+            }
+
+            Spacer()
+
+            if !task.items.isEmpty {
+                let progress = Double(task.completedCount) / Double(task.items.count)
+                HStack(spacing: 8) {
+                    ProgressView(value: progress)
+                        .frame(width: 100)
+                    Text(String(format: "%.0f%%", progress * 100))
+                        .font(.caption.monospacedDigit().bold())
+                        .foregroundStyle(.secondary)
+                }
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5), in: .rect(cornerRadius: 10))
     }
 
     // MARK: - Parameter Snapshot

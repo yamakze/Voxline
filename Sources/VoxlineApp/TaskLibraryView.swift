@@ -20,27 +20,6 @@ public struct TaskLibraryView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // Header
-                HStack(alignment: .center) {
-                    Text("任务列表")
-                        .font(.largeTitle.bold())
-
-                    Spacer()
-
-                    HStack(spacing: 10) {
-                        Button("打开文件…", systemImage: "folder") {
-                            onOpenFile?()
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button("新建任务", systemImage: "plus") {
-                            onNewTask?()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut("n", modifiers: [.command])
-                    }
-                }
-
                 if let error = library.errorMessage {
                     Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
                 }
@@ -83,6 +62,33 @@ public struct TaskLibraryView: View {
                 }
             }
             .padding(28)
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Text("任务队列")
+                    .font(.headline)
+            }
+
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1)
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    onOpenFile?()
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .help("打开已有 .voxline 任务文件")
+
+                Button {
+                    onNewTask?()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("新建任务 (⌘N)")
+                .keyboardShortcut("n", modifiers: [.command])
+            }
         }
         .onAppear { library.refresh() }
     }

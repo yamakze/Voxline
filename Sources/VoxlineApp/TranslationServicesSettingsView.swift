@@ -17,24 +17,12 @@ public struct TranslationServicesSettingsView: View {
                     Text(error).foregroundStyle(.red).textSelection(.enabled)
                     Button("重新读取") { Task { await store.load() } }.disabled(store.isLoading || store.isSaving)
                 }
-                // Header
-                HStack(alignment: .center) {
-                    Text("翻译服务")
-                        .font(.largeTitle.bold())
-                    Spacer()
-                    Button("添加服务…", systemImage: "plus") {
-                        isAddingService = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(store.isLoading || store.isSaving)
-                }
-
                 // Inset Grouped Service Cards
                 if store.services.isEmpty {
                     ContentUnavailableView(
                         "尚未配置翻译服务",
                         systemImage: "character.bubble",
-                        description: Text("点击右上角“添加服务”配置 OpenAI 或本地 Ollama 接口以开启字幕翻译。")
+                        description: Text("点击右上角“+”按钮配置 OpenAI 或本地 Ollama 接口以开启字幕翻译。")
                     )
                     .padding(.vertical, 40)
                     .frame(maxWidth: .infinity)
@@ -47,6 +35,34 @@ public struct TranslationServicesSettingsView: View {
                 }
             }
             .padding(28)
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Text("翻译服务")
+                    .font(.headline)
+            }
+
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1)
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    Task { await store.load() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("重新读取服务与 Keychain 凭据")
+                .disabled(store.isLoading || store.isSaving)
+
+                Button {
+                    isAddingService = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("添加翻译服务…")
+                .disabled(store.isLoading || store.isSaving)
+            }
         }
         .sheet(isPresented: $isAddingService) {
             ServiceEditorModal(service: nil, store: store) { newService, key in

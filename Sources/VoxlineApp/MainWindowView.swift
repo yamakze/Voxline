@@ -23,13 +23,10 @@ public struct MainWindowView: View {
     public var body: some View {
         NavigationSplitView {
             sidebarContent
-                .navigationTitle("")
                 .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
         } detail: {
             detailContent
-                .navigationTitle("")
         }
-        .navigationTitle("")
         .tint(Color.voxlineAccent)
         .frame(minWidth: 1100, minHeight: 700)
         .fileImporter(
@@ -85,21 +82,6 @@ public struct MainWindowView: View {
                             Text("\(library.entries.count)")
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                ForEach(library.entries.prefix(8)) { entry in
-                    if let task = entry.task {
-                        NavigationLink(value: NavigationItem.task(task.id)) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "film.stack")
-                                    .font(.caption)
-                                    .foregroundStyle(.tint)
-                                Text(entry.title)
-                                    .lineLimit(1)
-                                    .font(.system(size: 13))
-                            }
                         }
                     }
                 }
@@ -181,68 +163,71 @@ public struct MainWindowView: View {
     // MARK: - Task In-Window Workspace
     @ViewBuilder
     private func taskWorkspaceView(task: Binding<ProcessingTask>) -> some View {
-        VStack(spacing: 0) {
-            // Top In-Window Breadcrumb / Navigation Bar
-            HStack(spacing: 12) {
-                Button {
-                    if selectedMediaID != nil {
-                        selectedMediaID = nil
-                    } else {
-                        selectedTab = .allTasks
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                        Text(selectedMediaID != nil ? "返回队列" : "全部任务")
-                    }
-                    .font(.system(size: 13, weight: .medium))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
-
-                Divider().frame(height: 14)
-
-                Text(task.wrappedValue.title)
-                    .font(.headline)
-                    .lineLimit(1)
-
-                TaskStatusBadge(status: task.wrappedValue.status)
-
-                Spacer()
-
-                if task.wrappedValue.startedAt == nil {
-                    Button("调整参数", systemImage: "slider.horizontal.3") {
-                        configurationTask = task.wrappedValue
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 10)
-            .background(.regularMaterial)
-
-            Divider()
-
-            // Workbench Body
-            Group {
-                if let mediaID = selectedMediaID,
-                   let mediaIndex = task.wrappedValue.items.firstIndex(where: { $0.id == mediaID }) {
-                    MediaDetailProofreadingView(taskID: task.wrappedValue.id, initialOutputKind: task.wrappedValue.parameters.srtOutputs[0], item: Binding(
+        Group {
+            if let mediaID = selectedMediaID,
+               let mediaIndex = task.wrappedValue.items.firstIndex(where: { $0.id == mediaID }) {
+                MediaDetailProofreadingView(
+                    taskID: task.wrappedValue.id,
+                    initialOutputKind: task.wrappedValue.parameters.srtOutputs[0],
+                    item: Binding(
                         get: { task.wrappedValue.items[mediaIndex] },
                         set: { updatedItem in
                             task.wrappedValue.items[mediaIndex] = updatedItem
                         }
-                    ))
-                } else {
-                    TaskDetailView(
-                        task: task,
-                        isConfiguring: Binding(
-                            get: { configurationTask != nil },
-                            set: { configurationTask = $0 ? task.wrappedValue : nil }
-                        ),
-                        selectedMediaID: $selectedMediaID
-                    )
+                    ),
+                    onBack: {
+                        selectedMediaID = nil
+                    }
+                )
+            } else {
+                TaskDetailView(
+                    task: task,
+                    isConfiguring: Binding(
+                        get: { configurationTask != nil },
+                        set: { configurationTask = $0 ? task.wrappedValue : nil }
+                    ),
+                    selectedMediaID: $selectedMediaID
+                )
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            selectedTab = .allTasks
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left")
+                                Text("全部任务")
+                            }
+                        }
+                    }
+
+                    ToolbarItem(placement: .principal) {
+                        Text(task.wrappedValue.title)
+                            .font(.headline)
+                            .lineLimit(1)
+                    }
+
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        if task.wrappedValue.startedAt == nil {
+                            Button("调整参数", systemImage: "slider.horizontal.3") {
+                                configurationTask = task.wrappedValue
+                            }
+                        }
+
+                        if TaskProcessingQueue.shared.taskID == task.wrappedValue.id {
+                            Button(TaskProcessingQueue.shared.isCancelling ? "正在取消…" : "取消任务", systemImage: "stop.fill") {
+                                do { try TaskProcessingQueue.shared.cancel() }
+                                catch { errorMessage = error.localizedDescription }
+                            }
+                            .disabled(TaskProcessingQueue.shared.isCancelling)
+                        } else {
+                            Button(task.wrappedValue.startedAt == nil ? "开始处理" : "继续处理", systemImage: "play.fill") {
+                                do { try TaskProcessingQueue.shared.start(taskID: task.wrappedValue.id) }
+                                catch { errorMessage = error.localizedDescription }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(TaskProcessingQueue.shared.taskID != nil || ProcessingAvailability.reason(for: task.wrappedValue) != nil || task.wrappedValue.status == .completed)
+                        }
+                    }
                 }
             }
         }

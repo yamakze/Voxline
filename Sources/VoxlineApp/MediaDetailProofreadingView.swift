@@ -25,10 +25,13 @@ public struct MediaDetailProofreadingView: View {
     @State private var showSRTExportSheet = false
     @State private var showRelinkSheet = false
 
-    public init(taskID: UUID, initialOutputKind: SRTOutputKind, item: Binding<TaskMediaItem>) {
+    public var onBack: (() -> Void)?
+
+    public init(taskID: UUID, initialOutputKind: SRTOutputKind, item: Binding<TaskMediaItem>, onBack: (() -> Void)? = nil) {
         self.taskID = taskID
         self.initialOutputKind = initialOutputKind
         _item = item
+        self.onBack = onBack
         let hasTranslation = item.wrappedValue.cues.contains { cue in
             if case .succeeded = cue.translation { return true }
             return false
@@ -51,21 +54,62 @@ public struct MediaDetailProofreadingView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            // Top Bar
-            topBar
+        // Main Split: QuickTime Video Player on Left + Apple Podcasts Lyrics/Transcript on Right
+        HSplitView {
+            // Left Column: QuickTime Player with Floating Glass Capsule Controls
+            quickTimePlayerPane
+                .frame(minWidth: 440, idealWidth: 540)
 
-            Divider()
+            // Right Column: Apple Podcasts Lyrics/Transcript Stream
+            podcastsTranscriptPane
+                .frame(minWidth: 460, idealWidth: 580)
+        }
+        .toolbar {
+            if let onBack {
+                ToolbarItem(placement: .navigation) {
+                    Button(action: onBack) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text("返回队列")
+                        }
+                    }
+                }
+            }
 
-            // Main Split: QuickTime Video Player on Left + Apple Podcasts Lyrics/Transcript on Right
-            HSplitView {
-                // Left Column: QuickTime Player with Floating Glass Capsule Controls
-                quickTimePlayerPane
-                    .frame(minWidth: 440, idealWidth: 540)
+            ToolbarItem(placement: .principal) {
+                Text(item.title)
+                    .font(.headline)
+                    .lineLimit(1)
+            }
 
-                // Right Column: Apple Podcasts Lyrics/Transcript Stream
-                podcastsTranscriptPane
-                    .frame(minWidth: 460, idealWidth: 580)
+            ToolbarItemGroup(placement: .primaryAction) {
+                if queue.taskID == taskID, queue.mediaID == item.id {
+                    Text(queue.progressText ?? "处理中").font(.caption)
+                    Button(queue.isCancelling ? "正在取消…" : "取消处理") {
+                        do { try queue.cancel(mediaID: item.id) }
+                        catch { errorMessage = error.localizedDescription }
+                    }
+                    .disabled(queue.isCancelling)
+                } else {
+                    Button("重译字幕…", systemImage: "character.bubble") { retranslationCues = item.cues }
+                        .disabled(item.cues.isEmpty || editingCueID != nil || queue.taskID != nil)
+                }
+
+                if item.media == nil || playbackController.isMediaUnavailable {
+                    Button("重新关联", systemImage: "link.badge.plus") {
+                        showRelinkSheet = true
+                    }
+                }
+
+                Button("偏移行…", systemImage: "timer") {
+                    showTimeOffsetSheet = true
+                }
+                .disabled(item.cues.isEmpty || editingCueID != nil)
+
+                Button("导出 SRT…", systemImage: "square.and.arrow.up") {
+                    showSRTExportSheet = true
+                }
+                .disabled(item.cues.isEmpty || editingCueID != nil)
             }
         }
         .alert("无法完成操作", isPresented: Binding(
@@ -116,73 +160,6 @@ public struct MediaDetailProofreadingView: View {
     private func translationStatus(for cue: SubtitleCue) -> String {
         if case .failed = cue.translation { return "翻译失败" }
         return "未翻译"
-    }
-
-    // MARK: - Top Bar
-    private var topBar: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    TextField("媒体标题", text: $item.title)
-                        .font(.headline)
-                        .textFieldStyle(.plain)
-
-                    MediaStatusBadge(status: item.status)
-                }
-
-                HStack(spacing: 10) {
-                    Label(item.kind == .video ? "视频" : "音频", systemImage: item.kind == .video ? "film" : "waveform")
-                    if let media = item.media {
-                        Text(media.fileName).lineLimit(1).truncationMode(.middle)
-                        Text(String(format: "%.1fs", Double(media.durationMilliseconds) / 1000.0))
-                        Text("轨 \(media.audioTrackID)")
-                    } else {
-                        Text("未关联源文件").foregroundStyle(.red)
-                    }
-                    Text("\(item.cues.count) 句字幕")
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            // Header actions
-            HStack(spacing: 8) {
-                if queue.taskID == taskID, queue.mediaID == item.id {
-                    Text(queue.progressText ?? "处理中").font(.caption)
-                    Button(queue.isCancelling ? "正在取消…" : "取消处理") {
-                        do { try queue.cancel(mediaID: item.id) }
-                        catch { errorMessage = error.localizedDescription }
-                    }
-                    .disabled(queue.isCancelling)
-                } else {
-                    Button("重译字幕…", systemImage: "character.bubble") { retranslationCues = item.cues }
-                        .disabled(item.cues.isEmpty || editingCueID != nil || queue.taskID != nil)
-                }
-                if item.media == nil || playbackController.isMediaUnavailable {
-                    Button("重新关联", systemImage: "link.badge.plus") {
-                        showRelinkSheet = true
-                    }
-                    .buttonStyle(.bordered)
-                }
-
-                Button("整体偏移行…", systemImage: "timer") {
-                    showTimeOffsetSheet = true
-                }
-                .buttonStyle(.bordered)
-                .disabled(item.cues.isEmpty || editingCueID != nil)
-
-                Button("导出 SRT…", systemImage: "square.and.arrow.up") {
-                    showSRTExportSheet = true
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(item.cues.isEmpty || editingCueID != nil)
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .background(.regularMaterial)
     }
 
     // MARK: - QuickTime Player Pane (with Floating Glass Capsule)
@@ -250,6 +227,28 @@ public struct MediaDetailProofreadingView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+            }
+
+            // Top Media Metadata Pill (Native Floating HUD)
+            VStack {
+                HStack(spacing: 8) {
+                    Label(item.kind == .video ? "视频" : "音频", systemImage: item.kind == .video ? "film" : "waveform")
+                    if let media = item.media {
+                        Text(String(format: "%.1fs", Double(media.durationMilliseconds) / 1000.0))
+                        Text("轨 \(media.audioTrackID)")
+                    }
+                    Text("\(item.cues.count) 句字幕")
+                    MediaStatusBadge(status: item.status)
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(.ultraThinMaterial, in: .capsule)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer()
             }
 
             // Active Subtitle HUD Overlay (QuickTime cinema subtitle overlay)

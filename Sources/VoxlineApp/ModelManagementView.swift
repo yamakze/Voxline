@@ -25,13 +25,6 @@ public struct ModelManagementView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // Header
-                HStack(alignment: .firstTextBaseline) {
-                    Text("转写模型")
-                        .font(.largeTitle.bold())
-                    Spacer()
-                }
-
                 // macOS System Settings: Storage Breakdown Bar
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {
@@ -73,9 +66,66 @@ public struct ModelManagementView: View {
             }
             .padding(28)
         }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Text("模型管理")
+                    .font(.headline)
+            }
+
+            ToolbarItem(placement: .principal) {
+                modelStorageCapsule
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    if let dir = modelManager.modelDirectories.values.first ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("huggingface/models") {
+                        NSWorkspace.shared.open(dir)
+                    }
+                } label: {
+                    Image(systemName: "folder")
+                }
+                .help("在访达中打开模型存储目录")
+
+                Button {
+                    Task { await modelManager.refreshAll() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("重新检测与刷新模型状态")
+            }
+        }
         .task {
             await modelManager.refreshAll()
         }
+    }
+
+    private var modelStorageCapsule: some View {
+        let downloadedCount = ModelManager.availableModels.filter {
+            switch modelManager.status(for: $0.id) {
+            case .ready, .downloaded:
+                return true
+            default:
+                return false
+            }
+        }.count
+        let totalBytes = modelManager.totalDiskUsage()
+        let mb = Double(totalBytes) / 1_000_000.0
+        let sizeString = mb >= 1000 ? String(format: "%.2f GB", mb / 1000.0) : String(format: "%.0f MB", mb)
+
+        return HStack(spacing: 6) {
+            Image(systemName: "cpu")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            if downloadedCount > 0 {
+                Text("\(downloadedCount) 个模型就绪 · 已用 \(sizeString)")
+            } else {
+                Text("未下载模型 · 0 MB")
+            }
+        }
+        .font(.caption.weight(.medium))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.8), in: .capsule)
     }
 
     @ViewBuilder
