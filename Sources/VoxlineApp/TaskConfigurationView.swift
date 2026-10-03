@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 import UniformTypeIdentifiers
 import VoxlineCore
 import VoxlineMedia
@@ -26,6 +25,7 @@ public struct TaskConfigurationView: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var showMediaImporter = false
     @State private var showModelManager = false
     @State private var showTranslationSettings = false
 
@@ -113,6 +113,51 @@ public struct TaskConfigurationView: View {
                     }
             }
         }
+        .fileImporter(isPresented: $showMediaImporter, allowedContentTypes: [
+            .mpeg4Movie, .quickTimeMovie, UTType(importedAs: "com.apple.m4v-video"),
+            .mpeg4Audio, .mp3, .wav
+        ], allowsMultipleSelection: true) { result in
+            switch result {
+            case .failure(let error): errorMessage = error.localizedDescription
+            case .success(let urls):
+                importTask = Task {
+                    isInspecting = true
+                    defer { isInspecting = false }
+
+                    let additions = urls.filter { url in
+                        !candidates.contains { $0.url == url }
+                    }
+
+                    for url in additions {
+                        if Task.isCancelled { return }
+                        let kind: TaskMediaKind
+                        do { kind = try MediaInspector.kind(of: url) }
+                        catch {
+                            errorMessage = "\(url.lastPathComponent)：\(error.localizedDescription)"
+                            continue
+                        }
+                        let candidate = ImportCandidate(url: url, kind: kind)
+                        candidates.append(candidate)
+                        do {
+                            let inspection = try await inspector.inspect(url)
+                            try Task.checkCancellation()
+                            if let idx = candidates.firstIndex(where: { $0.id == candidate.id }) {
+                                candidates[idx].inspection = inspection
+                                if inspection.audioTracks.count == 1 {
+                                    candidates[idx].trackID = inspection.audioTracks[0].id
+                                }
+                            }
+                        } catch is CancellationError {
+                            return
+                        } catch {
+                            if let idx = candidates.firstIndex(where: { $0.id == candidate.id }) {
+                                candidates[idx].error = error.localizedDescription
+                            }
+                        }
+                    }
+                }
+            }
+        }
         .onChange(of: translates) { _, enabled in
             if !enabled {
                 outputs = [.source]
@@ -172,7 +217,7 @@ public struct TaskConfigurationView: View {
                     .font(.subheadline.bold())
                 Spacer()
                 Button("添加音视频…", systemImage: "plus") {
-                    chooseMedia()
+                    showMediaImporter = true
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
@@ -578,61 +623,6 @@ public struct TaskConfigurationView: View {
             }
         }
         return nil
-    }
-
-    private func chooseMedia() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [
-            .mpeg4Movie, .quickTimeMovie, UTType(importedAs: "com.apple.m4v-video"),
-            .mpeg4Audio, .mp3, .wav
-        ]
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.prompt = "导入媒体"
-
-        guard let window = NSApp.keyWindow else { return }
-        panel.beginSheetModal(for: window) { response in
-            panel.orderOut(nil)
-            if response == .OK {
-                let urls = panel.urls
-                importTask = Task {
-                    isInspecting = true
-                    defer { isInspecting = false }
-
-                    let additions = urls.filter { url in
-                        !candidates.contains { $0.url == url }
-                    }
-
-                    for url in additions {
-                        if Task.isCancelled { return }
-                        let kind: TaskMediaKind
-                        do { kind = try MediaInspector.kind(of: url) }
-                        catch {
-                            errorMessage = "\(url.lastPathComponent)：\(error.localizedDescription)"
-                            continue
-                        }
-                        let candidate = ImportCandidate(url: url, kind: kind)
-                        candidates.append(candidate)
-                        do {
-                            let inspection = try await inspector.inspect(url)
-                            try Task.checkCancellation()
-                            if let idx = candidates.firstIndex(where: { $0.id == candidate.id }) {
-                                candidates[idx].inspection = inspection
-                                if inspection.audioTracks.count == 1 {
-                                    candidates[idx].trackID = inspection.audioTracks[0].id
-                                }
-                            }
-                        } catch is CancellationError {
-                            return
-                        } catch {
-                            if let idx = candidates.firstIndex(where: { $0.id == candidate.id }) {
-                                candidates[idx].error = error.localizedDescription
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private func commitTask() async {

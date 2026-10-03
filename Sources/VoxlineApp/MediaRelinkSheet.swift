@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 import UniformTypeIdentifiers
 import VoxlineCore
 import VoxlineMedia
@@ -8,6 +7,7 @@ public struct MediaRelinkSheet: View {
     @Binding var item: TaskMediaItem
     @Environment(\.dismiss) private var dismiss
 
+    @State private var showMediaImporter = false
     @State private var isInspecting = false
     @State private var inspection: MediaInspection?
     @State private var selectedAudioTrackID: Int32?
@@ -46,7 +46,7 @@ public struct MediaRelinkSheet: View {
                 }
 
                 Button("选择本地文件…") {
-                    chooseFile()
+                    showMediaImporter = true
                 }
                 .disabled(isInspecting || isCommitting)
 
@@ -97,24 +97,12 @@ public struct MediaRelinkSheet: View {
         }
         .padding(24)
         .frame(width: 560)
-    }
-
-    private func chooseFile() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = item.kind == .video
+        .fileImporter(isPresented: $showMediaImporter, allowedContentTypes: item.kind == .video
             ? [.mpeg4Movie, .quickTimeMovie, UTType(importedAs: "com.apple.m4v-video")]
-            : [.mpeg4Audio, .mp3, .wav]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.prompt = "选择媒体文件"
-
-        guard let window = NSApp.keyWindow else { return }
-        panel.beginSheetModal(for: window) { response in
-            panel.orderOut(nil)
-            if response == .OK, let url = panel.url {
-                Task {
-                    await inspectFile(at: url)
-                }
+            : [.mpeg4Audio, .mp3, .wav]) { result in
+            switch result {
+            case .success(let url): Task { await inspectFile(at: url) }
+            case .failure(let error): errorMessage = error.localizedDescription
             }
         }
     }

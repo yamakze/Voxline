@@ -32,6 +32,10 @@ struct TaskProcessingQueueTests {
         #expect(processed.status == .partiallyFailed)
         #expect(processed.items[1].status == .completed)
         #expect(processed.items[0].checkpoint?.chunks[0].isCompleted == false)
+        let failedTranscription = XcodeStepPipelineView(item: processed.items[0])
+        #expect(failedTranscription.extractionState == .completed)
+        #expect(failedTranscription.transcriptionState == .failed)
+        #expect(failedTranscription.translationState == .waiting)
         #expect(processed.items[0].checkpoint?.chunks[1].isCompleted == true)
         #expect(queue.errorMessage == nil)
         #expect(await pipeline.events == ["extract:\(task.items[0].id)", "decode:\(task.items[0].id):0",
@@ -189,6 +193,10 @@ struct TaskProcessingQueueTests {
         let processed = try #require(library.task(for: task.id))
         #expect(processed.status == .partiallyFailed)
         #expect(processed.items[0].checkpoint?.translationBatches.map(\.isCompleted) == [true, false])
+        let failedTranslation = XcodeStepPipelineView(item: processed.items[0])
+        #expect(failedTranslation.extractionState == .completed)
+        #expect(failedTranslation.transcriptionState == .completed)
+        #expect(failedTranslation.translationState == .failed)
         #expect(processed.items[1].status == .completed)
         let originalBatchID = try #require(processed.items[0].checkpoint?.translationBatches[1].id)
         let previousCalls = await translation.requests
@@ -231,6 +239,10 @@ struct TaskProcessingQueueTests {
         let stopped = try #require(library.task(for: task.id))
         #expect(stopped.items[1].status == .completed)
         #expect(stopped.items[0].cues.allSatisfy { $0.translation == .pending })
+        let stoppedTranslation = XcodeStepPipelineView(item: stopped.items[0])
+        #expect(stoppedTranslation.extractionState == .completed)
+        #expect(stoppedTranslation.transcriptionState == .completed)
+        #expect(stoppedTranslation.translationState == (cancel ? .cancelled : .failed))
         if cancel { #expect(stopped.items[0].status == .cancelled) }
         else {
             #expect(stopped.items[0].status == .failed(reason: CheckpointError.editedCue.localizedDescription))

@@ -256,7 +256,7 @@ public struct TaskDetailView: View {
 
                                 // Xcode Step Pipeline Badge (Audio -> Transcription -> Translation -> Ready)
                                 XcodeStepPipelineView(
-                                    status: item.status,
+                                    item: item,
                                     hasTranslation: task.parameters.translation != nil
                                 )
 

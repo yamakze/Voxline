@@ -52,6 +52,8 @@ TaskProcessingQueue 在应用进程中只有一个执行者，按 Task 的媒体
 
 启用翻译时，转写全部提交后建立或复用持久翻译批次，完成媒体要求全部当前译文已提交。批次失败停止该媒体的翻译并继续其他媒体，明确重试才重新请求；成功块与批次跳过，过期批次使用当前内容重建。网络请求取消后等待实际操作返回，迟到响应不提交。MediaTranscriptionPipeline 与 SubtitleTranslationPipeline 划定外部调用边界；可控执行仅用于测试，产品实例始终调用原生媒体、WhisperKit 和实际聊天接口。
 
+队列阶段显示读取媒体检查点：后续翻译失败或取消时，已经完成的音频提取和转写保持完成；尚未开始的翻译保持等待。
+
 ## 字幕聊天翻译
 
 Task 冻结服务 ID、地址、模型和目标语言；执行时按服务 ID 取得本地凭据，服务地址与快照不同明确拒绝，不静默切换目的地。聊天协议参照 [OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)，仅发送字幕文本，不发送音频。参数与成果不包含 API 密钥。
@@ -73,6 +75,8 @@ TranslationServices.json 只保存服务 ID、名称、地址和默认模型。�
 配置页、编辑页及任务执行共用同一聊天客户端。连接测试发送一条短文本并调用选定模型，验证实际聊天与 JSON 协议，不以 models 列表成功冒充翻译可用。界面明确说明字幕文本发送到所选服务、音频保持本地；空密钥明确采用无鉴权请求，仅适用于无需密钥的服务，服务要求鉴权时返回具体错误。不重复授权每个媒体，不估算没有可靠依据的费用。选择理由见 [ADR-0011](../ADR/0011-local-translation-credentials.md)。
 
 ## 输入与文件访问
+
+任务导入与重新关联使用 SwiftUI 原生 fileImporter，由所在页面呈现文件选择器，不依赖 NSApp.keyWindow 或应用是否处于前台。
 
 TaskConfigurationView 以具体 Task 对象驱动 sheet，在独立草稿上多选 MP4/MOV/M4V、M4A/MP3/WAV，逐项展示能力、失败原因和音轨。多语言音轨必须选择；单音轨可直接选定。错误输入与合法条目共同提交，书签确认失败的新增条目标记失败并保持未关联，便于修复。已有媒体字幕保持原值。
 

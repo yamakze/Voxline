@@ -219,15 +219,17 @@ public struct MediaStatusBadge: View {
 
 // MARK: - Xcode Step Pipeline Badge (Build Tasks Pipeline)
 public struct XcodeStepPipelineView: View {
-    public let status: TaskMediaStatus
+    public let item: TaskMediaItem
     public let hasTranslation: Bool
 
-    public init(status: TaskMediaStatus, hasTranslation: Bool = true) {
-        self.status = status
+    public init(item: TaskMediaItem, hasTranslation: Bool = true) {
+        self.item = item
         self.hasTranslation = hasTranslation
     }
 
-    private enum StepState {
+    private var status: TaskMediaStatus { item.status }
+
+    enum StepState {
         case completed, inProgress, waiting, failed, cancelled
     }
 
@@ -248,7 +250,9 @@ public struct XcodeStepPipelineView: View {
         .font(.caption2)
     }
 
-    private var extractionState: StepState {
+    var extractionState: StepState {
+        if status == .running(stage: .audioExtraction) { return .inProgress }
+        if item.checkpoint != nil { return .completed }
         switch status {
         case .pending: return .waiting
         case .running(let stage):
@@ -261,7 +265,10 @@ public struct XcodeStepPipelineView: View {
         }
     }
 
-    private var transcriptionState: StepState {
+    var transcriptionState: StepState {
+        if let checkpoint = item.checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted) {
+            return .completed
+        }
         switch status {
         case .pending: return .waiting
         case .running(let stage):
@@ -278,7 +285,10 @@ public struct XcodeStepPipelineView: View {
         }
     }
 
-    private var translationState: StepState {
+    var translationState: StepState {
+        if status.isRetryable, item.checkpoint?.chunks.allSatisfy(\.isCompleted) != true {
+            return .waiting
+        }
         switch status {
         case .pending: return .waiting
         case .running(let stage):
