@@ -4,6 +4,8 @@ public enum TaskDocumentCodec {
     public static func decode(_ data: Data) throws -> ProcessingTask {
         struct Header: Decodable { let formatVersion: Int }
         let decoder = JSONDecoder()
+        decoder.nonConformingFloatDecodingStrategy = .convertFromString(
+            positiveInfinity: "+Infinity", negativeInfinity: "-Infinity", nan: "NaN")
         let header = try decoder.decode(Header.self, from: data)
         switch header.formatVersion {
         case SubtitleProject.currentFormatVersion:
@@ -19,7 +21,7 @@ public enum TaskDocumentCodec {
             let task = ProcessingTask(id: project.id, title: project.title, items: items, parameters: parameters)
             try task.validate()
             return task
-        case ProcessingTask.currentFormatVersion:
+        case 2, ProcessingTask.currentFormatVersion:
             let task = try decoder.decode(ProcessingTask.self, from: data)
             try task.validate()
             return task
@@ -30,6 +32,8 @@ public enum TaskDocumentCodec {
     public static func encode(_ task: ProcessingTask) throws -> Data {
         try task.validate()
         let encoder = JSONEncoder()
+        encoder.nonConformingFloatEncodingStrategy = .convertToString(
+            positiveInfinity: "+Infinity", negativeInfinity: "-Infinity", nan: "NaN")
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(task)
     }

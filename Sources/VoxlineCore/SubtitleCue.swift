@@ -41,18 +41,7 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
               !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ProjectValidationError.invalidCue(id)
         }
-        switch translation {
-        case .pending: break
-        case .succeeded(let text, let revision):
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  revision > 0, revision <= sourceRevision else {
-                throw ProjectValidationError.invalidTranslation(id)
-            }
-        case .failed(let reason):
-            guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw ProjectValidationError.invalidTranslation(id)
-            }
-        }
+        try translation.validate(cueID: id, sourceRevision: sourceRevision)
     }
 
     public static func validateTimeline(_ cues: [SubtitleCue], within media: MediaIdentity?) throws {
@@ -76,4 +65,20 @@ public enum CueTranslation: Codable, Equatable, Sendable {
     case pending
     case succeeded(text: String, sourceRevision: UInt64)
     case failed(reason: String)
+
+    func validate(cueID: UUID, sourceRevision: UInt64) throws {
+        switch self {
+        case .pending: break
+        case .succeeded(let text, let revision):
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  revision > 0, revision <= sourceRevision else {
+                throw ProjectValidationError.invalidTranslation(cueID)
+            }
+        case .failed(let reason):
+            guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw ProjectValidationError.invalidTranslation(cueID)
+            }
+        }
+    }
+
 }

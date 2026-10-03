@@ -70,3 +70,13 @@ swift test --filter SubtitleSegmentation
 ```
 
 目录包含选定的 Provider 原始 JSON，至少各有一份成功和失败／取消记录。验证成功记录的原文完整性、源时间、唯一 ID 和保存读取；明确拒绝不完整转写。切分产物位于忽略目录 tmp/segmentation-validation，保留源文件名便于对应。此验证复用证据，不重新运行模型，也不代替听录或整段视频质量验收。默认测试跳过该私有样本入口。
+
+## 检查点与已保存 S001 证据验证
+
+```sh
+VOXLINE_TRANSCRIPTION_EVIDENCE_DIRECTORY="/absolute/path/selected-S001-evidence" \
+VOXLINE_AUDIO_CACHE_MANIFEST="/absolute/path/S001-chunks/audio.json" \
+swift test --filter 'ProcessingCheckpoint|TaskLibraryTests'
+```
+
+选择与提取清单逐块匹配的一份 S001 原始证据，包含成功与失败范围；30 秒片段不会匹配完整清单。测试逐块保存、重开 Task，删除临时证据缓存副本后再次读取，检查恢复仅列出未完成块。源证据与实际音频缓存保留。翻译批次测试只验证持久化与编辑保护，使用测试数据，不调用网络服务；完整真实执行由队列与翻译接入验证。

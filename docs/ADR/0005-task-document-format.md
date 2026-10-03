@@ -1,6 +1,6 @@
 # ADR-0005 本地 Task 文档格式与迁移
 
-状态：接受。日期：2026-10-02。文档生命周期由 [ADR-0006](0006-single-window-task-library.md) 替代。
+状态：接受。日期：2026-10-02。文档生命周期由 [ADR-0006](0006-single-window-task-library.md) 替代；格式扩展见 [ADR-0010](0010-atomic-task-checkpoints.md)。
 
 ## 决定与理由
 

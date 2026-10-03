@@ -5,7 +5,6 @@ import VoxlineCore
 public struct MainWindowView: View {
     @State private var library = TaskLibrary.shared
     @State private var selectedTab: NavigationItem = .allTasks
-    @State private var activeTask: ProcessingTask?
     @State private var selectedMediaID: UUID?
     @State private var configurationTask: ProcessingTask?
     @State private var isOpeningFile = false
@@ -47,7 +46,6 @@ public struct MainWindowView: View {
                 set: { newTaskDraft = $0 }
             )) { prepared in
                 try library.save(prepared)
-                activeTask = prepared
                 selectedMediaID = nil
                 selectedTab = .task(prepared.id)
             }
@@ -55,10 +53,9 @@ public struct MainWindowView: View {
         .sheet(item: $configurationTask) { original in
             TaskConfigurationView(task: Binding(
                 get: {
-                    if let activeTask, activeTask.id == original.id { return activeTask }
                     return library.task(for: original.id) ?? original
                 },
-                set: { activeTask = $0 }
+                set: { library.register($0, at: library.url(for: original.id)) }
             )) { prepared in
                 try library.save(prepared)
             }
@@ -163,7 +160,6 @@ public struct MainWindowView: View {
         case .allTasks:
             TaskLibraryView(
                 onSelectTask: { task in
-                    activeTask = task
                     selectedMediaID = nil
                     selectedTab = .task(task.id)
                 },
@@ -264,11 +260,18 @@ public struct MainWindowView: View {
         guard let loaded = library.task(for: taskID) else { return nil }
         return Binding(
             get: {
-                if let activeTask, activeTask.id == taskID { return activeTask }
-                return loaded
+                library.task(for: taskID) ?? loaded
             },
-            set: { updated in
-                activeTask = updated
+            set: { value in
+                var updated = value
+                for index in updated.items.indices {
+                    if updated.items[index].status == .completed,
+                       updated.parameters.translation != nil,
+                       !updated.items[index].cues.allSatisfy(\.hasCurrentTranslation) {
+                        updated.items[index].status = .needsReview
+                    }
+                }
+                library.register(updated, at: library.url(for: taskID))
                 do { try library.save(updated) }
                 catch { errorMessage = error.localizedDescription }
             }
@@ -283,7 +286,6 @@ public struct MainWindowView: View {
             var task = try TaskDocumentCodec.decode(Data(contentsOf: url))
             task.interruptRunningItems()
             library.register(task, at: url)
-            activeTask = task
             selectedMediaID = nil
             selectedTab = .task(task.id)
         } catch {

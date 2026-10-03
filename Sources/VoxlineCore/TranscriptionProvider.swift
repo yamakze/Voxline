@@ -37,6 +37,13 @@ public struct RawTranscriptionSegment: Codable, Equatable, Sendable {
         self.averageLogProbability = averageLogProbability
         self.noSpeechProbability = noSpeechProbability
     }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        evidenceNumberEqual(lhs.startSeconds, rhs.startSeconds) && evidenceNumberEqual(lhs.endSeconds, rhs.endSeconds) &&
+        lhs.text == rhs.text && lhs.words == rhs.words &&
+        evidenceNumberEqual(lhs.averageLogProbability, rhs.averageLogProbability) &&
+        evidenceNumberEqual(lhs.noSpeechProbability, rhs.noSpeechProbability)
+    }
 }
 
 public struct RawWordTiming: Codable, Equatable, Sendable {
@@ -51,6 +58,16 @@ public struct RawWordTiming: Codable, Equatable, Sendable {
         self.endSeconds = endSeconds
         self.probability = probability
     }
+
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.text == rhs.text && evidenceNumberEqual(lhs.startSeconds, rhs.startSeconds) &&
+        evidenceNumberEqual(lhs.endSeconds, rhs.endSeconds) && evidenceNumberEqual(lhs.probability, rhs.probability)
+    }
+}
+
+// Invalid alignment is diagnostic data; an unchanged NaN must not look like a new user edit.
+private func evidenceNumberEqual(_ lhs: Double?, _ rhs: Double?) -> Bool {
+    lhs == rhs || (lhs?.isNaN == true && rhs?.isNaN == true)
 }
 
 public enum TranscriptionInputError: Error { case invalidAudio }
@@ -86,7 +103,7 @@ public struct TranscriptionWindowEvidence: Codable, Equatable, Sendable {
     }
 }
 
-public struct TranscriptionEvidence: Codable, Sendable {
+public struct TranscriptionEvidence: Codable, Equatable, Sendable {
     public enum Outcome: String, Codable, Sendable { case completed, failed, cancelled }
     public let settings: TranscriptionSettings
     public let sourceStartMilliseconds: Int64

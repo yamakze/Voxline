@@ -18,7 +18,7 @@ public struct SubtitleSegmentationPolicy: Codable, Equatable, Sendable {
 }
 
 /// A derived artifact keeps the original evidence so changing the policy requires no new inference.
-public struct SubtitleSegmentationResult: Codable, Sendable {
+public struct SubtitleSegmentationResult: Codable, Equatable, Sendable {
     public let sourceID: UUID
     public let evidence: TranscriptionEvidence
     public let policy: SubtitleSegmentationPolicy

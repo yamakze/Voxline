@@ -1,7 +1,7 @@
 import Foundation
 
 public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
-    public static let currentFormatVersion = 2
+    public static let currentFormatVersion = 3
     public let formatVersion: Int
     public let id: UUID
     public var title: String
@@ -16,6 +16,25 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
         self.title = title
         self.items = items
         self.parameters = parameters
+    }
+
+    private enum CodingKeys: String, CodingKey { case formatVersion, id, title, items, parameters, startedAt }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let version = try values.decode(Int.self, forKey: .formatVersion)
+        guard version == 2 || version == Self.currentFormatVersion else {
+            throw ProjectValidationError.unsupportedVersion(version)
+        }
+        formatVersion = Self.currentFormatVersion
+        id = try values.decode(UUID.self, forKey: .id)
+        title = try values.decode(String.self, forKey: .title)
+        items = try values.decode([TaskMediaItem].self, forKey: .items)
+        parameters = try values.decode(TaskParameters.self, forKey: .parameters)
+        startedAt = try values.decodeIfPresent(Date.self, forKey: .startedAt)
+        if version == 2, items.contains(where: { $0.checkpoint != nil }) {
+            throw CheckpointError.invalidRecord
+        }
     }
 
     public mutating func updateParameters(_ parameters: TaskParameters) throws {
@@ -49,6 +68,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
             if case .running(let stage) = items[index].status {
                 items[index].status = .interrupted(stage: stage)
             }
+            items[index].interruptCheckpointWork()
         }
     }
 
@@ -82,6 +102,10 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
         for item in items {
             guard identities.insert(item.id).inserted else { throw TaskValidationError.duplicateMedia(item.id) }
             try item.validate()
+            if let checkpoint = item.checkpoint {
+                guard startedAt != nil else { throw TaskValidationError.workBeforeStart(item.id) }
+                guard checkpoint.parameters == parameters else { throw CheckpointError.incompatibleContext }
+            }
             switch item.status {
             case .running, .interrupted, .completed:
                 guard startedAt != nil else { throw TaskValidationError.workBeforeStart(item.id) }
@@ -130,6 +154,7 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
     public private(set) var media: MediaIdentity?
     public var status: TaskMediaStatus
     public var cues: [SubtitleCue]
+    public internal(set) var checkpoint: MediaProcessingCheckpoint?
 
     public init(id: UUID = UUID(), title: String, kind: TaskMediaKind, source: TaskMediaSource,
                 media: MediaIdentity? = nil, status: TaskMediaStatus = .pending, cues: [SubtitleCue] = []) {
@@ -170,6 +195,7 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
         }
         try media?.validate()
         try SubtitleCue.validateTimeline(cues, within: media)
+        try checkpoint?.validate(media: media, cues: cues, status: status)
         if case .failed(let reason) = status, reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw TaskValidationError.emptyFailureReason(id)
         }

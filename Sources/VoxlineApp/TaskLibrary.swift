@@ -62,6 +62,16 @@ public final class TaskLibrary {
         register(task, at: targetURL)
     }
 
+    /// Apply worker results to the latest published edits; publish only after the whole document is saved.
+    @discardableResult
+    public func commitCheckpoint<Result>(taskID: UUID, mutation: (inout ProcessingTask) throws -> Result) throws -> Result {
+        guard var current = task(for: taskID) else { throw CheckpointError.taskUnavailable }
+        let result = try mutation(&current)
+        guard current.id == taskID else { throw TaskValidationError.taskChanged }
+        try save(current)
+        return result
+    }
+
     private func persist(_ task: ProcessingTask, to url: URL) throws {
         let data = try TaskDocumentCodec.encode(task)
         let access = url.startAccessingSecurityScopedResource()
