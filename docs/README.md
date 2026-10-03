@@ -6,6 +6,8 @@
 - [UI 页面需求](RFC/voxline-ui-requirements.md)
 - [首版执行计划](plans/voxline-v1.md)
 - [当前工程边界](architecture/README.md)
+- [开发工作流与构建入口](development.md)
+- [iOS 开发入口验证](optimize/ios-development-entry-validation.md)
 - [ADR-0001：字幕工作流与数据边界](ADR/0001-subtitle-workflow-and-data-boundaries.md)
 - [ADR-0002：M1 基线与项目文档](ADR/0002-m1-baseline-and-project-document.md)
 - [ADR-0003：设备本地媒体关联](ADR/0003-local-media-association.md)

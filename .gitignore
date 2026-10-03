@@ -30,3 +30,5 @@
 .swiftpm/
 .DS_Store
 /build/
+xcuserdata/
+*.xcuserstate

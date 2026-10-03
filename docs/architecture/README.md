@@ -2,6 +2,8 @@
 
 Voxline 采用 Swift 6.2 / SwiftPM 构建 macOS 15 应用，Scripts/build-app.sh 生成本地签名的 .app。Argmax v1.1.0 固定在确切提交，Package.resolved 锁定依赖图；只链接 WhisperKit 产品。
 
+iOS 开发入口通过 Voxline.xcodeproj / VoxlineIOS 构建，基线为 iOS 18；只链接直接使用同一份 Core 源码的 VoxlineCore 框架，复用 Task 状态显示文本，不链接推理 SDK。Sources/VoxlineIOS 提供原生只读任务／字幕浏览与本地文档导入，用于模拟器和设备包的界面开发；完整播放校对由 VXL-030 继续实现。构建脚本和缓存边界见 [开发工作流](../development.md)。
+
 ## 模块职责
 
 - VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证及转写协议。只依赖 Foundation，不保存设备路径、书签或密钥。
