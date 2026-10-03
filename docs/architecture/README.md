@@ -8,7 +8,7 @@ iOS 只链接同一份 Core 源码，复用 Task 状态显示文本，不链接�
 
 - VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证及转写协议。只依赖 Foundation，不保存设备路径、书签或密钥。
 - VoxlineWhisperKit：固定版本模型清单、下载与安装校验、本地目录占用和 WhisperKit 实例生命周期。SDK 类型只存在于该模块；应用接收文件下载进度、安装和加载状态。Provider 与恢复由后续条目接入，同一进程复用已加载实例。
-- VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256 和设备本地只读书签。AVFoundation 类型不进入 Core 或 Task 文件；媒体保持引用，书签与媒体条目 ID、内容及音轨绑定。
+- VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地只读书签及有界 PCM 提取。AVFoundation 类型不进入 Core 或 Task 文件；媒体保持引用，书签与媒体条目 ID、内容及音轨绑定。
 - VoxlineApp：单窗口导航、TaskLibrary、任务准备、详情、原生播放、字幕校对及模型／服务管理界面。绑定修改 Task，TaskLibrary 通过 TaskDocumentCodec 原子保存唯一任务文件。UI 不导入 WhisperKit。
 
 Core 和字幕文档不依赖 UI、AVFoundation 或具体推理 SDK。JSON 是持久字幕权威来源，SRT 是导出物，内存任务库是界面状态。
@@ -35,11 +35,21 @@ LocalMediaStore 保持只读沙盒书签，缺失、损坏、授权失败和内�
 
 任务准备等待期间保护原 Task 快照，实际发生修改时拒绝覆盖。取消停止未提交工作。文件访问和恢复只处理实际需求，不加入账户角色、执行租约或云冲突框架。
 
+## 音频提取
+
+AudioExtractor 按媒体条目 ID、内容身份和实际所选音轨管理本地 Caches/Voxline/Audio。读取复用 MediaInspector 的检查，源文件在检查或提取期间变化时明确失败。
+
+AVAssetReader 只读取所选轨道，从第一个非空轨道段开始。输出为 16 kHz、单声道 Float32 PCM，复用一秒写缓冲，按最多 120 秒分块落盘；不把整段音频载入数组。每块记录源时间帧与实际帧数，转为 TranscriptionAudio 时保存绝对毫秒起点，时长向上覆盖不足一毫秒的尾帧。
+
+源时间的前置空段保持起始偏移；系统解码出的内部静音保留；实际时间间隙开始新块，回退明确失败。允许一个输出采样帧的时间量化误差，不排序、裁剪或丢弃音频修复时间轴。
+
+完整解码、源文件检查和结果验证通过后原子写入 audio.json；取消或失败不提交缓存记录。复用前检查内容身份、版本、每块时间与 PCM 文件格式和帧数。缺失或不完整缓存发出明确失效原因并重新提取；权限、解码和写入错误传播给调用者。缓存仅在设备本地，不进入 Task 文档。
+
 ## 执行与界面
 
 MainWindowView 组织任务列表、准备表单、任务详情和媒体详情。NativeControlSurface 在系统 26 及以上使用原生 Liquid Glass，旧系统使用 Material；原生组件优先。系统 26 视觉和辅助功能设置的完整运行验收仍由 VXL-047 跟踪。
 
-真实抽音频、转写、API 翻译和持久队列尚未接通。未接通的开始、重试及重译明确不可用；禁止计时模拟进度、示例字幕或伪译文。模型安装清单匹配且文件完整时显示已安装；只有当前进程中的 WhisperKit 完成加载才显示已加载。模型规则见 [ADR-0007](../ADR/0007-pinned-local-model-installation.md)。
+真实转写、API 翻译和持久队列尚未接通。未接通的开始、重试及重译明确不可用；禁止计时模拟进度、示例字幕或伪译文。模型安装清单匹配且文件完整时显示已安装；只有当前进程中的 WhisperKit 完成加载才显示已加载。模型规则见 [ADR-0007](../ADR/0007-pinned-local-model-installation.md)。
 
 原始 ASR 证据和可读字幕分开：RawTranscriptionSegment 保留原始对齐，转换为 SubtitleCue 前验证。切分及 Provider 不能排序、裁剪或丢弃文本来伪装成功。过期译文保留旧来源并显示待重译，新的自动处理不能覆盖较新的手工编辑。
 

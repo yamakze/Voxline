@@ -14,7 +14,7 @@ let package = Package(
         .target(name: "VoxlineWhisperKit", dependencies: ["VoxlineCore", .product(name: "WhisperKit", package: "argmax-oss-swift")], resources: [.process("Resources")]),
         .executableTarget(name: "VoxlineApp", dependencies: ["VoxlineCore", "VoxlineMedia", "VoxlineWhisperKit"]),
         .testTarget(name: "VoxlineCoreTests", dependencies: ["VoxlineCore"]),
-        .testTarget(name: "VoxlineMediaTests", dependencies: ["VoxlineMedia", "VoxlineCore"]),
+        .testTarget(name: "VoxlineMediaTests", dependencies: ["VoxlineMedia", "VoxlineCore"], resources: [.copy("Fixtures")]),
         .testTarget(name: "VoxlineAppTests", dependencies: ["VoxlineApp", "VoxlineCore"]),
         .testTarget(name: "VoxlineWhisperKitTests", dependencies: ["VoxlineWhisperKit"])
     ]

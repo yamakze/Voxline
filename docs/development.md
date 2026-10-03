@@ -43,3 +43,11 @@ Scripts/compile_and_run_ios.sh <模拟器UDID> release
 Apple 说明后续构建可复用增量结果，并提供命令行耗时汇总：[增量构建](https://developer.apple.com/documentation/xcode/improving-the-speed-of-incremental-builds)、[Xcode 并行构建](https://developer.apple.com/videos/play/wwdc2022/110364/)。真机签名与安装见 [运行到设备](https://help.apple.com/xcode/mac/current/en.lproj/dev5a825a1ca.html)。
 
 验收结果统一记录于 [GitHub Project](https://github.com/users/yamakze/projects/1)。
+
+## 私有样本提取验证
+
+```sh
+VOXLINE_AUDIO_SAMPLE="/absolute/path/sample.mp4" swift test --filter realSampleExtraction
+```
+
+使用现有样本的首个音轨验证提取，产物位于忽略目录 tmp/audio-validation；产品处理始终使用任务明确选择的音轨。小视频测试使用仓库中的自生成夹具，不依赖视频编码器。
