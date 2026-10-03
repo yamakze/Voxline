@@ -61,3 +61,12 @@ swift test --filter 'realSampleProvider|realProviderLanguageAndCancellation'
 ```
 
 模型目录是已完整安装的基准型号父目录；PCM 目录是 S001 提取出的九块缓存。验证使用真实 SDK 和本地模型，保留每个成功／对齐失败块的证据，再检查自动语言识别、解码取消、模型占用和卸载；不下载模型，不将对齐失败算作转写成功。产物位于忽略目录 tmp/provider-validation；默认 swift test 跳过此私有样本入口。
+
+## 已保存转写证据的字幕切分验证
+
+```sh
+VOXLINE_TRANSCRIPTION_EVIDENCE_DIRECTORY="/absolute/path/selected-evidence" \
+swift test --filter SubtitleSegmentation
+```
+
+目录包含选定的 Provider 原始 JSON，至少各有一份成功和失败／取消记录。验证成功记录的原文完整性、源时间、唯一 ID 和保存读取；明确拒绝不完整转写。切分产物位于忽略目录 tmp/segmentation-validation，保留源文件名便于对应。此验证复用证据，不重新运行模型，也不代替听录或整段视频质量验收。默认测试跳过该私有样本入口。
