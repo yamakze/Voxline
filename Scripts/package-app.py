@@ -36,7 +36,7 @@ metadata = {
     "CFBundlePackageType": "APPL",
     "CFBundleShortVersionString": "0.1.0",
     "CFBundleVersion": "1",
-    "CFBundleIconFile": "AppIcon.icns",
+    "CFBundleIconFile": "AppIcon",
     "CFBundleIconName": "AppIcon",
     "LSMinimumSystemVersion": "15.0",
     "NSHighResolutionCapable": True,
@@ -59,5 +59,9 @@ subprocess.run(["codesign", "--force", "--sign", "-", "--entitlements",
 subprocess.run(["touch", str(bundle)], check=False)
 lsregister = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
 if lsregister.is_file():
-    subprocess.run([str(lsregister), "-f", str(bundle)], check=False)
+    # Unregister bogus Application Scripts path if registered as a bundle
+    bogus_path = Path.home() / "Library" / "Application Scripts" / "dev.voxline.app"
+    if bogus_path.exists():
+        subprocess.run([str(lsregister), "-u", str(bogus_path)], check=False)
+    subprocess.run([str(lsregister), "-f", "-R", "-trusted", str(bundle)], check=False)
 print(bundle)
