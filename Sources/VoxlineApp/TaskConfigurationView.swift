@@ -543,7 +543,7 @@ public struct TaskConfigurationView: View {
             .disabled(isInspecting || isSaving)
 
             if translates {
-                Text(ProcessingAvailability.translationUnavailableReason)
+                Text("字幕文本发送至所选服务；音频保持本地。")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

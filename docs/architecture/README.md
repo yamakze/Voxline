@@ -9,6 +9,7 @@ iOS 只链接同一份 Core 源码，复用 Task 状态显示文本，不链接�
 - VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证、转写协议、原始窗口证据、可读字幕切分与处理检查点。只依赖 Foundation，不保存设备路径、书签或密钥。
 - VoxlineWhisperKit：固定版本模型清单、下载与安装校验、本地目录占用、WhisperKit 实例生命周期及有界输入的转写 Provider。SDK 类型只存在于该模块；应用接收真实下载、加载和推理状态。同一进程复用唯一已加载实例。
 - VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地只读书签及有界 PCM 提取。AVFoundation 类型不进入 Core 或 Task 文件；媒体保持引用，书签与媒体条目 ID、内容及音轨绑定。
+- VoxlineTranslation：OpenAI 兼容聊天请求、字幕批次容量及相邻上下文、严格结果校验和 HTTP 错误。只依赖 Foundation 与 Core，不持有设备服务配置或 Keychain。
 - VoxlineApp：单窗口导航、TaskLibrary、单执行者队列、任务准备、详情、原生播放、字幕校对及模型／服务管理界面。队列组织媒体与推理模块的实际调用；绑定修改 Task，TaskLibrary 通过 TaskDocumentCodec 原子保存唯一任务文件。UI 不导入 WhisperKit。
 
 Core 和字幕文档不依赖 UI、AVFoundation 或具体推理 SDK。JSON 是持久字幕权威来源，SRT 是导出物，内存任务库是界面状态。
@@ -49,7 +50,17 @@ TaskProcessingQueue 在应用进程中只有一个执行者，按 Task 的媒体
 
 媒体、范围或手工校时冲突保存为该项失败，原始证据与编辑保留；保存错误停止后续调度，界面明确显示原因。当前运行转为中断；中断状态也无法保存时仅登记内存并明确提示，最后成功文件保持原值。修复文件写入后可继续，或重新打开已保存文件恢复。页面提供开始／继续、任务和单项取消、单项重试及详情校对入口。
 
-当前执行原文字幕队列。网络翻译由 VXL-013 接入，启用翻译的 Task 在开始前明确不可用，不以原文填充译文，也不把部分流程算作完整翻译任务。MediaTranscriptionPipeline 只划定媒体提取与转写两个外部调用边界；可控执行仅用于测试，产品实例始终调用原生媒体与 WhisperKit。
+启用翻译时，转写全部提交后建立或复用持久翻译批次，完成媒体要求全部当前译文已提交。批次失败停止该媒体的翻译并继续其他媒体，明确重试才重新请求；成功块与批次跳过，过期批次使用当前内容重建。网络请求取消后等待实际操作返回，迟到响应不提交。MediaTranscriptionPipeline 与 SubtitleTranslationPipeline 划定外部调用边界；可控执行仅用于测试，产品实例始终调用原生媒体、WhisperKit 和实际聊天接口。
+
+## 字幕聊天翻译
+
+Task 冻结服务 ID、地址、模型和目标语言；执行时按服务 ID 取得本地凭据，服务地址与快照不同明确拒绝，不静默切换目的地。聊天协议参照 [OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)，仅发送字幕文本，不发送音频。参数与成果不包含 API 密钥。
+
+每批最多 30 句，序列化的 UTF-8 输入最多 12,000 字节，包括前后各两句上下文。此容量是输入字节上限，不推算服务的模型上下文或费用。过长单句与上下文明确失败，不截断原文。相邻上下文与本批字幕分别发送，只翻译目标 ID；不依赖兼容服务未必支持的 JSON Schema 参数，提示要求纯 JSON 后再严格校验。
+
+响应要求单一完整 assistant 消息、finish_reason 为 stop，以及唯一 translations 数组。结果只允许 id 和 text，完整匹配本批 UUID，拒绝缺项、重复、额外项、空译文、时间字段与 Markdown 包裹。结果通过检查点中的原文版本及已有译文验证后整体提交，模型和目标语言由对应检查点参数保留。失败不以原文填充译文。
+
+鉴权、限流及 Retry-After、超时、HTTP 状态和格式错误明确显示；不自动重试、拆小失败批次或切换模型。网络错误不输出请求头、密钥或上游原始响应正文。服务连通不代替字幕质量验收，实际验证结果统一维护于 Project。
 
 ## 输入与文件访问
 
@@ -103,7 +114,7 @@ SubtitleSegmentationResult 保存输入证据、策略、字幕及段／词范�
 
 MainWindowView 组织任务列表、准备表单、任务详情和媒体详情。NativeControlSurface 在系统 26 及以上使用原生 Liquid Glass，旧系统使用 Material；原生组件优先。系统 26 视觉和辅助功能设置的完整运行验收仍由 VXL-047 跟踪。
 
-真实转写 Provider、字幕切分与检查点已有模块能力；Task 队列和 API 翻译尚未接通界面。未接通的开始、重试及重译明确不可用；禁止计时模拟进度、示例字幕或伪译文。模型安装清单匹配且文件完整时显示已安装；只有当前进程中的 WhisperKit 完成加载才显示已加载。模型规则见 [ADR-0007](../ADR/0007-pinned-local-model-installation.md)。
+Task 队列接通实际转写、翻译及检查点；单句重译由独立校对流程交付。禁止计时模拟进度、示例字幕或伪译文。模型安装清单匹配且文件完整时显示已安装；只有当前进程中的 WhisperKit 完成加载才显示已加载。模型规则见 [ADR-0007](../ADR/0007-pinned-local-model-installation.md)。
 
 原始 ASR 证据和可读字幕分开：RawTranscriptionSegment 保留原始对齐，转换为 SubtitleCue 前验证。切分及 Provider 不能排序、裁剪或丢弃文本来伪装成功。过期译文保留旧来源并显示待重译，新的自动处理不能覆盖较新的手工编辑。
 

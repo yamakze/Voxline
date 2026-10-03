@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import VoxlineCore
 import VoxlineMedia
+import VoxlineTranslation
 
 @Observable
 @MainActor
@@ -9,6 +10,7 @@ final class TaskProcessingQueue {
     static let shared = TaskProcessingQueue(library: .shared)
     private let library: TaskLibrary
     private let pipeline: any MediaTranscriptionPipeline
+    private let translationPipeline: any SubtitleTranslationPipeline
     private var worker: Task<Void, Never>?
     private var mediaWork: Task<Void, any Error>?
     private var queuedIDs: [UUID] = []
@@ -22,9 +24,11 @@ final class TaskProcessingQueue {
     private(set) var extractionFraction: Double?
     private(set) var errorMessage: String?
 
-    init(library: TaskLibrary, pipeline: any MediaTranscriptionPipeline = LocalMediaTranscriptionPipeline()) {
+    init(library: TaskLibrary, pipeline: any MediaTranscriptionPipeline = LocalMediaTranscriptionPipeline(),
+         translationPipeline: any SubtitleTranslationPipeline = LocalSubtitleTranslationPipeline()) {
         self.library = library
         self.pipeline = pipeline
+        self.translationPipeline = translationPipeline
     }
 
     func start(taskID: UUID, mediaID: UUID? = nil) throws {
@@ -237,8 +241,75 @@ final class TaskProcessingQueue {
                 }
             }
         }
-        if chunkIDs.isEmpty {
+        if parameters.translation == nil, chunkIDs.isEmpty {
             try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .completed }
+        }
+        if let translation = parameters.translation {
+            try await translateMedia(taskID: taskID, mediaID: mediaID, settings: translation)
+        }
+    }
+
+    private func translateMedia(taskID: UUID, mediaID: UUID, settings: TranslationSettings) async throws {
+        guard let item = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }),
+              let checkpoint = item.checkpoint else { throw CheckpointError.missingCheckpoint }
+        guard checkpoint.chunks.allSatisfy(\.isCompleted) else { return }
+        if Task.isCancelled {
+            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .cancelled }
+            return
+        }
+        let plan = try item.recoveryPlan(media: checkpoint.media, parameters: checkpoint.parameters, ranges: checkpoint.chunks.map(\.range))
+        let newBatches: [[UUID]]
+        do {
+            newBatches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: plan.untranslatedCueIDs,
+                targetLanguage: settings.targetLanguage)
+        } catch {
+            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .failed(reason: error.localizedDescription) }
+            return
+        }
+        let batchIDs = try updateMedia(taskID: taskID, mediaID: mediaID) { item in
+            try plan.translationBatchIDs + newBatches.map { try item.prepareTranslationBatch(cueIDs: $0) }
+        }
+        if batchIDs.isEmpty {
+            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .completed }
+            return
+        }
+        for (index, batchID) in batchIDs.enumerated() {
+            if Task.isCancelled {
+                try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .cancelled }
+                return
+            }
+            let request: SubtitleTranslationRequest
+            do {
+                request = try updateMedia(taskID: taskID, mediaID: mediaID) { item in
+                    try item.beginTranslationBatch(batchID)
+                    guard let batch = item.checkpoint?.translationBatches.first(where: { $0.id == batchID }) else {
+                        throw CheckpointError.unknownWork
+                    }
+                    return try SubtitleTranslationRequest(inputs: batch.inputs, cues: item.cues)
+                }
+            } catch let error as CheckpointError {
+                try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .failed(reason: error.localizedDescription) }
+                return
+            }
+            progressText = "翻译批次 \(index + 1)／\(batchIDs.count)，等待服务响应"
+            let outputs: [TranslationBatchOutput]
+            do {
+                outputs = try await translationPipeline.translate(settings: settings, request: request)
+                try Task.checkCancellation()
+            } catch {
+                if Task.isCancelled || error is CancellationError {
+                    try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationCancellation(batchID) }
+                } else {
+                    try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationFailure(batchID, reason: error.localizedDescription) }
+                }
+                return
+            }
+            do {
+                try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.commitTranslationBatch(batchID, outputs: outputs) }
+            } catch let error as CheckpointError {
+                try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationFailure(batchID, reason: error.localizedDescription) }
+                return
+            }
         }
     }
 

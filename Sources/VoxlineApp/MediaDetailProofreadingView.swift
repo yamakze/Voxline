@@ -363,7 +363,7 @@ public struct MediaDetailProofreadingView: View {
                 .frame(width: 170)
 
                 if previewMode != .source, item.cues.contains(where: { !$0.hasCurrentTranslation }) {
-                    Text("API 翻译尚未接通")
+                    Text("未完成翻译可返回队列重试")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

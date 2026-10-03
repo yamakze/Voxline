@@ -3,6 +3,7 @@ import Testing
 import VoxlineCore
 import VoxlineMedia
 import VoxlineWhisperKit
+import VoxlineTranslation
 @testable import VoxlineApp
 
 @Suite("Sequential task execution", .serialized)
@@ -126,7 +127,7 @@ struct TaskProcessingQueueTests {
         #expect(library.task(for: task.id)?.items[0].cues[0].sourceText == "Unsaved correction")
     }
 
-    @Test func incompatibleRangesFailOnlyTheirMediaAndTranslationIsExplicitlyUnavailable() async throws {
+    @Test func incompatibleRangesFailOnlyTheirMediaAndMissingTranslationServiceIsExplicit() async throws {
         let (directory, library, initial) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         var task = initial
@@ -145,8 +146,9 @@ struct TaskProcessingQueueTests {
         parameters.translation = try TranslationSettings(baseURL: URL(string: "https://example.com/v1")!, modelID: "test", targetLanguage: "zh", serviceID: UUID())
         try configured.updateParameters(parameters)
         try library.save(configured)
-        #expect(throws: (any Error).self) { try queue.start(taskID: configured.id) }
-        #expect(library.task(for: configured.id)?.startedAt == nil)
+        try queue.start(taskID: configured.id)
+        await queue.waitUntilIdle()
+        #expect(library.task(for: configured.id)?.items.allSatisfy { $0.status == .failed(reason: TaskValidationError.unconfiguredTranslationService.localizedDescription) } == true)
     }
 
     @Test func manualTimingConflictKeepsEditAndRawEvidenceWhileOtherMediaContinue() async throws {
@@ -169,6 +171,75 @@ struct TaskProcessingQueueTests {
             #expect(evidence?.segments.first?.text == "Keep.")
         } else { Issue.record("Timing conflict did not preserve the failed range") }
         #expect(queue.errorMessage == nil)
+    }
+
+    @Test func translationFailureRetriesOnlyUncommittedBatchAndPreservesManualTranslation() async throws {
+        let (directory, library, initial) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        var parameters = task.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!, modelID: "frozen-model", targetLanguage: "zh-Hans", serviceID: UUID())
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let transcription = ControlledPipeline(cuesPerChunk: 16)
+        let translation = ControlledTranslationPipeline(failCall: 2)
+        let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation)
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        let processed = try #require(library.task(for: task.id))
+        #expect(processed.status == .partiallyFailed)
+        #expect(processed.items[0].checkpoint?.translationBatches.map(\.isCompleted) == [true, false])
+        #expect(processed.items[1].status == .completed)
+        let originalBatchID = try #require(processed.items[0].checkpoint?.translationBatches[1].id)
+        let previousCalls = await translation.requests
+        #expect(previousCalls.map(\.count) == [30, 2, 30, 2])
+        try library.commitCheckpoint(taskID: task.id) { task in
+            task.items[0].cues[0].translation = .succeeded(text: "Manual translation", sourceRevision: task.items[0].cues[0].sourceRevision)
+        }
+        let decodingCalls = await transcription.events.filter { $0.hasPrefix("decode:") }
+        try queue.start(taskID: task.id, mediaID: task.items[0].id)
+        await queue.waitUntilIdle()
+        let completed = try #require(library.task(for: task.id))
+        #expect(completed.status == .completed)
+        #expect(completed.items[0].cues[0].translation == .succeeded(text: "Manual translation", sourceRevision: 1))
+        #expect(completed.items[0].checkpoint?.translationBatches[1].id == originalBatchID)
+        #expect(await translation.requests.last == previousCalls[1])
+        #expect(await transcription.events.filter { $0.hasPrefix("decode:") } == decodingCalls)
+    }
+
+    @Test(arguments: [true, false])
+    func translationCancellationAndConcurrentSourceEditProtectCurrentText(cancel: Bool) async throws {
+        let (directory, library, initial) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        var parameters = task.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!, modelID: "frozen-model", targetLanguage: "zh", serviceID: UUID())
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let translation = ControlledTranslationPipeline(holdFirstCall: true)
+        let queue = TaskProcessingQueue(library: library, pipeline: ControlledPipeline(), translationPipeline: translation)
+        try queue.start(taskID: task.id)
+        await translation.waitForRequest()
+        if cancel {
+            try queue.cancel(mediaID: task.items[0].id)
+            #expect(throws: QueueError.busy) { try queue.start(taskID: task.id) }
+        } else {
+            try library.commitCheckpoint(taskID: task.id) { try $0.items[0].cues[0].replaceSourceText(with: "Current edited source") }
+        }
+        await translation.releaseRequest()
+        await queue.waitUntilIdle()
+        let stopped = try #require(library.task(for: task.id))
+        #expect(stopped.items[1].status == .completed)
+        #expect(stopped.items[0].cues.allSatisfy { $0.translation == .pending })
+        if cancel { #expect(stopped.items[0].status == .cancelled) }
+        else {
+            #expect(stopped.items[0].status == .failed(reason: CheckpointError.editedCue.localizedDescription))
+            #expect(stopped.items[0].cues[0].sourceText == "Current edited source")
+        }
+        try queue.start(taskID: task.id, mediaID: task.items[0].id)
+        await queue.waitUntilIdle()
+        #expect(library.task(for: task.id)?.status == .completed)
+        if !cancel { #expect(library.task(for: task.id)?.items[0].cues[0].sourceText == "Current edited source") }
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_QUEUE_MEDIA"] != nil))
@@ -212,11 +283,13 @@ private actor ControlledPipeline: MediaTranscriptionPipeline {
     private var holdStart: Int64?
     private var held: CheckedContinuation<Void, Never>?
     private var observer: CheckedContinuation<Void, Never>?
+    private let cuesPerChunk: Int
     private(set) var events: [String] = []
 
-    init(failFirstChunkOf: UUID? = nil, holdFirstDecode: Bool = false, holdStartMilliseconds: Int64? = nil) {
+    init(failFirstChunkOf: UUID? = nil, holdFirstDecode: Bool = false, holdStartMilliseconds: Int64? = nil, cuesPerChunk: Int = 1) {
         failingMedia = failFirstChunkOf
         holdStart = holdFirstDecode ? 0 : holdStartMilliseconds
+        self.cuesPerChunk = cuesPerChunk
     }
 
     func waitForHeldDecode() async {
@@ -251,7 +324,9 @@ private actor ControlledPipeline: MediaTranscriptionPipeline {
         }
         var evidence = TranscriptionEvidence(settings: settings, audio: audio)
         let start = Double(audio.sourceStartMilliseconds) / 1000
-        evidence.segments = [.init(startSeconds: start, endSeconds: start + 0.5, text: "Keep.", words: nil)]
+        evidence.segments = (0..<cuesPerChunk).map { index in
+            .init(startSeconds: start + Double(index) * 0.12, endSeconds: start + Double(index) * 0.12 + 0.08, text: "Keep.", words: nil)
+        }
         evidence.outcome = .completed
         if failingMedia?.uuidString == id && audio.sourceStartMilliseconds == 0 {
             failingMedia = nil
@@ -260,5 +335,28 @@ private actor ControlledPipeline: MediaTranscriptionPipeline {
             throw TranscriptionFailure(cause: QueueError.unavailable("Test alignment failure"), evidence: evidence, evidenceURL: nil)
         }
         return evidence
+    }
+}
+
+private actor ControlledTranslationPipeline: SubtitleTranslationPipeline {
+    private var failCall: Int?
+    private var holdFirst: Bool
+    private var held: CheckedContinuation<Void, Never>?
+    private var observer: CheckedContinuation<Void, Never>?
+    private(set) var requests: [[UUID]] = []
+    init(failCall: Int? = nil, holdFirstCall: Bool = false) { self.failCall = failCall; holdFirst = holdFirstCall }
+    func waitForRequest() async {
+        if held != nil { return }
+        await withCheckedContinuation { observer = $0 }
+    }
+    func releaseRequest() { held?.resume(); held = nil }
+    func translate(settings: TranslationSettings, request: SubtitleTranslationRequest) async throws -> [TranslationBatchOutput] {
+        requests.append(request.inputs.map(\.cueID))
+        if holdFirst {
+            holdFirst = false
+            await withCheckedContinuation { held = $0; observer?.resume(); observer = nil }
+        }
+        if failCall == requests.count { throw SubtitleTranslationError.rateLimited(retryAfter: "10") }
+        return request.inputs.map { .init(cueID: $0.cueID, text: "Test-only translation") }
     }
 }

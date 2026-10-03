@@ -35,7 +35,7 @@ public struct TranslationBatchInput: Codable, Equatable, Sendable {
     public let sourceRevision: UInt64
     public let previousTranslation: CueTranslation
 
-    init(_ cue: SubtitleCue) {
+    public init(_ cue: SubtitleCue) {
         cueID = cue.id
         sourceText = cue.sourceText
         sourceRevision = cue.sourceRevision

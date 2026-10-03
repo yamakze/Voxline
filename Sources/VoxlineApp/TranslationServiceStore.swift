@@ -110,6 +110,16 @@ public final class TranslationServiceStore {
         try save()
     }
 
+    func apiKey(for settings: TranslationSettings) throws -> String {
+        guard let service = services.first(where: { $0.id == settings.serviceID }) else {
+            throw TaskValidationError.unconfiguredTranslationService
+        }
+        guard service.baseURL == settings.baseURL else {
+            throw TranslationServiceError.connectionFailed("所选服务地址与任务快照不同，请恢复服务配置或新建任务。")
+        }
+        return service.apiKey
+    }
+
     public func remove(id: UUID) {
         services.removeAll { $0.id == id }
         testResult.removeValue(forKey: id)
