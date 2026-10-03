@@ -5,22 +5,25 @@ import VoxlineCore
 
 public enum ModelStatus: Equatable, Sendable {
     case notDownloaded
-    case downloading(progress: Double)
-    case loading
+    case downloading(component: String, progress: Double)
+    case checking, loading, cancelling, cancelled
     case downloaded(path: String, byteCount: Int64)
+    case ready(path: String, byteCount: Int64)
     case failed(reason: String)
     case corrupted(reason: String)
 
     public var label: String {
         switch self {
-        case .notDownloaded: return "未下载"
-        case .downloading(let progress): return String(format: "下载中 %.0f%%", progress * 100)
-        case .loading: return "加载中"
-        case .downloaded(_, let byteCount):
-            let mb = Double(byteCount) / 1_048_576
-            return String(format: "本地文件 %.1f MB（待加载验证）", mb)
-        case .failed(let reason): return "下载失败：\(reason)"
-        case .corrupted(let reason): return "损坏：\(reason)"
+        case .notDownloaded: "未下载"
+        case .downloading(let component, let progress): String(format: "%@文件下载 %.0f%%", component, progress * 100)
+        case .checking: "校验版本与文件"
+        case .loading: "加载中"
+        case .cancelling: "取消中"
+        case .cancelled: "已取消，可重新下载"
+        case .downloaded(_, let bytes): String(format: "已安装 %.1f MB，未加载", Double(bytes) / 1_000_000)
+        case .ready(_, let bytes): String(format: "已加载 %.1f MB", Double(bytes) / 1_000_000)
+        case .failed(let reason): "操作失败：\(reason)"
+        case .corrupted(let reason): "安装不完整：\(reason)"
         }
     }
 }
@@ -31,182 +34,136 @@ public struct WhisperModelDescriptor: Identifiable, Sendable {
     public let description: String
     public let expectedSizeMB: Double
     public let isBaseline: Bool
-
-    public init(id: String, name: String, description: String, expectedSizeMB: Double, isBaseline: Bool = false) {
-        self.id = id
-        self.name = name
-        self.description = description
-        self.expectedSizeMB = expectedSizeMB
-        self.isBaseline = isBaseline
-    }
 }
 
-@Observable
-@MainActor
+@Observable @MainActor
 public final class ModelManager {
     public static let shared = ModelManager()
+    public static let availableModels = [WhisperModelDescriptor(
+        id: TranscriptionSettings.whisperKitBaseline.modelID,
+        name: "Whisper · 626 MB 基准",
+        description: "S001 已在 M4 / 16 GB 验证的固定版本；优先用于当前个人工作流。",
+        expectedSizeMB: 629.5, isBaseline: true)]
 
-    public static let availableModels: [WhisperModelDescriptor] = [
-        WhisperModelDescriptor(
-            id: "openai_whisper-large-v3-v20240930_626MB",
-            name: "Whisper Large v3 (Baseline)",
-            description: "默认推荐模型，高精度转写英语与多语言，已针对 Apple Silicon 优化。",
-            expectedSizeMB: 626.0,
-            isBaseline: true
-        ),
-        WhisperModelDescriptor(
-            id: "openai_whisper-large-v3-turbo_turbo_954MB",
-            name: "Whisper Large v3 Turbo",
-            description: "极速大模型，速度与质量兼备，适合长视频转写。",
-            expectedSizeMB: 954.0
-        ),
-        WhisperModelDescriptor(
-            id: "openai_whisper-base",
-            name: "Whisper Base",
-            description: "轻量级模型，资源占用极小，适合简单语音或快速预览。",
-            expectedSizeMB: 145.0
-        ),
-        WhisperModelDescriptor(
-            id: "openai_whisper-small",
-            name: "Whisper Small",
-            description: "平衡型模型，适合中等音质的日常对话与播客。",
-            expectedSizeMB: 483.0
-        ),
-        WhisperModelDescriptor(
-            id: "openai_whisper-tiny",
-            name: "Whisper Tiny",
-            description: "最小尺寸模型，仅用于极低内存环境验证。",
-            expectedSizeMB: 75.0
-        )
-    ]
+    public private(set) var modelStatuses: [String: ModelStatus] = [:]
+    public private(set) var diskUsage: [String: Int64] = [:]
+    public private(set) var modelDirectories: [String: URL] = [:]
+    public var storageError: String?
+    private let store: WhisperModelStore
+    private struct Operation { let id: UUID; let task: Task<Void, Never> }
+    private var operations: [String: Operation] = [:]
 
-    public var modelStatuses: [String: ModelStatus] = [:]
-    private var downloadTasks: [String: Task<Void, Never>] = [:]
-
-    public let modelsDirectory: URL
-
-    private init() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        modelsDirectory = appSupport.appendingPathComponent("Voxline/Models", isDirectory: true)
-        refreshAll()
+    init(store: WhisperModelStore = .shared) {
+        self.store = store
+        Task { await refreshAll() }
     }
 
-    public func status(for modelID: String) -> ModelStatus {
-        modelStatuses[modelID] ?? .notDownloaded
-    }
+    public func status(for modelID: String) -> ModelStatus { modelStatuses[modelID] ?? .notDownloaded }
 
-    public func refreshAll() {
-        for model in Self.availableModels {
-            refresh(modelID: model.id)
+    public func refreshAll() async {
+        for model in Self.availableModels where operations[model.id] == nil {
+            await refresh(modelID: model.id)
         }
     }
 
-    public func refresh(modelID: String) {
-        if case .downloading = modelStatuses[modelID] { return }
-
-        let targetDir = modelsDirectory.appendingPathComponent(modelID)
-        let fileManager = FileManager.default
-
-        if !fileManager.fileExists(atPath: targetDir.path) {
-            modelStatuses[modelID] = .notDownloaded
-            return
-        }
-
+    public func refresh(modelID: String, preserveStatus: Bool = false) async {
+        let previousStatus = modelStatuses[modelID]
         do {
-            let contents = try fileManager.contentsOfDirectory(atPath: targetDir.path)
-            if contents.isEmpty {
-                modelStatuses[modelID] = .notDownloaded
-                return
-            }
-
-            var totalBytes: Int64 = 0
-            if let enumerator = fileManager.enumerator(at: targetDir, includingPropertiesForKeys: [.fileSizeKey]) {
-                for case let fileURL as URL in enumerator {
-                    let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-                    if values.isRegularFile == true, let size = values.fileSize { totalBytes += Int64(size) }
-                }
-            }
-
-            // Structural presence is not a successful model load.
-            let hasModelFiles = ["MelSpectrogram", "AudioEncoder", "TextDecoder"].allSatisfy { component in
-                contents.contains(component + ".mlmodelc") || contents.contains(component + ".mlpackage")
-            }
-            if !hasModelFiles {
-                modelStatuses[modelID] = .corrupted(reason: "模型目录缺少必要权重文件或不完整。")
-            } else {
-                modelStatuses[modelID] = .downloaded(path: targetDir.path, byteCount: totalBytes)
+            let inventory = try await store.inventory(modelID: modelID)
+            guard operations[modelID] == nil, modelStatuses[modelID] == previousStatus else { return }
+            diskUsage[modelID] = inventory.byteCount
+            modelDirectories[modelID] = inventory.directory
+            storageError = nil
+            if preserveStatus { return }
+            switch inventory.state {
+            case .missing: modelStatuses[modelID] = .notDownloaded
+            case .installed: modelStatuses[modelID] = .downloaded(path: inventory.directory.path, byteCount: inventory.byteCount)
+            case .loaded: modelStatuses[modelID] = .ready(path: inventory.directory.path, byteCount: inventory.byteCount)
+            case .incomplete(let reason): modelStatuses[modelID] = .corrupted(reason: reason)
             }
         } catch {
-            modelStatuses[modelID] = .corrupted(reason: error.localizedDescription)
+            guard operations[modelID] == nil, modelStatuses[modelID] == previousStatus else { return }
+            storageError = error.localizedDescription
+            if !preserveStatus { modelStatuses[modelID] = .failed(reason: error.localizedDescription) }
         }
     }
 
     public func download(modelID: String) {
-        guard downloadTasks[modelID] == nil else { return }
-        modelStatuses[modelID] = .downloading(progress: 0)
-
-        let targetDir = modelsDirectory.appendingPathComponent(modelID)
-
-        downloadTasks[modelID] = Task {
+        guard operations[modelID] == nil else { return }
+        let operationID = UUID()
+        modelStatuses[modelID] = .downloading(component: "权重", progress: 0)
+        let task = Task {
             do {
-                try FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
-
-                _ = try await WhisperModelDownloads.download(
-                    modelID: modelID,
-                    directory: modelsDirectory,
-                    onProgress: { [weak self] progress in
-                        Task { @MainActor [weak self] in
-                            self?.modelStatuses[modelID] = .downloading(progress: progress)
+                try await store.download(modelID: modelID) { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.operations[modelID]?.id == operationID else { return }
+                        switch progress {
+                        case .files(let component, let fraction):
+                            guard case .downloading(let current, let previous) = self.modelStatuses[modelID] else { return }
+                            if current == "分词器" && component == "权重" { return }
+                            if current == component && fraction < previous { return }
+                            self.modelStatuses[modelID] = .downloading(component: component, progress: fraction)
+                        case .checking:
+                            guard case .downloading = self.modelStatuses[modelID] else { return }
+                            self.modelStatuses[modelID] = .checking
                         }
                     }
-                )
-
-                await MainActor.run {
-                    self.downloadTasks[modelID] = nil
-                    self.modelStatuses[modelID] = .notDownloaded
-                    self.refresh(modelID: modelID)
                 }
-            } catch is CancellationError {
-                await MainActor.run {
-                    self.downloadTasks[modelID] = nil
-                    self.modelStatuses[modelID] = .notDownloaded
-                    self.refresh(modelID: modelID)
-                }
+                try Task.checkCancellation()
+                guard operations[modelID]?.id == operationID else { return }
+                operations[modelID] = nil
+                await refresh(modelID: modelID)
             } catch {
-                await MainActor.run {
-                    self.downloadTasks[modelID] = nil
-                    self.modelStatuses[modelID] = .failed(reason: error.localizedDescription)
-                }
+                guard operations[modelID]?.id == operationID else { return }
+                modelStatuses[modelID] = Task.isCancelled ? .cancelled : .failed(reason: error.localizedDescription)
+                operations[modelID] = nil
+                await refresh(modelID: modelID, preserveStatus: true)
             }
         }
+        operations[modelID] = Operation(id: operationID, task: task)
     }
 
     public func cancelDownload(modelID: String) {
-        downloadTasks[modelID]?.cancel()
-        downloadTasks[modelID] = nil
-        modelStatuses[modelID] = .notDownloaded
-        refresh(modelID: modelID)
+        guard let operation = operations[modelID] else { return }
+        operation.task.cancel()
+        modelStatuses[modelID] = .cancelling
     }
 
-    public func delete(modelID: String) {
-        cancelDownload(modelID: modelID)
-        let targetDir = modelsDirectory.appendingPathComponent(modelID)
+    public func load(modelID: String) {
+        guard operations[modelID] == nil else { return }
+        let operationID = UUID()
+        modelStatuses[modelID] = .loading
+        let task = Task {
+            do {
+                try await store.load(modelID: modelID)
+                guard operations[modelID]?.id == operationID else { return }
+                operations[modelID] = nil
+                await refresh(modelID: modelID)
+            } catch {
+                guard operations[modelID]?.id == operationID else { return }
+                operations[modelID] = nil
+                modelStatuses[modelID] = .failed(reason: error.localizedDescription)
+                await refresh(modelID: modelID, preserveStatus: true)
+            }
+        }
+        operations[modelID] = Operation(id: operationID, task: task)
+    }
+
+    public func unload(modelID: String) async {
+        guard operations[modelID] == nil else { return }
+        await store.unload(modelID: modelID)
+        await refresh(modelID: modelID)
+    }
+
+    public func delete(modelID: String) async {
+        guard operations[modelID] == nil else { return }
         do {
-            try FileManager.default.removeItem(at: targetDir)
-            modelStatuses[modelID] = .notDownloaded
+            try await store.delete(modelID: modelID)
+            await refresh(modelID: modelID)
         } catch {
             modelStatuses[modelID] = .failed(reason: error.localizedDescription)
         }
     }
 
-    public func totalDiskUsage() -> Int64 {
-        var total: Int64 = 0
-        for status in modelStatuses.values {
-            if case .downloaded(_, let bytes) = status {
-                total += bytes
-            }
-        }
-        return total
-    }
+    public func totalDiskUsage() -> Int64 { diskUsage.values.reduce(0, +) }
 }

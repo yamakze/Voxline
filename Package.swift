@@ -11,10 +11,11 @@ let package = Package(
     targets: [
         .target(name: "VoxlineCore"),
         .target(name: "VoxlineMedia", dependencies: ["VoxlineCore"]),
-        .target(name: "VoxlineWhisperKit", dependencies: ["VoxlineCore", .product(name: "WhisperKit", package: "argmax-oss-swift")]),
+        .target(name: "VoxlineWhisperKit", dependencies: ["VoxlineCore", .product(name: "WhisperKit", package: "argmax-oss-swift")], resources: [.process("Resources")]),
         .executableTarget(name: "VoxlineApp", dependencies: ["VoxlineCore", "VoxlineMedia", "VoxlineWhisperKit"]),
         .testTarget(name: "VoxlineCoreTests", dependencies: ["VoxlineCore"]),
         .testTarget(name: "VoxlineMediaTests", dependencies: ["VoxlineMedia", "VoxlineCore"]),
-        .testTarget(name: "VoxlineAppTests", dependencies: ["VoxlineApp", "VoxlineCore"])
+        .testTarget(name: "VoxlineAppTests", dependencies: ["VoxlineApp", "VoxlineCore"]),
+        .testTarget(name: "VoxlineWhisperKitTests", dependencies: ["VoxlineWhisperKit"])
     ]
 )

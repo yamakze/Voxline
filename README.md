@@ -2,7 +2,7 @@
 
 Voxline 是面向 macOS 与 iOS 的原生音视频字幕应用。Mac MVP 以 Task 批处理本地音视频：选择本次参数、排队转写翻译、进入可播放的媒体详情校对并导出 SRT。iOS 原生播放与校对随后交付。界面主题为 Liquid Glass，新系统使用原生玻璃，当前 Mac 使用原生材质。
 
-当前源码具备单窗口任务库、Task 读写、旧文档迁移、本地混合音视频准备、参数选择和原生媒体预览。支持 MP4/MOV/M4V、M4A/MP3/WAV；多语言音轨明确选择，单项失败保留在同一任务。真实处理队列、模型安装与加载、API 翻译及完整校对导出按 [GitHub Project](https://github.com/users/yamakze/projects/1/views/1) 继续交付。iCloud 同步暂废弃，YouTube 来源后续交付。S001 短样本校对完成，长视频验证暂缓。
+当前源码具备单窗口任务库、Task 读写、旧文档迁移、本地混合音视频准备、参数选择和原生媒体预览。支持 MP4/MOV/M4V、M4A/MP3/WAV；多语言音轨明确选择，单项失败保留在同一任务。S001 基准模型支持固定版本下载、完整性校验、本地加载与空间管理。真实处理队列、API 翻译及完整校对导出按 [GitHub Project](https://github.com/users/yamakze/projects/1/views/1) 继续交付。iCloud 同步暂废弃，YouTube 来源后续交付。S001 短样本校对完成，长视频验证暂缓。
 
 ## 构建
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import VoxlineCore
 
 public struct ModelManagementView: View {
@@ -10,8 +11,7 @@ public struct ModelManagementView: View {
         let colors: [Color] = [.blue, .teal, .purple, .indigo, .orange]
         var segs: [StorageBreakdownBar.Segment] = []
         for (idx, model) in ModelManager.availableModels.enumerated() {
-            let status = modelManager.status(for: model.id)
-            if case .downloaded(_, let bytes) = status {
+            if let bytes = modelManager.diskUsage[model.id], bytes > 0 {
                 segs.append(StorageBreakdownBar.Segment(
                     title: model.name,
                     byteCount: bytes,
@@ -39,16 +39,21 @@ public struct ModelManagementView: View {
                             .font(.headline)
                         Spacer()
                         let totalBytes = modelManager.totalDiskUsage()
-                        let mb = Double(totalBytes) / 1_048_576.0
-                        Text(mb >= 1024 ? String(format: "已用 %.2f GB", mb / 1024.0) : String(format: "已用 %.0f MB", mb))
+                        let mb = Double(totalBytes) / 1_000_000.0
+                        Text(mb >= 1000 ? String(format: "已用 %.2f GB", mb / 1000.0) : String(format: "已用 %.0f MB", mb))
                             .font(.subheadline.monospacedDigit().bold())
                             .foregroundStyle(.secondary)
                     }
 
                     StorageBreakdownBar(
-                        totalDiskBytes: max(modelManager.totalDiskUsage() + 2_000_000_000, 10_000_000_000), // proportional scale
+                        totalDiskBytes: max(modelManager.totalDiskUsage(), 1),
                         segments: storageSegments
                     )
+                    Text("模型、分词器与下载缓存的本地文件占用")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if let error = modelManager.storageError {
+                        Text(error).foregroundStyle(.red).font(.caption)
+                    }
                 }
                 .padding(18)
                 .liquidGlassSurface()
@@ -68,8 +73,8 @@ public struct ModelManagementView: View {
             }
             .padding(28)
         }
-        .onAppear {
-            modelManager.refreshAll()
+        .task {
+            await modelManager.refreshAll()
         }
     }
 
@@ -94,7 +99,7 @@ public struct ModelManagementView: View {
                             .font(.headline)
 
                         if model.isBaseline {
-                            Text("官方推荐基准")
+                            Text("S001 基准")
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -121,10 +126,10 @@ public struct ModelManagementView: View {
             }
 
             // Downloading progress bar
-            if case .downloading(let progress) = status {
+            if case .downloading(let component, let progress) = status {
                 VStack(alignment: .leading, spacing: 4) {
                     ProgressView(value: progress, total: 1.0)
-                    Text(String(format: "正在下载 CoreML 模型权重… %.0f%%", progress * 100))
+                    Text(String(format: "%@文件下载进度 %.0f%%", component, progress * 100))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -135,14 +140,14 @@ public struct ModelManagementView: View {
             HStack {
                 Spacer()
                 switch status {
-                case .notDownloaded:
+                case .notDownloaded, .cancelled:
                     Button("下载此模型", systemImage: "arrow.down.circle.fill") {
                         modelManager.download(modelID: model.id)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
 
-                case .downloading:
+                case .downloading, .checking:
                     Button("取消下载", systemImage: "xmark.circle") {
                         modelManager.cancelDownload(modelID: model.id)
                     }
@@ -150,15 +155,19 @@ public struct ModelManagementView: View {
                     .controlSize(.small)
 
                 case .downloaded:
-                    Button("从本地移除", systemImage: "trash") {
-                        modelManager.delete(modelID: model.id)
+                    Button("验证并加载", systemImage: "checkmark.circle") {
+                        modelManager.load(modelID: model.id)
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    .foregroundStyle(.red)
+                case .ready:
+                    Button("卸载模型", systemImage: "eject") {
+                        Task { await modelManager.unload(modelID: model.id) }
+                    }
+                    .buttonStyle(.bordered).controlSize(.small)
 
-                case .failed(let reason):
-                    Text("下载失败：\(reason)").font(.caption).foregroundStyle(.red)
+                case .failed(let reason), .corrupted(let reason):
+                    Text(reason).font(.caption).foregroundStyle(.red)
                     Spacer()
                     Button("重新下载", systemImage: "arrow.clockwise") {
                         modelManager.download(modelID: model.id)
@@ -166,18 +175,24 @@ public struct ModelManagementView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
 
-                case .corrupted(let reason):
-                    Text("损坏：\(reason)").font(.caption).foregroundStyle(.red)
-                    Spacer()
-                    Button("重新下载", systemImage: "arrow.clockwise") {
-                        modelManager.download(modelID: model.id)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-
-                case .loading:
+                case .loading, .cancelling:
                     ProgressView().controlSize(.mini)
-                    Text("加载中…").font(.caption).foregroundStyle(.secondary)
+                    Text(status.label).font(.caption).foregroundStyle(.secondary)
+                }
+                switch status {
+                case .downloaded, .cancelled, .failed, .corrupted:
+                    if (modelManager.diskUsage[model.id] ?? 0) > 0 {
+                        Button("从本地移除", systemImage: "trash") {
+                            Task { await modelManager.delete(modelID: model.id) }
+                        }
+                        .buttonStyle(.bordered).controlSize(.small).foregroundStyle(.red)
+                    }
+                default: EmptyView()
+                }
+                if let directory = modelManager.modelDirectories[model.id],
+                   (modelManager.diskUsage[model.id] ?? 0) > 0 {
+                    Button("打开目录", systemImage: "folder") { NSWorkspace.shared.open(directory) }
+                        .buttonStyle(.bordered).controlSize(.small)
                 }
             }
         }
@@ -189,18 +204,23 @@ public struct ModelManagementView: View {
     private func statusBadge(status: ModelStatus) -> some View {
         HStack(spacing: 4) {
             switch status {
-            case .downloaded:
+            case .ready:
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 Text(status.label).foregroundStyle(.green)
-            case .downloading:
+            case .downloaded:
+                Image(systemName: "internaldrive").foregroundStyle(.secondary)
+                Text(status.label).foregroundStyle(.secondary)
+            case .downloading, .checking:
                 ProgressView().controlSize(.mini)
                 Text(status.label).foregroundStyle(.blue)
             case .notDownloaded:
                 Image(systemName: "cloud").foregroundStyle(.secondary)
                 Text("未下载").foregroundStyle(.secondary)
-            case .loading:
+            case .loading, .cancelling:
                 ProgressView().controlSize(.mini)
-                Text("加载中").foregroundStyle(.blue)
+                Text(status.label).foregroundStyle(.blue)
+            case .cancelled:
+                Text(status.label).foregroundStyle(.secondary)
             case .failed, .corrupted:
                 Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
                 Text("异常").foregroundStyle(.red)

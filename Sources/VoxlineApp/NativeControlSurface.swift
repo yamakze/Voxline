@@ -391,8 +391,8 @@ public struct StorageBreakdownBar: View {
                     HStack(spacing: 5) {
                         Circle().fill(segment.color).frame(width: 8, height: 8)
                         Text(segment.title).font(.caption).foregroundStyle(.primary)
-                        let mb = Double(segment.byteCount) / 1_048_576.0
-                        Text(mb >= 1024 ? String(format: "%.1f GB", mb / 1024.0) : String(format: "%.0f MB", mb))
+                        let mb = Double(segment.byteCount) / 1_000_000.0
+                        Text(mb >= 1000 ? String(format: "%.1f GB", mb / 1000.0) : String(format: "%.0f MB", mb))
                             .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                     }
                 }

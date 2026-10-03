@@ -388,6 +388,9 @@ public struct TaskConfigurationView: View {
                 DisclosureGroup(isExpanded: .constant(true)) {
                     VStack(alignment: .leading, spacing: 10) {
                         Picker("模型", selection: $modelID) {
+                            if !ModelManager.availableModels.contains(where: { $0.id == modelID }) {
+                                Text("尚未支持：\(modelID)").tag(modelID)
+                            }
                             ForEach(ModelManager.availableModels) { model in
                                 Text(model.name).tag(model.id)
                             }
@@ -397,11 +400,15 @@ public struct TaskConfigurationView: View {
                         HStack(spacing: 6) {
                             Text("状态：")
                             switch status {
-                            case .downloaded:
+                            case .ready:
                                 Text(status.label).foregroundStyle(.green)
-                            case .downloading:
+                            case .downloaded:
+                                Text(status.label).foregroundStyle(.secondary)
+                                Button("加载") { modelManager.load(modelID: modelID) }
+                                    .buttonStyle(.borderless)
+                            case .downloading, .checking, .cancelling:
                                 Text(status.label).foregroundStyle(.blue)
-                            case .notDownloaded:
+                            case .notDownloaded, .cancelled:
                                 Text("未下载（建议提前就绪）").foregroundStyle(.orange)
                                 Button("下载") { modelManager.download(modelID: modelID) }
                                     .buttonStyle(.borderless)

@@ -19,6 +19,8 @@ contents = bundle / "Contents"
 (contents / "MacOS").mkdir(parents=True, exist_ok=True)
 (contents / "Resources").mkdir(exist_ok=True)
 shutil.copy2(binary, contents / "MacOS" / "Voxline")
+shutil.copy2(binary.parent / "Voxline_VoxlineWhisperKit.bundle" / "BaselineModel.json",
+             contents / "Resources" / "BaselineModel.json")
 shutil.copytree(root / "Licenses", contents / "Resources" / "Licenses", dirs_exist_ok=True)
 icon_source = root / "Resources" / "AppIcon.icns"
 if icon_source.is_file():

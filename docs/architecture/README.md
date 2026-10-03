@@ -7,7 +7,7 @@ iOS 开发入口通过 Voxline.xcodeproj / VoxlineIOS 构建，基线为 iOS 18�
 ## 模块职责
 
 - VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证及转写协议。只依赖 Foundation，不保存设备路径、书签或密钥。
-- VoxlineWhisperKit：本地模型配置和 SDK 下载边界。SDK 类型只存在于该模块；下载进度转换为应用自己的数值。模型安装、版本匹配、实际加载、Provider 和恢复由对应条目继续实现。
+- VoxlineWhisperKit：固定版本模型清单、下载与安装校验、本地目录占用和 WhisperKit 实例生命周期。SDK 类型只存在于该模块；应用接收文件下载进度、安装和加载状态。Provider 与恢复由后续条目接入，同一进程复用已加载实例。
 - VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256 和设备本地只读书签。AVFoundation 类型不进入 Core 或 Task 文件；媒体保持引用，书签与媒体条目 ID、内容及音轨绑定。
 - VoxlineApp：单窗口导航、TaskLibrary、任务准备、详情、原生播放、字幕校对及模型／服务管理界面。绑定修改 Task，TaskLibrary 通过 TaskDocumentCodec 原子保存唯一任务文件。UI 不导入 WhisperKit。
 
@@ -39,10 +39,10 @@ LocalMediaStore 保持只读沙盒书签，缺失、损坏、授权失败和内�
 
 MainWindowView 组织任务列表、准备表单、任务详情和媒体详情。NativeControlSurface 在系统 26 及以上使用原生 Liquid Glass，旧系统使用 Material；原生组件优先。系统 26 视觉和辅助功能设置的完整运行验收仍由 VXL-047 跟踪。
 
-真实抽音频、转写、API 翻译和持久队列尚未接通。未接通的开始、重试及重译明确不可用；禁止计时模拟进度、示例字幕或伪译文。模型目录与权重文件存在只能显示本地文件待验证，不能声明模型可转写。
+真实抽音频、转写、API 翻译和持久队列尚未接通。未接通的开始、重试及重译明确不可用；禁止计时模拟进度、示例字幕或伪译文。模型安装清单匹配且文件完整时显示已安装；只有当前进程中的 WhisperKit 完成加载才显示已加载。模型规则见 [ADR-0007](../ADR/0007-pinned-local-model-installation.md)。
 
 原始 ASR 证据和可读字幕分开：RawTranscriptionSegment 保留原始对齐，转换为 SubtitleCue 前验证。切分及 Provider 不能排序、裁剪或丢弃文本来伪装成功。过期译文保留旧来源并显示待重译，新的自动处理不能覆盖较新的手工编辑。
 
-VXL-006 输入范围完成。VXL-034 的独立音频已进入同一 Task，完整处理链路继续验收；VXL-007/008/009/010/012/026 连接真实模型、抽音频、切分与恢复，VXL-013/014/015/016/017 连接翻译、播放校对和导出。
+VXL-006 输入范围完成。VXL-034 的独立音频已进入同一 Task，完整处理链路继续验收；VXL-007 的基准模型安装与加载已实现；VXL-008/009/010/012/026 连接抽音频、转写、切分与恢复，VXL-013/014/015/016/017 连接翻译、播放校对和导出。
 
 应用打包启用 App Sandbox、用户选择文件读写、应用范围书签和网络客户端。iCloud 同步暂废弃；YouTube 来源后续实施；产品只支持 macOS 与 iOS。
