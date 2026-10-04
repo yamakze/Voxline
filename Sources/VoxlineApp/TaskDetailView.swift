@@ -136,7 +136,7 @@ public struct TaskDetailView: View {
                 Label("本次参数快照 (只读)", systemImage: "slider.horizontal.2")
                     .font(.subheadline.bold())
                 Spacer()
-                Text(task.startedAt == nil ? "开始前可修改" : "处理中已锁定")
+                Text(task.startedAt == nil ? "开始前可修改" : "开始后已锁定")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
