@@ -128,7 +128,7 @@ SubtitleSegmentationResult 保存输入证据、策略、字幕及段／词范�
 
 ## 执行与界面
 
-MainWindowView 组织任务列表、准备表单、任务详情和媒体详情。NativeControlSurface 在系统 26 及以上使用原生 Liquid Glass，旧系统使用 Material；原生组件优先。系统 26 视觉和辅助功能设置的完整运行验收仍由 VXL-047 跟踪。
+MainWindowView 组织任务列表、准备表单、任务详情和媒体详情。NativeControlSurface 在系统 26 及以上使用原生 Liquid Glass，旧系统使用 Material；原生组件优先。系统 26 视觉和辅助功能设置的运行验收由 VXL-049 跟踪（暂缓）。
 
 减少透明度时，自定义控制与字幕浮层使用不透明背景。减少动态效果时，字幕切换取消淡入淡出，当前行与悬停状态即时更新；原生控件沿用系统辅助功能行为。
 
