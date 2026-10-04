@@ -14,7 +14,7 @@ compile_and_run.sh 构建成功后停止当前仓库产物对应的旧进程，�
 
 ## iOS
 
-Voxline.xcodeproj 保留 VoxlineIOS scheme，应用 target 为 VoxlineApp；两平台应用源码统一在 Sources/VoxlineApp。Core／Media 框架直接使用相同源码目录，平台适配通过条件编译选择。当前 iOS 不下载或链接 WhisperKit。Xcode 可打开工程进行断点调试与 SwiftUI Preview。
+Voxline.xcodeproj 保留 VoxlineIOS scheme，应用 target 为 VoxlineApp；两平台应用源码统一在 Sources/Voxline/App。Core／Media 框架直接使用相同源码目录，平台适配通过条件编译选择。当前 iOS 不下载或链接 WhisperKit。Xcode 可打开工程进行断点调试与 SwiftUI Preview。
 
 ```sh
 Scripts/build-ios-ipa.sh

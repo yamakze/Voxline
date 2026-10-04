@@ -6,7 +6,7 @@
 
 当前模型库只提供 S001 验证的基准型号。其他型号需要固定版本清单、目标设备性能和字幕质量证据后加入；既有 Task 的其他型号保持原值并显示尚未支持，避免改变原参数。
 
-[BaselineModel.json](../../Sources/VoxlineWhisperKit/Resources/BaselineModel.json) 是仓库提交、必需文件、长度和摘要的唯一清单。下载显式指定提交与型号路径，完整校验后才原子写入安装记录，避免 SDK 模糊搜索或部分下载被当作成功。
+[BaselineModel.json](../../Sources/Voxline/WhisperKit/Resources/BaselineModel.json) 是仓库提交、必需文件、长度和摘要的唯一清单。下载显式指定提交与型号路径，完整校验后才原子写入安装记录，避免 SDK 模糊搜索或部分下载被当作成功。
 
 安装与加载分开：安装可跨进程识别，加载只代表当前进程中 SDK 实际完成 Core ML 初始化。同型号复用实例，先卸载再删除或重新下载。刷新只查版本与文件长度，下载结束和实际加载前校验摘要，避免反复扫描整套权重。
 

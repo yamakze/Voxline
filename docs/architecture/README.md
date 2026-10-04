@@ -2,7 +2,7 @@
 
 Mac 采用 SwiftPM，iOS 采用 Xcode 工程。依赖提交由 Package.swift / Package.resolved 锁定，Mac 只链接 WhisperKit 产品。工具链、构建与产物统一见 [开发工作流](../development.md)。
 
-两平台使用 Sources/VoxlineApp 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态组件和设置控件在应用模块内共用。当前任务准备与处理页面仍为 Mac 范围，iOS 使用原生浏览和校对入口，功能补齐时逐步共用主要页面。
+两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态组件和设置控件在应用模块内共用。当前任务准备与处理页面仍为 Mac 范围，iOS 使用原生浏览和校对入口，功能补齐时逐步共用主要页面。
 
 iOS 当前只链接同一份 Core 与 Media，不链接 Workflow、Translation 或推理 SDK。导入 .voxline / JSON 后验证、迁移并保存独立副本到本地 Documents。同任务 ID 再次导入须确认覆盖本地校对，原文件不写回，Mac 书签不传入 iOS。
 
