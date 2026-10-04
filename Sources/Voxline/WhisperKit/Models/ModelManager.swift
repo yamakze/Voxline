@@ -41,12 +41,13 @@ public final class ModelManager {
     public static let availableModels = [WhisperModelDescriptor(
         id: TranscriptionSettings.whisperKitBaseline.modelID,
         name: "Whisper · 626 MB 基准",
-        description: "S001 已在 M4 / 16 GB 验证的固定版本；优先用于当前个人工作流。",
+        description: "Whisper large-v3 压缩模型，使用固定仓库版本。本地处理不上传音频。",
         expectedSizeMB: 629.5, isBaseline: true)]
 
     public private(set) var modelStatuses: [String: ModelStatus] = [:]
     public private(set) var diskUsage: [String: Int64] = [:]
     public private(set) var modelDirectories: [String: URL] = [:]
+    public private(set) var modelRevisions: [String: String] = [:]
     public var storageError: String?
     private let store: WhisperModelStore
     private struct Operation { let id: UUID; let task: Task<Void, Never> }
@@ -72,6 +73,7 @@ public final class ModelManager {
             guard operations[modelID] == nil, modelStatuses[modelID] == previousStatus else { return }
             diskUsage[modelID] = inventory.byteCount
             modelDirectories[modelID] = inventory.directory
+            modelRevisions[modelID] = inventory.revision
             storageError = nil
             if preserveStatus { return }
             switch inventory.state {

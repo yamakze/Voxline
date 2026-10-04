@@ -26,6 +26,7 @@ struct VoxlineApp: App {
                 .tint(Color.voxlineAccent)
             #elseif os(iOS)
             IOSTaskLibraryView()
+                .background(AppleTranslationSessionHost())
             #endif
         }
         #if os(macOS)

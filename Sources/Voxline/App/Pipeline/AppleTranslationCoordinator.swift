@@ -1,4 +1,3 @@
-#if os(macOS)
 import Foundation
 import Observation
 import SwiftUI
@@ -6,11 +5,12 @@ import SwiftUI
 import VoxlineCore
 import VoxlineTranslation
 
-enum AppleSubtitleTranslationError: Error, LocalizedError {
+enum AppleSubtitleTranslationError: Error, LocalizedError, Equatable {
     case unsupportedLanguagePair(String, String)
     case busy
     case invalidResponse
     case languagePreparationFailed(String)
+    case simulatorUnsupported
 
     var errorDescription: String? {
         switch self {
@@ -20,19 +20,25 @@ enum AppleSubtitleTranslationError: Error, LocalizedError {
         case .invalidResponse: "Apple Translation 返回的字幕 ID 或文本不完整，本批结果未保存。"
         case .languagePreparationFailed(let reason):
             "Apple 语言准备未完成：\(reason)。请在系统面板完成下载后重试，原文和已完成译文已保留。"
+        case .simulatorUnsupported: "Apple 本机翻译不支持 iOS 模拟器，请在真实设备准备语言并翻译。"
         }
     }
 }
 
-/// The session stays inside the stable root view's translationTask on macOS 15.
+/// View sessions stay inside the stable root's translationTask on macOS 15 / iOS 18.
 /// Cancelling a queue request waits for the SDK call to end before releasing the queue.
 @MainActor @Observable
 final class AppleTranslationCoordinator {
     static let shared = AppleTranslationCoordinator()
 
+    private enum Purpose {
+        case prepareLanguages
+        case translate([TranslationBatchInput])
+    }
+
     private struct Work {
         let id: UUID
-        let inputs: [TranslationBatchInput]
+        let purpose: Purpose
         let source: Locale.Language
         let target: Locale.Language
         let continuation: CheckedContinuation<[TranslationBatchOutput], any Error>
@@ -51,12 +57,21 @@ final class AppleTranslationCoordinator {
             throw SubtitleTranslationError.invalidRequest
         }
         let (source, target) = try await Self.languagePair(sourceID: sourceID, targetID: settings.targetLanguage)
+        return try await requestSession(purpose: .translate(request.inputs), source: source, target: target)
+    }
+
+    func prepareLanguages(sourceID: String, targetID: String) async throws {
+        let (source, target) = try await Self.languagePair(sourceID: sourceID, targetID: targetID)
+        _ = try await requestSession(purpose: .prepareLanguages, source: source, target: target)
+    }
+
+    private func requestSession(purpose: Purpose, source: Locale.Language, target: Locale.Language) async throws -> [TranslationBatchOutput] {
         try Task.checkCancellation()
         guard work == nil else { throw AppleSubtitleTranslationError.busy }
         let id = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                work = Work(id: id, inputs: request.inputs, source: source, target: target, continuation: continuation)
+                work = Work(id: id, purpose: purpose, source: source, target: target, continuation: continuation)
                 var next = lastConfiguration ?? TranslationSession.Configuration(source: source, target: target)
                 if next.source != source || next.target != target {
                     next = TranslationSession.Configuration(source: source, target: target)
@@ -70,6 +85,9 @@ final class AppleTranslationCoordinator {
     }
 
     static func languagePair(sourceID: String, targetID: String) async throws -> (Locale.Language, Locale.Language) {
+        #if targetEnvironment(simulator)
+        throw AppleSubtitleTranslationError.simulatorUnsupported
+        #else
         let availability = LanguageAvailability()
         let languages = await availability.supportedLanguages
         guard let source = matchingLanguage(sourceID, in: languages),
@@ -78,6 +96,7 @@ final class AppleTranslationCoordinator {
             throw AppleSubtitleTranslationError.unsupportedLanguagePair(sourceID, targetID)
         }
         return (source, target)
+        #endif
     }
 
     nonisolated static func matchingLanguage(_ identifier: String, in languages: [Locale.Language]) -> Locale.Language? {
@@ -104,7 +123,7 @@ final class AppleTranslationCoordinator {
         let result: Result<[TranslationBatchOutput], any Error>
         do {
             let session: TranslationSession
-            if #available(macOS 26, *),
+            if #available(macOS 26, iOS 26, *),
                await LanguageAvailability().status(from: current.source, to: current.target) == .installed {
                 session = TranslationSession(installedSource: current.source, target: current.target)
                 cancelSession = { session.cancel() }
@@ -118,10 +137,15 @@ final class AppleTranslationCoordinator {
             }
             try Task.checkCancellation()
             if work?.cancelled == true { throw CancellationError() }
-            let responses = try await session.translations(from: Self.requests(inputs: current.inputs))
-            try Task.checkCancellation()
-            if work?.cancelled == true { throw CancellationError() }
-            result = .success(try Self.outputs(responses, inputs: current.inputs))
+            switch current.purpose {
+            case .prepareLanguages:
+                result = .success([])
+            case .translate(let inputs):
+                let responses = try await session.translations(from: Self.requests(inputs: inputs))
+                try Task.checkCancellation()
+                if work?.cancelled == true { throw CancellationError() }
+                result = .success(try Self.outputs(responses, inputs: inputs))
+            }
         } catch {
             result = .failure(work?.cancelled == true ? CancellationError() : error)
         }
@@ -167,5 +191,3 @@ struct AppleTranslationSessionHost: View {
             .accessibilityHidden(true)
     }
 }
-
-#endif

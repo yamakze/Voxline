@@ -1,4 +1,3 @@
-#if os(macOS)
 import VoxlineTranslation
 import SwiftUI
 import VoxlineCore
@@ -8,12 +7,26 @@ public struct TranslationServicesSettingsView: View {
     @State private var isAddingService = false
     @State private var editingService: TranslationServiceConfig?
     @State private var errorMessage: String?
+    @State private var connectionTask: Task<Void, Never>?
+    private var referencedService: TranslationServiceConfig?
 
-    public init() {}
+    public init(referencedSettings: TranslationSettings? = nil) {
+        if let api = referencedSettings?.api, let id = api.serviceID, let settings = referencedSettings {
+            referencedService = .init(id: id, name: api.modelID, baseURL: api.baseURL, modelID: api.modelID,
+                                      batchSize: settings.batchSize, systemPrompt: api.systemPrompt)
+        }
+    }
 
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                Text("字幕文本发送到所选服务；音频保持本地。密钥仅保存在本设备。")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let referencedService, !store.services.contains(where: { $0.id == referencedService.id }) {
+                    Text("本次任务引用的服务尚未在此设备配置。地址、模型和参数沿用任务快照。")
+                        .font(.callout)
+                    Button("配置本次服务") { editingService = referencedService }
+                }
                 if store.isLoading { ProgressView("读取服务与 Keychain…") }
                 if let error = store.errorMessage {
                     Text(error).foregroundStyle(.red).textSelection(.enabled)
@@ -39,6 +52,7 @@ public struct TranslationServicesSettingsView: View {
             .padding(28)
         }
         .toolbar {
+            #if os(macOS)
             ToolbarItem(placement: .navigation) {
                 Text("翻译服务")
                     .font(.headline)
@@ -48,6 +62,7 @@ public struct TranslationServicesSettingsView: View {
                 Color.clear.frame(width: 1, height: 1)
             }
 
+            #endif
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     Task { await store.load() }
@@ -66,6 +81,8 @@ public struct TranslationServicesSettingsView: View {
                 .disabled(store.isLoading || store.isSaving)
             }
         }
+        .navigationTitle("翻译服务")
+        .onDisappear { connectionTask?.cancel() }
         .sheet(isPresented: $isAddingService) {
             ServiceEditorModal(service: nil, store: store) { newService, key in
                 try await store.addOrUpdate(newService, apiKey: key)
@@ -123,7 +140,8 @@ public struct TranslationServicesSettingsView: View {
                 // Test connection button
                 VStack(alignment: .trailing, spacing: 4) {
                     Button("测试连接") {
-                        Task {
+                        connectionTask = Task {
+                            defer { connectionTask = nil }
                             do { _ = try await store.testConnection(service: service) }
                             catch { errorMessage = error.localizedDescription }
                         }
@@ -138,6 +156,7 @@ public struct TranslationServicesSettingsView: View {
                             ProgressView().controlSize(.mini)
                             Text("连接中…").font(.caption2).foregroundStyle(.secondary)
                         }
+                        Button("取消测试") { connectionTask?.cancel() }
                     } else if let result = store.testResult[service.id] {
                         switch result {
                         case .success(let msg):
@@ -154,7 +173,7 @@ public struct TranslationServicesSettingsView: View {
             Divider()
 
             // Service details
-            HStack(spacing: 24) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Text("默认模型：").font(.caption2).foregroundStyle(.secondary)
                     Text(service.modelID).font(.caption.monospaced().bold())
@@ -165,26 +184,26 @@ public struct TranslationServicesSettingsView: View {
                     Text(store.credentialPresence[service.id] == true ? "已保存在 Keychain" : "未设置（无鉴权）").font(.caption)
                 }
 
-                Spacer()
-
-                Button("编辑", systemImage: "pencil") {
-                    editingService = service
-                }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .foregroundStyle(.tint)
-                .disabled(store.isLoading || store.isSaving)
-
-                Button("删除", systemImage: "trash") {
-                    Task {
-                        do { try await store.remove(id: service.id) }
-                        catch { errorMessage = error.localizedDescription }
+                HStack {
+                    Button("编辑", systemImage: "pencil") {
+                        editingService = service
                     }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(.tint)
+                    .disabled(store.isLoading || store.isSaving)
+
+                    Button("删除", systemImage: "trash") {
+                        Task {
+                            do { try await store.remove(id: service.id) }
+                            catch { errorMessage = error.localizedDescription }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .disabled(store.isLoading || store.isSaving)
                 }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .foregroundStyle(.red)
-                .disabled(store.isLoading || store.isSaving)
             }
         }
         .padding(16)
@@ -211,6 +230,7 @@ private struct ServiceEditorModal: View {
     @State private var isLoadingKey: Bool
     @State private var isSaving = false
     @State private var keyReadFailed = false
+    @State private var connectionTask: Task<Void, Never>?
 
     init(service: TranslationServiceConfig?, store: TranslationServiceStore,
          onSave: @escaping (TranslationServiceConfig, String) async throws -> Void) {
@@ -223,7 +243,7 @@ private struct ServiceEditorModal: View {
         _batchSizeText = State(initialValue: String(service?.batchSize ?? TranslationSettings.defaultBatchSize))
         _systemPrompt = State(initialValue: service?.systemPrompt ?? TranslationSettings.defaultSystemPrompt)
         _apiKey = State(initialValue: "")
-        _isLoadingKey = State(initialValue: service != nil)
+        _isLoadingKey = State(initialValue: service.map { s in store.services.contains(where: { $0.id == s.id }) } ?? false)
     }
 
     var body: some View {
@@ -233,7 +253,7 @@ private struct ServiceEditorModal: View {
                 Text(original == nil ? "添加翻译服务" : "编辑翻译服务")
                     .font(.headline)
                 Spacer()
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction).disabled(isSaving)
+                Button("取消") { connectionTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction).disabled(isSaving)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -290,6 +310,7 @@ private struct ServiceEditorModal: View {
 
                 if isTesting {
                     ProgressView().controlSize(.small)
+                    Button("取消测试") { connectionTask?.cancel() }
                 }
 
                 Spacer()
@@ -305,7 +326,14 @@ private struct ServiceEditorModal: View {
             .padding(.vertical, 12)
             .background(.regularMaterial)
         }
+        #if os(macOS)
         .frame(width: 560, height: 690)
+        #else
+        .autocorrectionDisabled()
+        .textInputAutocapitalization(.never)
+        #endif
+        .interactiveDismissDisabled(isSaving || isTesting)
+        .onDisappear { connectionTask?.cancel() }
         .task { await loadCredential() }
     }
 
@@ -332,8 +360,8 @@ private struct ServiceEditorModal: View {
         testSuccessMessage = nil
         isTesting = true
 
-        Task {
-            defer { isTesting = false }
+        connectionTask = Task {
+            defer { isTesting = false; connectionTask = nil }
             do {
                 let config = try buildConfig()
                 testSuccessMessage = try await store.testConnection(service: config, apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -360,7 +388,7 @@ private struct ServiceEditorModal: View {
     }
 
     private func loadCredential() async {
-        guard let original else { return }
+        guard let original, store.services.contains(where: { $0.id == original.id }) else { return }
         isLoadingKey = true
         defer { isLoadingKey = false }
         do {
@@ -370,5 +398,3 @@ private struct ServiceEditorModal: View {
         } catch { keyReadFailed = true; errorMessage = error.localizedDescription }
     }
 }
-
-#endif

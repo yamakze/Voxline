@@ -1,5 +1,7 @@
-#if os(macOS)
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 public struct NativeControlSurface: ViewModifier {
     var cornerRadius: CGFloat
@@ -11,8 +13,8 @@ public struct NativeControlSurface: ViewModifier {
 
     @ViewBuilder public func body(content: Content) -> some View {
         if reduceTransparency {
-            content.background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: cornerRadius))
-        } else if #available(macOS 26, *) {
+            content.background(Color.voxlineControlBackground, in: .rect(cornerRadius: cornerRadius))
+        } else if #available(macOS 26, iOS 26, *) {
             content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
         } else {
             content.background(.regularMaterial, in: .rect(cornerRadius: cornerRadius))
@@ -28,10 +30,10 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
     @ViewBuilder public func body(content: Content) -> some View {
         if reduceTransparency {
             content
-                .background(Color(nsColor: .windowBackgroundColor), in: .capsule)
+                .background(Color.voxlineControlBackground, in: .capsule)
                 .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
                 .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
-        } else if #available(macOS 26, *) {
+        } else if #available(macOS 26, iOS 26, *) {
             content
                 .glassEffect(.regular, in: .capsule)
                 .overlay(Capsule().strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
@@ -58,7 +60,7 @@ public struct NativeSubtitleOverlaySurface: ViewModifier {
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(Color.white.opacity(0.25), lineWidth: 1)
                 )
-        } else if #available(macOS 26, *) {
+        } else if #available(macOS 26, iOS 26, *) {
             content
                 .glassEffect(.regular, in: .rect(cornerRadius: 12))
                 .background(Color.black.opacity(0.45), in: .rect(cornerRadius: 12))
@@ -92,5 +94,12 @@ public extension View {
     }
 }
 
-
-#endif
+extension Color {
+    static var voxlineControlBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .controlBackgroundColor)
+        #else
+        Color(uiColor: .secondarySystemGroupedBackground)
+        #endif
+    }
+}

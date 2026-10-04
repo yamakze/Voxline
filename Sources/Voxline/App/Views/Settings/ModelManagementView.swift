@@ -1,7 +1,8 @@
-#if os(macOS)
 import VoxlineWhisperKit
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 import VoxlineCore
 
 public struct ModelManagementView: View {
@@ -69,6 +70,7 @@ public struct ModelManagementView: View {
             .padding(28)
         }
         .toolbar {
+            #if os(macOS)
             ToolbarItem(placement: .navigation) {
                 Text("模型管理")
                     .font(.headline)
@@ -78,7 +80,9 @@ public struct ModelManagementView: View {
                 modelStorageCapsule
             }
 
+            #endif
             ToolbarItemGroup(placement: .primaryAction) {
+                #if os(macOS)
                 Button {
                     if let dir = modelManager.modelDirectories.values.first ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("huggingface/models") {
                         NSWorkspace.shared.open(dir)
@@ -88,6 +92,7 @@ public struct ModelManagementView: View {
                 }
                 .help("在访达中打开模型存储目录")
 
+                #endif
                 Button {
                     Task { await modelManager.refreshAll() }
                 } label: {
@@ -96,6 +101,7 @@ public struct ModelManagementView: View {
                 .help("重新检测与刷新模型状态")
             }
         }
+        .navigationTitle("模型管理")
         .task {
             await modelManager.refreshAll()
         }
@@ -127,7 +133,7 @@ public struct ModelManagementView: View {
         .font(.caption.weight(.medium))
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.8), in: .capsule)
+        .background(Color.voxlineControlBackground.opacity(0.8), in: .capsule)
     }
 
     @ViewBuilder
@@ -146,10 +152,9 @@ public struct ModelManagementView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
+                    Text(model.name)
+                        .font(.headline)
                     HStack(spacing: 8) {
-                        Text(model.name)
-                            .font(.headline)
-
                         if model.isBaseline {
                             Text("S001 基准")
                                 .font(.caption2.bold())
@@ -168,9 +173,9 @@ public struct ModelManagementView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
 
-                    HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(String(format: "预估大小：%.0f MB", model.expectedSizeMB))
-                        Text("标识符：\(model.id)")
+                        Text("标识符：\(model.id)").textSelection(.enabled)
                     }
                     .font(.caption2.monospaced())
                     .foregroundStyle(.secondary)
@@ -186,6 +191,13 @@ public struct ModelManagementView: View {
                 }
             }
 
+            if let revision = modelManager.modelRevisions[model.id] {
+                Text("固定版本：\(revision)").font(.caption2.monospaced()).textSelection(.enabled)
+            }
+            #if os(iOS)
+            Text("加载占用设备内存。可用型号与处理速度以真机验证为准；下载完成不代表已加载。")
+                .font(.caption).foregroundStyle(.secondary)
+            #endif
             Divider()
 
             // Action row
@@ -241,11 +253,13 @@ public struct ModelManagementView: View {
                     }
                 default: EmptyView()
                 }
+                #if os(macOS)
                 if let directory = modelManager.modelDirectories[model.id],
                    (modelManager.diskUsage[model.id] ?? 0) > 0 {
                     Button("打开目录", systemImage: "folder") { NSWorkspace.shared.open(directory) }
                         .buttonStyle(.bordered).controlSize(.small)
                 }
+                #endif
             }
         }
         .padding(16)
@@ -284,5 +298,3 @@ public struct ModelManagementView: View {
         .background(Color.secondary.opacity(0.1), in: .capsule)
     }
 }
-
-#endif

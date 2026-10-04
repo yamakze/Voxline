@@ -7,7 +7,7 @@
             </BuildActionEntry>
         </BuildActionEntries>
     </BuildAction>
-    <TestAction buildConfiguration="Debug" shouldUseLaunchSchemeArgsEnv="YES"/>
+    <TestAction buildConfiguration="Debug" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO"><BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="B00000000000000000002710" BuildableName="VoxlineIOSTests.xctest" BlueprintName="VoxlineIOSTests" ReferencedContainer="container:Voxline.xcodeproj"/></TestableReference></Testables></TestAction>
     <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES">
         <BuildableProductRunnable runnableDebuggingMode="0">
             <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="A00000000000000000000010" BuildableName="Voxline.app" BlueprintName="VoxlineApp" ReferencedContainer="container:Voxline.xcodeproj"/>

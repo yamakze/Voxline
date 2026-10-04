@@ -38,6 +38,34 @@ struct IOSMediaDetailView: View {
                     }
                     .frame(width: landscape ? geometry.size.width * 0.5 : nil)
                     List {
+                        if let settings = library.task(taskID)?.parameters.translation {
+                            Section("翻译") {
+                                Text(item.status.label).font(.caption).foregroundStyle(.secondary)
+                                switch settings.engine {
+                                case .openAICompatible:
+                                    NavigationLink("本机翻译服务") { TranslationServicesSettingsView(referencedSettings: settings) }
+                                case .appleTranslation:
+                                    NavigationLink("准备本机语言") { IOSAppleLanguagesView(settings: settings) }
+                                }
+                                if library.queue.taskID == taskID && library.queue.mediaID == mediaID {
+                                    ProgressView(library.queue.progressText ?? "翻译处理中…")
+                                    Button(library.queue.isCancelling ? "取消中…" : "取消翻译") {
+                                        do { try library.queue.cancel() }
+                                        catch { errorMessage = error.localizedDescription }
+                                    }
+                                    .disabled(library.queue.isCancelling)
+                                } else if !item.cues.isEmpty && !item.cues.allSatisfy(\.hasCurrentTranslation) {
+                                    Button("继续翻译") {
+                                        do { try library.startTranslation(taskID: taskID, mediaID: mediaID) }
+                                        catch { errorMessage = error.localizedDescription }
+                                    }
+                                    .disabled(library.queue.taskID != nil)
+                                }
+                                if let error = library.queue.errorMessage {
+                                    Text(error).font(.caption).foregroundStyle(.red)
+                                }
+                            }
+                        }
                         if item.cues.isEmpty { Text("还没有字幕成果").foregroundStyle(.secondary) }
                         ForEach(item.cues) { cue in
                             VStack(alignment: .leading, spacing: 8) {
@@ -153,7 +181,7 @@ struct IOSMediaDetailView: View {
                         }
                     }
                     .font(.callout).multilineTextAlignment(.center)
-                    .padding(8).modifier(IOSSubtitleSurface())
+                    .padding(8).liquidGlassSurface(cornerRadius: 10)
                     .padding(.horizontal, 12).padding(.bottom, 48).allowsHitTesting(false)
                 }
             }
@@ -256,19 +284,5 @@ private struct IOSSubtitleOffsetEditor: View {
     }
 }
 
-
-private struct IOSSubtitleSurface: ViewModifier {
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if reduceTransparency {
-            content.background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: 10))
-        } else if #available(iOS 26, *) {
-            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 10))
-        } else {
-            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-        }
-    }
-}
 
 #endif

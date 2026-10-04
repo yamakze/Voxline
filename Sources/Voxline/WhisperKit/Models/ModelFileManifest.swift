@@ -19,9 +19,13 @@ struct ModelFileManifest: Codable, Equatable, Sendable {
     }
 
     static func baseline() throws -> Self {
+        #if SWIFT_PACKAGE
         let url = Bundle.main.bundleURL.pathExtension == "app"
             ? Bundle.main.url(forResource: "BaselineModel", withExtension: "json")
             : Bundle.module.url(forResource: "BaselineModel", withExtension: "json")
+        #else
+        let url = Bundle(for: ModelResourceBundle.self).url(forResource: "BaselineModel", withExtension: "json")
+        #endif
         guard let url else {
             throw WhisperModelError.missingManifest
         }
@@ -80,3 +84,7 @@ public enum WhisperModelError: Error, LocalizedError, Equatable {
         }
     }
 }
+
+#if !SWIFT_PACKAGE
+private final class ModelResourceBundle: NSObject {}
+#endif

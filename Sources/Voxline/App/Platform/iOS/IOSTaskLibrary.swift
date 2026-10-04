@@ -2,35 +2,29 @@
 import Foundation
 import Observation
 import VoxlineCore
+import VoxlineWorkflow
 
-/// Device-local task copies are independent of the imported source document.
+/// The shared task store owns results; iOS always imports into an independent Documents copy.
 @MainActor @Observable
 final class IOSTaskLibrary {
-    private(set) var tasks: [ProcessingTask] = []
+    let storage: TaskLibrary
+    let queue: TaskProcessingQueue
     var errorMessage: String?
+    var tasks: [ProcessingTask] {
+        storage.entries.compactMap(\.task).sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    init(directory: URL = .documentsDirectory) {
+        let storage = TaskLibrary(tasksDirectory: directory)
+        self.storage = storage
+        queue = TaskProcessingQueue(library: storage, translationPipeline: ConfiguredSubtitleTranslationPipeline())
+    }
 
     func load() {
-        do {
-            let directory = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
-                                                        appropriateFor: nil, create: true)
-            let urls = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
-                .filter { $0.pathExtension == "voxline" }
-            var loaded: [ProcessingTask] = []
-            var failures: [String] = []
-            for url in urls {
-                do {
-                    var task = try TaskDocumentCodec.decode(Data(contentsOf: url))
-                    task.interruptRunningItems()
-                    loaded.append(task)
-                } catch {
-                    failures.append("\(url.lastPathComponent)：\(error.localizedDescription)")
-                }
-            }
-            tasks = loaded.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-            if !failures.isEmpty { errorMessage = failures.joined(separator: "\n") }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        storage.refresh()
+        let failures = storage.entries.compactMap { entry in entry.error.map { "\(entry.title)：\($0)" } }
+        errorMessage = ([storage.errorMessage].compactMap { $0 } + failures).joined(separator: "\n")
+        if errorMessage?.isEmpty == true { errorMessage = nil }
     }
 
     func readImportedTask(from url: URL) throws -> ProcessingTask {
@@ -42,25 +36,28 @@ final class IOSTaskLibrary {
     }
 
     func save(_ task: ProcessingTask) throws {
-        let directory = try FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
-                                                    appropriateFor: nil, create: true)
-        try TaskDocumentCodec.encode(task).write(
-            to: directory.appendingPathComponent(task.id.uuidString).appendingPathExtension("voxline"), options: .atomic)
-        tasks.removeAll { $0.id == task.id }
-        tasks.append(task)
-        tasks.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        guard queue.taskID != task.id else { throw QueueError.busy }
+        try storage.save(task, at: storage.defaultURL(for: task.id))
     }
 
     func updateItem(_ item: TaskMediaItem, taskID: UUID, comparedTo original: TaskMediaItem) throws {
-        guard var task = tasks.first(where: { $0.id == taskID }),
+        guard var task = storage.task(for: taskID),
               let index = task.items.firstIndex(where: { $0.id == original.id }),
               task.items[index] == original, item.id == original.id else { throw TaskValidationError.taskChanged }
         task.items[index] = item
-        try save(task)
+        try storage.save(task)
     }
 
-    func task(_ id: UUID) -> ProcessingTask? { tasks.first { $0.id == id } }
+    func startTranslation(taskID: UUID, mediaID: UUID) throws {
+        guard let task = storage.task(for: taskID), task.parameters.translation != nil,
+              let item = task.items.first(where: { $0.id == mediaID }),
+              let checkpoint = item.checkpoint, !checkpoint.chunks.isEmpty,
+              checkpoint.chunks.allSatisfy(\.isCompleted) else {
+            throw QueueError.unavailable("本机翻译需要启用翻译且已完成转写的任务成果。")
+        }
+        try queue.start(taskID: taskID, mediaID: mediaID)
+    }
+
+    func task(_ id: UUID) -> ProcessingTask? { storage.task(for: id) }
 }
-
-
 #endif

@@ -1,4 +1,3 @@
-#if os(macOS)
 import Foundation
 import VoxlineCore
 import VoxlineTranslation
@@ -19,5 +18,3 @@ struct ConfiguredSubtitleTranslationPipeline: SubtitleTranslationPipeline {
         }
     }
 }
-
-#endif

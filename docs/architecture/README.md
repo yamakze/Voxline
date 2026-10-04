@@ -2,9 +2,9 @@
 
 Mac 采用 SwiftPM，iOS 采用 Xcode 工程。依赖提交由 Package.swift / Package.resolved 锁定，Mac 只链接 WhisperKit 产品。工具链、构建与产物统一见 [开发工作流](../development.md)。
 
-两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态组件和设置控件在应用模块内共用。当前任务准备与处理页面仍为 Mac 范围，iOS 使用原生浏览和校对入口，功能补齐时逐步共用主要页面。
+两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态、模型与翻译设置、原生材质组件在 Views 内共用。Apple 系统翻译接线在 Pipeline 内共用。iOS 通过原生导航进入模型管理、服务配置与语言准备，并能继续导入成果中已完成转写的媒体翻译；本机 Task 创建和转写入口仍待接入。
 
-iOS 当前只链接同一份 Core 与 Media，不链接 Workflow、Translation 或推理 SDK。导入 .voxline / JSON 后验证、迁移并保存独立副本到本地 Documents。同任务 ID 再次导入须确认覆盖本地校对，原文件不写回，Mac 书签不传入 iOS。
+iOS 的 Core、Media、WhisperKit、Translation 与 Workflow 框架直接编译同一份源码，WhisperKit 集成框架只链接固定版本的 WhisperKit 软件包产品。导入 .voxline / JSON 后验证、迁移并保存独立副本到本地 Documents。同任务 ID 再次导入须确认覆盖本地校对，原文件不写回，Mac 书签不传入 iOS。
 
 ## 模块职责
 
@@ -13,11 +13,11 @@ iOS 当前只链接同一份 Core 与 Media，不链接 Workflow、Translation �
 - VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地书签、有界 PCM 提取和共用播放器。Mac 字幕烧录的快照、合成、预览与导出在此模块，使用 macOS 条件编译；iOS 尚未接入烧录。AVFoundation 类型不进入 Core 或 Task 文件。
 - VoxlineTranslation：聊天客户端、上下文批次、结果校验、HTTP 错误、设备服务元数据和异步 Keychain 凭据。依赖 Foundation、Observation、Security 与 Core，不依赖应用或 SwiftUI。
 - VoxlineWorkflow：TaskLibrary、单执行者 TaskProcessingQueue 与媒体／翻译外部调用边界。依赖 Core、Media、WhisperKit、Translation；组织实际操作、恢复与原子成果提交，不导入 AppKit、SwiftUI 或应用模块。翻译执行实例由应用接线传入。
-- VoxlineApp：两平台入口、主要页面、导航与原生适配。MacWorkflow 配置任务目录、系统最近文档和真实翻译路线；Apple Translation 视图会话保持在稳定根页面。iOS 设备副本库保留独立文件交接语义，当前不执行转写或翻译。UI 不导入第三方 WhisperKit SDK。
+- VoxlineApp：两平台入口、主要页面、导航与原生适配。MacWorkflow 配置任务目录与系统最近文档；翻译引擎接线和 Apple Translation 视图会话共用，视图会话保持在稳定根页面。iOS 设备副本库适配同一 TaskLibrary 和 TaskProcessingQueue，当前只允许已完整转写的媒体继续冻结参数中的翻译。UI 不导入第三方 WhisperKit SDK。
 
 Core 和字幕文档不依赖 UI、AVFoundation 或具体推理 SDK。JSON 是持久字幕权威来源，SRT 是导出物，内存任务库是界面状态。
 
-Mac SwiftPM 依赖如下；iOS 的当前链接范围见上文。
+模块依赖如下；Mac 使用 SwiftPM，iOS 使用同源码框架及固定软件包产品。
 
 ```mermaid
 graph TD
@@ -176,7 +176,7 @@ MainWindowView 组织任务列表、准备表单、任务详情和媒体详情�
 
 ## 模型安装与加载
 
-BaselineModel.json 是固定仓库提交、必需文件和摘要的权威清单，打包时复制到应用 Resources。缺少清单明确失败，不读取开发目录替代。
+BaselineModel.json 是固定仓库提交、必需文件和摘要的权威清单。Mac 打包复制到应用 Resources，iOS 使用集成框架 Resources；测试使用各自实际资源包。缺少清单明确失败，不读取开发目录替代。模型页面展示清单版本与实际空间，已安装与已加载区分；iOS 不自动选择 Mac 基准模型为新任务默认值，设备资源适用性由真机验证决定。
 
 每个型号的 Application Support/Voxline/Models 目录包含 SDK 缓存、权重、分词器和 installation.json。全部文件的长度与仓库对象摘要通过后才写入安装记录；LFS 使用 SHA-256，普通文件使用 Git blob SHA-1。目录刷新检查记录、版本和文件长度，实际加载前再次校验摘要。
 
@@ -204,7 +204,11 @@ AVFoundation Core Image 滤镜按 compositionTime 选择开始包含、结束不
 
 ## iOS 本地播放与校对
 
-IOSTaskLibrary 将导入成果保存为 Documents/<Task ID>.voxline；相同 ID 覆盖前明确确认。编辑在草稿中进行，写入前验证文档、媒体快照和字幕原文／译文版本，原子保存成功后才更新任务库。失败保留草稿并显示原因；取消不修改成果。设备副本可通过 Files 取得，导入源文件不写回。
+IOSTaskLibrary 为共享 TaskLibrary 提供设备副本入口，导入成果保存为 Documents/<Task ID>.voxline；相同 ID 覆盖前明确确认，正在处理的任务拒绝重新导入覆盖。任务与检查点只由共享任务库发布，不维护第二份结果数组。编辑在草稿中进行，写入前验证文档、媒体快照和字幕原文／译文版本，原子保存成功后才更新任务库。失败保留草稿并显示原因；取消不修改成果。设备副本可通过 Files 取得，导入源文件不写回。
+
+iOS 媒体详情的继续翻译要求任务启用翻译，且媒体拥有非空、全部完成的转写检查点；调用共享队列，不触发音频提取或转写。请求、有限重试、暂停、取消及版本保护保持原有规则。尚未配置的任务服务可按冻结 ID、地址、模型和参数在本设备建立配置，密钥另行输入；修改默认值不改变任务快照。
+
+OpenAI 兼容接口支持显式配置的 HTTPS 与 HTTP 地址，包括本地服务。iOS 声明对应网络传输配置及本地网络用途；访问本地服务时由系统管理网络许可，拒绝或请求失败显示实际错误。
 
 媒体通过原生 Files 选择，MediaInspector 检查实际内容与音轨。已有身份必须匹配原内容和所选音轨；未关联旧成果可明确选择音轨建立身份。媒体保持文件引用，iOS 使用 minimalBookmark 保存设备本地授权，Mac 继续使用只读 security-scoped bookmark。播放共用 MediaPlaybackController，缺失授权或内容变化显示重新关联入口；保存关联期间保持访问并禁止关闭面板。
 
@@ -227,6 +231,6 @@ TranslationSettings.engine 明确保存 OpenAI 兼容接口参数或 Apple 原�
 
 ConfiguredSubtitleTranslationPipeline 按冻结引擎选择唯一执行路径。AppleTranslationCoordinator 在支持列表中匹配语言及等价地区／文字标识，检查语言对；不支持明确失败。任务准备页显示系统支持与安装状态，需要资源时使用 Apple 下载面板。语言准备或翻译失败保留原错误和恢复入口，不请求远端 API。
 
-macOS 15 会话只在稳定根视图 AppleTranslationSessionHost 的 translationTask 闭包中使用，不把会话保存到队列或跨视图持有。macOS 26 对已安装语言可创建独立会话；需要下载时继续使用视图会话。取消前尚未执行的请求立即结束；SDK 已开始的请求等待实际返回，取消后的结果不提交。
+macOS 15／iOS 18 会话只在稳定根视图 AppleTranslationSessionHost 的 translationTask 闭包中使用，不把会话保存到队列或跨视图持有。系统 26 对已安装语言可创建独立会话；需要下载时继续使用视图会话。语言页可明确准备语言，准备成功只表示语言可用，不产生字幕译文。取消前尚未执行的请求立即结束；SDK 已开始的请求等待实际返回，取消后的结果不提交。iOS 模拟器明确显示本机翻译不可用，实际语言下载和翻译在真机验证。
 
 每条请求用字幕 UUID 作为 clientIdentifier；响应拒绝缺少、重复、额外 ID 和空译文，按输入顺序还原后交给既有检查点验证。批次、原文版本、人工编辑保护、重启恢复与显式重译复用现有流程。Apple 接口接收每条原文，不提供聊天系统提示词；上下文翻译质量通过实际对白对照及人工校对验收。

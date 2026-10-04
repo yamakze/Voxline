@@ -11,10 +11,17 @@ if (( $# > 3 )); then
     exit 2
 fi
 platform="${1:-simulator}"
+signing_arguments=()
 configuration="${2:-debug}"
 case "$platform" in
-    simulator) destination="${3:-generic/platform=iOS Simulator}"; sdk=iphonesimulator ;;
-    device) destination="generic/platform=iOS"; sdk=iphoneos ;;
+    simulator)
+        destination="${3:-generic/platform=iOS Simulator}"; sdk=iphonesimulator
+        signing_arguments=(CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-)
+        ;;
+    device)
+        destination="generic/platform=iOS"; sdk=iphoneos
+        signing_arguments=(CODE_SIGNING_ALLOWED=NO)
+        ;;
     *) echo "Usage: Scripts/build-ios.sh [simulator|device] [debug|release] [destination]" >&2; exit 2 ;;
 esac
 case "$configuration" in
@@ -28,7 +35,7 @@ build_started=$SECONDS
 xcodebuild -project Voxline.xcodeproj -scheme VoxlineIOS \
     -configuration "$xcode_configuration" -destination "$destination" \
     -derivedDataPath "$PWD/build/ios/$platform/DerivedData" \
-    CODE_SIGNING_ALLOWED=NO -showBuildTimingSummary build \
+    "${signing_arguments[@]}" -showBuildTimingSummary build \
     2>&1 | tee "build/ios/$platform/build.log"
 
 echo "构建耗时：$((SECONDS - build_started)) 秒"

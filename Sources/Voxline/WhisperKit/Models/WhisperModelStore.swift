@@ -11,6 +11,7 @@ public enum WhisperModelDownloadProgress: Sendable {
 public struct WhisperModelInventory: Sendable {
     public enum State: Sendable { case missing, installed, loaded, incomplete(reason: String) }
     public let directory: URL
+    public let revision: String
     public let byteCount: Int64
     public let state: State
 }
@@ -30,7 +31,7 @@ public actor WhisperModelStore {
         guard modelID == manifest.modelID else { throw WhisperModelError.unknownModel }
         let root = try installationDirectory(modelID: modelID)
         if !FileManager.default.fileExists(atPath: root.path) {
-            return WhisperModelInventory(directory: root, byteCount: 0, state: .missing)
+            return WhisperModelInventory(directory: root, revision: manifest.modelRevision, byteCount: 0, state: .missing)
         }
         let bytes = try Self.diskUsage(in: root)
         do {
@@ -42,12 +43,12 @@ public actor WhisperModelStore {
             let tokenizer = hub.localRepoLocation(.init(id: manifest.tokenizerRepository))
             try ModelFileManifest.verify(manifest.modelFiles, in: model, hashes: false)
             try ModelFileManifest.verify(manifest.tokenizerFiles, in: tokenizer, hashes: false)
-            return WhisperModelInventory(directory: root, byteCount: bytes,
+            return WhisperModelInventory(directory: root, revision: manifest.modelRevision, byteCount: bytes,
                                          state: loadedModelID == modelID ? .loaded : .installed)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            return WhisperModelInventory(directory: root, byteCount: bytes, state: .incomplete(reason: error.localizedDescription))
+            return WhisperModelInventory(directory: root, revision: manifest.modelRevision, byteCount: bytes, state: .incomplete(reason: error.localizedDescription))
         }
     }
 

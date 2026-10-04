@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 @preconcurrency import Translation
 
@@ -6,35 +5,73 @@ struct AppleTranslationLanguageSettings: View {
     @Binding var source: String
     @Binding var target: String
     @Binding var batchSize: Int
+    var allowsEditing = true
     @State private var languages: [Locale.Language] = []
     @State private var statusText = "检查语言支持与安装状态…"
+    @State private var preparation: Task<Void, Never>?
+    @State private var isLoadingLanguages = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if languages.isEmpty {
+            if !allowsEditing {
+                LabeledContent("原文语言", value: Locale.current.localizedString(forIdentifier: source) ?? source)
+                LabeledContent("目标语言", value: Locale.current.localizedString(forIdentifier: target) ?? target)
+                LabeledContent("每批字幕数量", value: String(batchSize))
+            } else if isLoadingLanguages {
                 ProgressView("读取 Apple 支持的语言…")
+            } else if languages.isEmpty {
+                Text("当前系统未提供可用的本机翻译语言。")
             } else {
                 languagePicker("原文语言", selection: $source)
+                    .disabled(preparation != nil)
                 languagePicker("目标语言", selection: $target)
+                    .disabled(preparation != nil)
             }
             Text(statusText).font(.caption).foregroundStyle(.secondary)
-            TextField("每批字幕数量", value: $batchSize, format: .number)
-                .textFieldStyle(.roundedBorder)
+            if allowsEditing {
+                TextField("每批字幕数量", value: $batchSize, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(preparation != nil)
+            }
+            if preparation != nil {
+                ProgressView("准备语言…")
+                Button("取消语言准备") { preparation?.cancel() }
+            } else {
+                Button("准备语言") {
+                    let selectedSource = source, selectedTarget = target
+                    preparation = Task {
+                        defer { preparation = nil }
+                        do {
+                            try await AppleTranslationCoordinator.shared.prepareLanguages(sourceID: selectedSource, targetID: selectedTarget)
+                            statusText = "语言已安装，可在本机翻译。"
+                        } catch {
+                            statusText = error is CancellationError ? "语言准备已取消，可重试。" : error.localizedDescription
+                        }
+                    }
+                }
+            }
             Text("开始翻译时由系统请求下载许可；下载后可离线翻译。对白中的多义词仍需播放校对。失败保留成果，可继续或重试。")
                 .font(.caption).foregroundStyle(.secondary)
         }
+        .disabled(preparation != nil && preparation?.isCancelled == true)
+        .onDisappear { preparation?.cancel() }
         .task {
+            #if targetEnvironment(simulator)
+            isLoadingLanguages = false
+            #else
             let supported = await LanguageAvailability().supportedLanguages.sorted {
                 $0.minimalIdentifier < $1.minimalIdentifier
             }
             guard !Task.isCancelled else { return }
             languages = supported
+            isLoadingLanguages = false
             if let canonical = AppleTranslationCoordinator.matchingLanguage(source, in: supported) {
                 source = canonical.minimalIdentifier
             }
             if let canonical = AppleTranslationCoordinator.matchingLanguage(target, in: supported) {
                 target = canonical.minimalIdentifier
             }
+            #endif
         }
         .task(id: source + "→" + target) {
             do {
@@ -66,5 +103,3 @@ struct AppleTranslationLanguageSettings: View {
         }
     }
 }
-
-#endif

@@ -41,6 +41,9 @@ struct IOSTaskLibraryView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Button("导入任务", systemImage: "square.and.arrow.down") { importing = true }
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink { IOSSettingsView() } label: { Label("设置", systemImage: "gearshape") }
+                }
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.voxlineTask, .json]) { result in
                 switch result {
@@ -90,6 +93,25 @@ private struct IOSTaskDetailView: View {
                     LabeledContent("状态", value: task.status.label)
                     LabeledContent("媒体", value: "\(task.items.count) 个")
                     LabeledContent("转写模型", value: task.parameters.transcription.modelID)
+                }
+                if let settings = task.parameters.translation {
+                    Section("本次翻译") {
+                        LabeledContent("目标语言", value: settings.targetLanguage)
+                        LabeledContent("每批字幕数量", value: String(settings.batchSize))
+                        switch settings.engine {
+                        case .openAICompatible(let api):
+                            LabeledContent("引擎", value: "OpenAI 兼容接口")
+                            LabeledContent("模型", value: api.modelID)
+                            Text(api.baseURL.absoluteString).font(.caption).textSelection(.enabled)
+                            NavigationLink("本机翻译服务") { TranslationServicesSettingsView(referencedSettings: settings) }
+                        case .appleTranslation(let source):
+                            LabeledContent("引擎", value: "Apple 本机翻译")
+                            LabeledContent("原文语言", value: source)
+                            NavigationLink("准备本机语言") { IOSAppleLanguagesView(settings: settings) }
+                        }
+                        Text("参数来自任务快照；修改服务默认值不改变本次任务。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Section("媒体") {
                     ForEach(task.items) { item in
