@@ -66,9 +66,25 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
         guard aligned.map(\.text) == segments.map(\.text), aligned.map(\.tokens) == segments.map(\.tokens) else {
             throw WhisperTranscriptionError.invalidAlignment("词对齐改变了识别文本或词元。")
         }
-        try Self.validate(raw, lower: sourceOffsetSeconds + Double(seek) / 16_000,
-                          upper: sourceOffsetSeconds + Double(seek + segmentSize) / 16_000)
-        return aligned
+        let selected = try Self.selectTiming(segments: segments, aligned: aligned, offset: sourceOffsetSeconds,
+            lower: sourceOffsetSeconds + Double(seek) / 16_000,
+            upper: sourceOffsetSeconds + Double(seek + segmentSize) / 16_000)
+        state.withLock { $0[$0.count - 1].usesSegmentTimings = selected.usesSegmentTimings }
+        return selected.segments
+    }
+
+    /// Recover the entire window so original segment times cannot overlap adjacent aligned segments.
+    static func selectTiming(segments: [TranscriptionSegment], aligned: [TranscriptionSegment], offset: Double,
+                             lower: Double, upper: Double) throws -> (segments: [TranscriptionSegment], usesSegmentTimings: Bool) {
+        do {
+            try validate(aligned.map { raw($0, offset: offset) }, lower: lower, upper: upper)
+            return (aligned, false)
+        } catch WhisperTranscriptionError.invalidTiming {
+            var original = segments
+            for index in original.indices { original[index].words = nil }
+            try validate(original.map { raw($0, offset: offset) }, lower: lower, upper: upper)
+            return (original, true)
+        }
     }
 
     static func raw(_ segment: TranscriptionSegment, offset: Double) -> RawTranscriptionSegment {
@@ -103,6 +119,18 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
     }
 
     static func validate(_ segments: [RawTranscriptionSegment], lower: Double, upper: Double) throws {
+        // Invalid confidence must not be hidden by recovering an earlier timing failure.
+        for segment in segments {
+            if let probability = segment.averageLogProbability, !probability.isFinite {
+                throw WhisperTranscriptionError.invalidAlignment("识别段平均置信度无效。")
+            }
+            if let probability = segment.noSpeechProbability, !probability.isFinite || !(0...1).contains(probability) {
+                throw WhisperTranscriptionError.invalidAlignment("识别段静音概率无效。")
+            }
+            guard (segment.words ?? []).allSatisfy({ $0.probability.isFinite && (0...1).contains($0.probability) }) else {
+                throw WhisperTranscriptionError.invalidAlignment("词置信度无效。")
+            }
+        }
         var previousEnd = lower - 0.02
         for segment in segments {
             // Empty model evidence remains in the report; it is never exported as a subtitle cue.
@@ -110,22 +138,15 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
             guard segment.startSeconds.isFinite, segment.endSeconds.isFinite,
                   segment.startSeconds >= lower - 0.02, segment.endSeconds <= upper + 0.02,
                   segment.endSeconds > segment.startSeconds, segment.startSeconds >= previousEnd else {
-                throw WhisperTranscriptionError.invalidAlignment("非空识别段时间无效、回退、重叠或越过实际窗口；原文保留为待校时证据。")
-            }
-            if let probability = segment.averageLogProbability, !probability.isFinite {
-                throw WhisperTranscriptionError.invalidAlignment("识别段平均置信度无效。")
-            }
-            if let probability = segment.noSpeechProbability, !probability.isFinite || !(0...1).contains(probability) {
-                throw WhisperTranscriptionError.invalidAlignment("识别段静音概率无效。")
+                throw WhisperTranscriptionError.invalidTiming("非空识别段时间无效、回退、重叠或越过实际窗口；原文保留为待校时证据。")
             }
             previousEnd = segment.endSeconds
             var previousWordEnd = lower - 0.02
             for word in segment.words ?? [] {
-                guard word.startSeconds.isFinite, word.endSeconds.isFinite, word.probability.isFinite,
-                      (0...1).contains(word.probability), word.startSeconds >= lower - 0.02,
+                guard word.startSeconds.isFinite, word.endSeconds.isFinite, word.startSeconds >= lower - 0.02,
                       word.endSeconds <= upper + 0.02, word.endSeconds >= word.startSeconds,
                       word.startSeconds >= previousWordEnd else {
-                    throw WhisperTranscriptionError.invalidAlignment("词时间或置信度无效；原文保留为待校时证据。")
+                    throw WhisperTranscriptionError.invalidTiming("词时间无效；原文保留为待校时证据。")
                 }
                 previousWordEnd = word.endSeconds
             }
@@ -148,7 +169,10 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
         guard coveredThrough == frameCount else {
             throw WhisperTranscriptionError.invalidAlignment("推理未覆盖完整输入音频。")
         }
-        let raw = evidence.flatMap { $0.alignedSegments ?? $0.segmentsBeforeAlignment }
+        let raw = evidence.flatMap { window in
+            window.usesSegmentTimings == true ? window.segmentsBeforeAlignment :
+                (window.alignedSegments ?? window.segmentsBeforeAlignment)
+        }
         // The SDK filters zero-duration segments. Fail if any nonempty evidence was lost in that path.
         guard raw.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ==
                 returnedSegments.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {

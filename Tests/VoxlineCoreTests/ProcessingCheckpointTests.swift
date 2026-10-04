@@ -83,6 +83,36 @@ struct ProcessingCheckpointTests {
         return result
     }
 
+    @Test func recoveredTimingsRequireExplicitReviewAfterTranslationAndSurviveRestart() throws {
+        var original = try task(translates: true)
+        _ = try complete(&original, index: 0)
+        let chunk = try #require(original.items[0].checkpoint?.chunks[1])
+        let sourceID = try original.items[0].beginTranscriptionChunk(chunk.id)
+        var recovered = try evidence(range: chunk.range)
+        let raw = RawTranscriptionSegment(startSeconds: 2.2, endSeconds: 2.7, text: " Keep.", words: nil)
+        let collapsed = RawTranscriptionSegment(startSeconds: 2.7, endSeconds: 2.7, text: raw.text, words: nil)
+        recovered.segments = [raw]
+        recovered.windows = [.init(seekFrame: 0, frameCount: 32000, decodedText: raw.text, decodedTokens: [],
+            language: "en", skippedAsNoSpeech: false, segmentsBeforeAlignment: [raw],
+            alignedSegments: [collapsed], usesSegmentTimings: true)]
+        let result = try SubtitleSegmenter.segment(recovered, sourceID: sourceID, mediaDurationMilliseconds: 5000)
+        #expect(result.cues[0].requiresTimingReview == true)
+        try original.items[0].commitTranscriptionChunk(chunk.id, result: result)
+        let batchID = try original.items[0].prepareTranslationBatch(cueIDs: original.items[0].cues.map(\.id))
+        try original.items[0].beginTranslationBatch(batchID)
+        try original.items[0].commitTranslationBatch(batchID, outputs: original.items[0].cues.map {
+            TranslationBatchOutput(cueID: $0.id, text: "保留。")
+        })
+        #expect(original.items[0].status == .needsReview)
+        var reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(original))
+        #expect(reopened == original)
+        try reopened.items[0].confirmTimingReview(cueID: result.cues[0].id)
+        #expect(reopened.items[0].status == .completed)
+        #expect(reopened.items[0].cues.last?.requiresTimingReview == nil)
+        #expect(reopened.items[0].checkpoint == original.items[0].checkpoint)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(reopened)) == reopened)
+    }
+
     @Test func restartSkipsCommittedChunksAndKeepsEditedCuesAndRawEvidence() throws {
         var original = try task()
         let result = try complete(&original, index: 0)

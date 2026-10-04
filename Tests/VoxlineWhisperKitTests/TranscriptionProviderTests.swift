@@ -115,6 +115,37 @@ struct TranscriptionProviderTests {
         #expect(throws: (any Error).self) { try TranscriptionEvidenceSeeker.validate([raw, unordered], lower: 0, upper: 3) }
     }
 
+    @Test func recoversValidOriginalWindowTimesAndRetainsInvalidAlignment() throws {
+        let original = [TranscriptionSegment(start: 1, end: 2, text: " *coughing*", avgLogprob: -0.2, noSpeechProb: 0.01),
+                        TranscriptionSegment(start: 2, end: 3, text: " hello", avgLogprob: -0.2, noSpeechProb: 0.01)]
+        var aligned = original
+        aligned[0].start = 2.02
+        aligned[0].end = 2.02
+        let selected = try TranscriptionEvidenceSeeker.selectTiming(segments: original, aligned: aligned,
+            offset: 120, lower: 120, upper: 124)
+        #expect(selected.usesSegmentTimings)
+        #expect(selected.segments.map(\.text) == original.map(\.text))
+        #expect(selected.segments.map(\.start) == [1, 2])
+        #expect(selected.segments.allSatisfy { $0.words == nil })
+        let raw = selected.segments.map { TranscriptionEvidenceSeeker.raw($0, offset: 120) }
+        let diagnostic = aligned.map { TranscriptionEvidenceSeeker.raw($0, offset: 120) }
+        let window = TranscriptionWindowEvidence(seekFrame: 0, frameCount: 64000, decodedText: " *coughing* hello",
+            decodedTokens: [], language: "en", skippedAsNoSpeech: false, segmentsBeforeAlignment: raw,
+            alignedSegments: diagnostic, usesSegmentTimings: true)
+        #expect(try TranscriptionEvidenceSeeker.validatedSegments(windows: [window], sourceOffsetSeconds: 120,
+            frameCount: 64000, returnedSegments: raw) == raw)
+        #expect(window.alignedSegments?[0].startSeconds == window.alignedSegments?[0].endSeconds)
+        #expect(throws: (any Error).self) {
+            try TranscriptionEvidenceSeeker.selectTiming(segments: aligned, aligned: aligned,
+                offset: 120, lower: 120, upper: 124)
+        }
+        aligned[1].words = [WordTiming(word: " hello", tokens: [42], start: 2, end: 3, probability: .nan)]
+        #expect(throws: WhisperTranscriptionError.invalidAlignment("词置信度无效。")) {
+            try TranscriptionEvidenceSeeker.selectTiming(segments: original, aligned: aligned,
+                offset: 120, lower: 120, upper: 124)
+        }
+    }
+
     @Test func rejectsUnknownLanguageAndModelWithoutSubstitution() throws {
         #expect(throws: WhisperTranscriptionError.unsupportedLanguage("english")) {
             try WhisperKitTranscriptionProvider(settings: TranscriptionSettings(modelID: TranscriptionSettings.whisperKitBaseline.modelID,
@@ -211,7 +242,8 @@ struct TranscriptionProviderTests {
                 failures.append(saved)
             }
         }
-        #expect(results.count + failures.count == 9)
+        #expect(results.count == 9)
+        #expect(failures.isEmpty)
         #expect(!results.isEmpty)
         print("S001_PROVIDER_SUMMARY completed=\(results.count) failed=\(failures.count)")
         #expect(states.withLock { $0.filter { $0 == "loading" }.count } == 1)
@@ -219,7 +251,11 @@ struct TranscriptionProviderTests {
         let raw = results.flatMap(\.segments)
         try TranscriptionEvidenceSeeker.validate(raw, lower: 0, upper: 1077.673)
         #expect(!raw.isEmpty)
-        #expect(raw.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.allSatisfy { $0.words != nil })
+        #expect(results.contains { $0.windows.contains { $0.usesSegmentTimings == true } })
+        for evidence in results {
+            let result = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: 1077718)
+            #expect(result.cues.contains { $0.requiresTimingReview == true } == evidence.windows.contains { $0.usesSegmentTimings == true })
+        }
         let inventory = try await store.inventory(modelID: settings.modelID)
         guard case .loaded = inventory.state else { Issue.record("Model not reused"); return }
         try await store.unload(modelID: settings.modelID)

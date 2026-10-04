@@ -75,14 +75,14 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
 }
 
 public enum WhisperTranscriptionError: Error, LocalizedError, Equatable {
-    case busy, unsupportedLanguage(String), invalidAudio, invalidAlignment(String)
+    case busy, unsupportedLanguage(String), invalidAudio, invalidAlignment(String), invalidTiming(String)
 
     public var errorDescription: String? {
         switch self {
         case .busy: "模型正在下载、加载或转写，请等待当前操作结束。"
         case .unsupportedLanguage(let code): "WhisperKit 不支持语言代码 \(code)。"
         case .invalidAudio: "转写输入必须是最多 120 秒的非空 16 kHz 单声道 Float32 PCM，且时长与参数一致。"
-        case .invalidAlignment(let reason): reason
+        case .invalidAlignment(let reason), .invalidTiming(let reason): reason
         }
     }
 }

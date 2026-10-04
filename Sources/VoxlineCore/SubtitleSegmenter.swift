@@ -78,6 +78,7 @@ public enum SubtitleSegmenter {
         var previousSpeechEnd = lower
         var entries: [SegmentedSubtitle] = []
         var excluded: [Int] = []
+        let recoveredWindows = evidence.windows.filter { $0.usesSegmentTimings == true }
 
         for (segmentIndex, raw) in evidence.segments.enumerated() {
             if raw.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -95,8 +96,11 @@ public enum SubtitleSegmenter {
             guard let words = raw.words, !words.isEmpty else {
                 guard raw.startSeconds >= previousSpeechEnd else { throw SubtitleSegmentationError.invalidSegment(segmentIndex) }
                 previousSpeechEnd = raw.endSeconds
-                let cue = try timedCue(sourceID: sourceID, segmentIndex: segmentIndex, wordIndex: nil,
+                var cue = try timedCue(sourceID: sourceID, segmentIndex: segmentIndex, wordIndex: nil,
                                        start: raw.startSeconds, end: raw.endSeconds, text: raw.text)
+                if recoveredWindows.contains(where: { $0.segmentsBeforeAlignment.contains(raw) }) {
+                    cue.requiresTimingReview = true
+                }
                 entries.append(SegmentedSubtitle(cue: cue, segmentIndex: segmentIndex, wordRange: nil,
                                                  alignment: .segment, reviewReasons: [.missingWordTiming]))
                 continue

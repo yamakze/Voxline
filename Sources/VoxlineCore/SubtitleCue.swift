@@ -7,6 +7,8 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
     public private(set) var sourceText: String
     public private(set) var sourceRevision: UInt64
     public var translation: CueTranslation
+    /// Nil in documents written before timing review was introduced.
+    public var requiresTimingReview: Bool?
 
     public init(id: UUID, startMilliseconds: Int64, endMilliseconds: Int64, sourceText: String) throws {
         self.id = id

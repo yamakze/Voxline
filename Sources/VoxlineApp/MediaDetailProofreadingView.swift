@@ -507,6 +507,18 @@ public struct MediaDetailProofreadingView: View {
                     .buttonStyle(.plain)
 
                     // Status chip
+                    if cue.requiresTimingReview == true {
+                        Text("待校对")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.orange)
+                            .help("词对齐不可用，使用原始段时间。请播放核对文字与时间。")
+                        Button("确认校对") {
+                            do { try item.confirmTimingReview(cueID: cue.id) }
+                            catch { errorMessage = error.localizedDescription }
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                    }
                     if case .succeeded = cue.translation, !cue.hasCurrentTranslation {
                         Text("待重译")
                             .font(.system(size: 9, weight: .bold))

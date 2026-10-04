@@ -88,10 +88,11 @@ public struct TranscriptionWindowEvidence: Codable, Equatable, Sendable {
     public let skippedAsNoSpeech: Bool
     public let segmentsBeforeAlignment: [RawTranscriptionSegment]
     public var alignedSegments: [RawTranscriptionSegment]?
+    public var usesSegmentTimings: Bool?
 
     public init(seekFrame: Int, frameCount: Int, decodedText: String, decodedTokens: [Int], language: String,
                 skippedAsNoSpeech: Bool, segmentsBeforeAlignment: [RawTranscriptionSegment],
-                alignedSegments: [RawTranscriptionSegment]? = nil) {
+                alignedSegments: [RawTranscriptionSegment]? = nil, usesSegmentTimings: Bool? = nil) {
         self.seekFrame = seekFrame
         self.frameCount = frameCount
         self.decodedText = decodedText
@@ -100,6 +101,7 @@ public struct TranscriptionWindowEvidence: Codable, Equatable, Sendable {
         self.skippedAsNoSpeech = skippedAsNoSpeech
         self.segmentsBeforeAlignment = segmentsBeforeAlignment
         self.alignedSegments = alignedSegments
+        self.usesSegmentTimings = usesSegmentTimings
     }
 }
 

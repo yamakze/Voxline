@@ -84,12 +84,13 @@ swift test --filter 'ProcessingCheckpoint|TaskLibraryTests'
 ## 原生顺序队列验证
 
 ```sh
-VOXLINE_QUEUE_MEDIA="/absolute/path/short-English-audio.wav" \
+VOXLINE_QUEUE_MEDIA="/absolute/path/S001-30s.mp4" \
+VOXLINE_QUEUE_AUDIO="/absolute/path/S001-30s.wav" \
 VOXLINE_MODEL_DIRECTORY="/absolute/path/Models" \
 swift test --filter nativeMediaAndWhisperPipelinePersistsRealBatchResults
 ```
 
-使用已安装模型，对同一短英语样本创建两个独立媒体条目，经本机书签解析、身份检查、PCM 提取、真实推理、字幕切分与 Task 保存后重开验证。产物位于忽略目录 tmp/queue-validation；默认测试跳过此入口。此验证不代替长视频、网络翻译或人工字幕质量验收。普通队列测试在外部调用边界控制返回顺序与取消时机，验证失败隔离、取消等待、恢复跳过成功块、校对冲突和写入失败；产品始终使用原生处理链路。
+使用已安装模型和同源 S001 的 30 秒视频与音频，建立缺少书签的视频、正常视频和正常音频三个条目。缺失项明确失败后继续处理其余两项，经本机书签解析、身份检查、PCM 提取、真实推理、字幕切分与 Task 保存后重开，核对两份媒体的六句原文和起点差；随后重新关联缺失项并重试，保持其他媒体及人工原文编辑，导出原文 SRT。产物位于忽略目录 tmp/queue-validation；默认测试跳过此入口。此验证不代替长视频、网络翻译或人工字幕质量验收。普通队列测试在外部调用边界控制返回顺序与取消时机，验证失败隔离、取消等待、恢复跳过成功块、校对冲突和写入失败；产品始终使用原生处理链路。
 
 ## 翻译协议与本地凭据验证
 

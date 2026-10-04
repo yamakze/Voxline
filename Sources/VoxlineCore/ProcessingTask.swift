@@ -179,6 +179,23 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
         self = updated
     }
 
+    public var completedProcessingStatus: TaskMediaStatus {
+        cues.contains { $0.requiresTimingReview == true } ? .needsReview : .completed
+    }
+
+    public mutating func confirmTimingReview(cueID: UUID) throws {
+        guard let index = cues.firstIndex(where: { $0.id == cueID }) else { throw CheckpointError.unknownWork }
+        var updated = self
+        updated.cues[index].requiresTimingReview = nil
+        if updated.status == .needsReview,
+           let checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted),
+           checkpoint.parameters.translation == nil || updated.cues.allSatisfy(\.hasCurrentTranslation) {
+            updated.status = updated.completedProcessingStatus
+        }
+        try updated.validate()
+        self = updated
+    }
+
     public func validate() throws {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TaskValidationError.emptyMediaTitle(id)

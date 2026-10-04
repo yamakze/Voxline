@@ -145,6 +145,7 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
         guard runningCount <= 1 else { throw CheckpointError.invalidRecord }
         if status == .completed {
             guard chunks.allSatisfy(\.isCompleted),
+                  !cues.contains(where: { $0.requiresTimingReview == true }),
                   parameters.translation == nil || cues.allSatisfy(\.hasCurrentTranslation) else { throw CheckpointError.incompleteWork }
         }
     }
@@ -224,7 +225,7 @@ public extension TaskMediaItem {
         }).first { updated.status = .failed(reason: reason) }
         else if record.chunks.contains(where: { if case .cancelled = $0.state { true } else { false } }) { updated.status = .cancelled }
         else if record.chunks.contains(where: { $0.state == .interrupted }) { updated.status = .interrupted(stage: .transcription) }
-        else { updated.status = record.chunks.allSatisfy(\.isCompleted) && record.parameters.translation == nil ? .completed : .pending }
+        else { updated.status = record.chunks.allSatisfy(\.isCompleted) && record.parameters.translation == nil ? updated.completedProcessingStatus : .pending }
         try updated.validate()
         self = updated
     }
@@ -314,7 +315,7 @@ public extension TaskMediaItem {
         let unfinished = record.translationBatches.filter { batch in
             !batch.isCompleted && batch.inputs.allSatisfy { input in updated.cues.contains { input.matches($0) } }
         }
-        if updated.cues.allSatisfy(\.hasCurrentTranslation) { updated.status = .completed }
+        if updated.cues.allSatisfy(\.hasCurrentTranslation) { updated.status = updated.completedProcessingStatus }
         else if let reason = unfinished.compactMap({ batch -> String? in
             if case .failed(let reason) = batch.state { return reason }
             return nil

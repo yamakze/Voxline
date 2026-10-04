@@ -283,7 +283,7 @@ final class TaskProcessingQueue {
             }
         }
         if parameters.translation == nil, chunkIDs.isEmpty {
-            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .completed }
+            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = $0.completedProcessingStatus }
         }
         if let translation = parameters.translation {
             try await translateMedia(taskID: taskID, mediaID: mediaID, settings: translation)
@@ -317,7 +317,7 @@ final class TaskProcessingQueue {
         }
         if batchIDs.isEmpty {
             try updateMedia(taskID: taskID, mediaID: mediaID) {
-                $0.status = $0.cues.allSatisfy(\.hasCurrentTranslation) ? .completed : .needsReview
+                $0.status = $0.cues.allSatisfy(\.hasCurrentTranslation) ? $0.completedProcessingStatus : .needsReview
             }
             return
         }
