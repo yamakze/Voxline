@@ -8,6 +8,7 @@ public struct MediaDetailProofreadingView: View {
     let taskID: UUID
     let initialOutputKind: SRTOutputKind
     @Binding var item: TaskMediaItem
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var playbackController = MediaPlaybackController()
     @State private var previewMode: SRTOutputKind = .bilingual
     @State private var searchQuery: String = ""
@@ -291,8 +292,8 @@ public struct MediaDetailProofreadingView: View {
                 .subtitleOverlaySurface()
                 .padding(.bottom, 78) // Positioned above floating capsule
                 .padding(.horizontal, 24)
-                .transition(.opacity)
-                .animation(.easeInOut(duration: 0.15), value: activeCue.id)
+                .transition(reduceMotion ? .identity : .opacity)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: activeCue.id)
             }
 
             // QuickTime Floating Glass Capsule Controls Bar
@@ -607,7 +608,7 @@ public struct MediaDetailProofreadingView: View {
                             if case .succeeded(let trans, _) = cue.translation {
                                 Text(trans)
                                     .font(.system(size: isActive ? 16 : 14, weight: isActive ? .semibold : .regular))
-                                    .foregroundStyle(isActive ? .yellow : .primary)
+                                    .foregroundStyle(.primary)
                                     .lineSpacing(2)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
@@ -638,8 +639,8 @@ public struct MediaDetailProofreadingView: View {
             )
             // Hierarchy Opacity fading: Active line = 1.0, Hovered = 0.95, Future = 0.68, Past = 0.38
             .opacity(isActive ? 1.0 : (isHovered ? 0.95 : (isPast ? 0.40 : 0.70)))
-            .animation(.easeInOut(duration: 0.2), value: isActive)
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isActive)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovered)
         }
     }
 

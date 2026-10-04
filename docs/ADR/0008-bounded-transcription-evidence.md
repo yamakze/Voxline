@@ -14,4 +14,6 @@
 
 词对齐会使用补零后的时间列，且 SDK 会过滤零时长段。真实样本已确认非空文本可能被丢弃，因此窗口范围、完整文本及失败必须成为 Provider 的显式结果。结构验证不代表识别质量或人工听录已通过。
 
+词对齐在 Provider 边界保留一份遵循固定 SDK 规则的步长正确实现，复用 SDK 可公开调用的后处理。SDK 的内部矩阵复制把 IOSurface 行填充当作连续权重，真实 MP4 与 WAV 的相同 PCM 因尾帧数量不同产生数秒时间差。逻辑行列读取解决这一内存布局问题，无需补零、修剪输出时间、改变源音频或维护整套推理 SDK 分支。
+
 当前实施规则只维护在 [架构](../architecture/README.md#转写-provider)。验证、未完成范围和后续进度维护于 [GitHub Project](https://github.com/users/yamakze/projects/1)，不在本决定中复制。

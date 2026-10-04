@@ -96,9 +96,12 @@ struct TaskProcessingQueueTests {
         await queue.waitUntilIdle()
         #expect(library.task(for: task.id)?.items.allSatisfy { $0.status == .cancelled } == true)
         #expect(await !pipeline.events.contains("extract:\(task.items[1].id)"))
-        try queue.start(taskID: task.id)
-        await queue.waitUntilIdle()
-        #expect(library.task(for: task.id)?.status == .completed)
+        let reopenedLibrary = TaskLibrary(tasksDirectory: directory)
+        #expect(reopenedLibrary.task(for: task.id)?.items.allSatisfy { $0.status == .cancelled } == true)
+        let resumedQueue = TaskProcessingQueue(library: reopenedLibrary, pipeline: pipeline)
+        try resumedQueue.start(taskID: task.id)
+        await resumedQueue.waitUntilIdle()
+        #expect(reopenedLibrary.task(for: task.id)?.status == .completed)
     }
 
     @Test func writeFailureStopsSchedulingAndPreservesLatestUnsavedEdits() async throws {
@@ -376,23 +379,29 @@ struct TaskProcessingQueueTests {
         return (directory, library, try #require(library.task(for: task.id)), pipeline)
     }
 
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_QUEUE_MEDIA"] != nil))
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_QUEUE_MEDIA"] != nil &&
+                  ProcessInfo.processInfo.environment["VOXLINE_QUEUE_AUDIO"] != nil))
     func nativeMediaAndWhisperPipelinePersistsRealBatchResults() async throws {
         let environment = ProcessInfo.processInfo.environment
-        let source = URL(fileURLWithPath: try #require(environment["VOXLINE_QUEUE_MEDIA"]))
+        let video = URL(fileURLWithPath: try #require(environment["VOXLINE_QUEUE_MEDIA"]))
+        let audio = URL(fileURLWithPath: try #require(environment["VOXLINE_QUEUE_AUDIO"]))
         let models = URL(fileURLWithPath: try #require(environment["VOXLINE_MODEL_DIRECTORY"]))
         let directory = URL(fileURLWithPath: "tmp/queue-validation/\(UUID().uuidString)", isDirectory: true)
         let library = TaskLibrary(tasksDirectory: directory.appendingPathComponent("tasks"))
         let bookmarks = LocalMediaStore(directory: directory.appendingPathComponent("bookmarks"))
-        let inspection = try await MediaInspector.shared.inspect(source)
-        let track = try #require(inspection.audioTracks.first { $0.isDecodable })
-        let identity = try inspection.identity(audioTrackID: track.id)
+        let videoInspection = try await MediaInspector.shared.inspect(video)
+        let audioInspection = try await MediaInspector.shared.inspect(audio)
+        let videoIdentity = try videoInspection.identity(audioTrackID: #require(videoInspection.audioTracks.first { $0.isDecodable }).id)
+        let audioIdentity = try audioInspection.identity(audioTrackID: #require(audioInspection.audioTracks.first { $0.isDecodable }).id)
         let parameters = TaskParameters(transcription: TranscriptionSettings(modelID: TranscriptionSettings.whisperKitBaseline.modelID,
             languageMode: .specified, languageCode: "en"))
-        let task = ProcessingTask(title: "Native queue validation", items: (1...2).map {
-            .init(title: "Native \($0)", kind: .audio, source: .localFile(fileName: identity.fileName), media: identity)
-        }, parameters: parameters)
-        for item in task.items { try await bookmarks.save(projectID: item.id, identity: identity, url: source) }
+        let task = ProcessingTask(title: "Native mixed queue validation", items: [
+            .init(title: "Missing bookmark", kind: .video, source: .localFile(fileName: videoIdentity.fileName), media: videoIdentity),
+            .init(title: "Native video", kind: .video, source: .localFile(fileName: videoIdentity.fileName), media: videoIdentity),
+            .init(title: "Native audio", kind: .audio, source: .localFile(fileName: audioIdentity.fileName), media: audioIdentity)
+        ], parameters: parameters)
+        try await bookmarks.save(projectID: task.items[1].id, identity: videoIdentity, url: video)
+        try await bookmarks.save(projectID: task.items[2].id, identity: audioIdentity, url: audio)
         try library.save(task)
         let pipeline = LocalMediaTranscriptionPipeline(mediaStore: bookmarks,
             extractor: AudioExtractor(directory: directory.appendingPathComponent("audio")),
@@ -401,13 +410,45 @@ struct TaskProcessingQueueTests {
         try queue.start(taskID: task.id)
         await queue.waitUntilIdle()
         #expect(queue.errorMessage == nil)
-        let reopened = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
-        #expect(reopened.status == .completed)
-        #expect(reopened.items.allSatisfy { !$0.cues.isEmpty && $0.checkpoint?.chunks.allSatisfy(\.isCompleted) == true })
-        let preserved = reopened.items
-        #expect(throws: QueueError.noWork) { try queue.start(taskID: task.id) }
-        #expect(library.task(for: task.id)?.items == preserved)
-        print("Native queue: \(reopened.completedCount) media, \(reopened.items.reduce(0) { $0 + $1.cues.count }) cues; \(library.defaultURL(for: task.id).path)")
+        var reopened = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        #expect(reopened.status == .partiallyFailed)
+        #expect(reopened.items[0].status == .failed(reason: "找不到本机媒体文件，请在详情中重新关联。"))
+        #expect(reopened.items.dropFirst().allSatisfy {
+            $0.status == .completed && !$0.cues.isEmpty && $0.checkpoint?.chunks.allSatisfy(\.isCompleted) == true
+        })
+        #expect(reopened.parameters == parameters)
+        #expect(reopened.items.dropFirst().allSatisfy { $0.checkpoint?.parameters == parameters })
+        // Paired S001 inputs contain the same six utterances. Codec packet tails
+        // must not shift their word alignment by seconds.
+        let videoCues = reopened.items[1].cues
+        let audioCues = reopened.items[2].cues
+        #expect(videoCues.count == 6 && audioCues.count == 6)
+        #expect(videoCues.map(\.sourceText) == audioCues.map(\.sourceText))
+        #expect(try #require(videoCues.last).startMilliseconds > 28_000)
+        for (videoCue, audioCue) in zip(videoCues, audioCues) {
+            #expect(abs(videoCue.startMilliseconds - audioCue.startMilliseconds) <= 300)
+        }
+        try reopened.items[1].cues[0].replaceSourceText(with: "Manual correction after real inference")
+        try library.save(reopened)
+        let preserved = Array(reopened.items.dropFirst())
+        let freshLibrary = TaskLibrary(tasksDirectory: library.tasksDirectory)
+        #expect(freshLibrary.task(for: task.id) == reopened)
+        try await bookmarks.save(projectID: task.items[0].id, identity: videoIdentity, url: video)
+        let retryQueue = TaskProcessingQueue(library: freshLibrary, pipeline: pipeline)
+        try retryQueue.start(taskID: task.id, mediaID: task.items[0].id)
+        await retryQueue.waitUntilIdle()
+        let completed = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        #expect(retryQueue.errorMessage == nil)
+        #expect(completed.status == .completed)
+        #expect(Array(completed.items.dropFirst()) == preserved)
+        #expect(throws: QueueError.noWork) { try retryQueue.start(taskID: task.id) }
+        for item in completed.items {
+            let output = directory.appendingPathComponent("\(item.id).source.srt")
+            try SubtitleExporter.export(cues: item.cues, kind: .source, to: output, media: item.media)
+            #expect(try String(contentsOf: output, encoding: .utf8) ==
+                SubtitleExporter.generateSRT(cues: item.cues, kind: .source, media: item.media))
+        }
+        print("Native mixed queue: missing bookmark failed, later video/audio completed, reload and repaired retry preserved edits; \(completed.completedCount) media, \(completed.items.reduce(0) { $0 + $1.cues.count }) cues; \(library.defaultURL(for: task.id).path)")
     }
 }
 

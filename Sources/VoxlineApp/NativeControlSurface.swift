@@ -28,7 +28,7 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
     @ViewBuilder public func body(content: Content) -> some View {
         if reduceTransparency {
             content
-                .background(Color(nsColor: .windowBackgroundColor).opacity(0.95), in: .capsule)
+                .background(Color(nsColor: .windowBackgroundColor), in: .capsule)
                 .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
                 .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
         } else if #available(macOS 26, *) {
@@ -53,7 +53,7 @@ public struct NativeSubtitleOverlaySurface: ViewModifier {
     @ViewBuilder public func body(content: Content) -> some View {
         if reduceTransparency {
             content
-                .background(Color.black.opacity(0.88), in: .rect(cornerRadius: 12))
+                .background(Color.black, in: .rect(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(Color.white.opacity(0.25), lineWidth: 1)

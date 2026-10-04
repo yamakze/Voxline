@@ -44,6 +44,30 @@ struct TranscriptionProviderTests {
         #expect(throws: (any Error).self) { try TranscriptionEvidenceSeeker.validAudioColumns(floatWeights, frameCount: 16000) }
     }
 
+    @Test func alignmentPathUsesLogicalRowsWithIOSurfacePadding() throws {
+        let columns = 1497
+        let pixelBuffer = try #require(MLMultiArray.pixelBuffer(for: [4, NSNumber(value: columns)]))
+        let padded = MLMultiArray(pixelBuffer: pixelBuffer, shape: [4, NSNumber(value: columns)])
+        #expect(padded.strides[0].intValue > columns)
+        let dense = try MLMultiArray(shape: [4, NSNumber(value: columns)], dataType: .float16)
+        for row in 0..<4 {
+            for column in 0..<columns {
+                let value = NSNumber(value: abs(column - [0, 1168, 1276, 1496][row]) < 4 ? 1 : 0)
+                padded[[row, column] as [NSNumber]] = value
+                dense[[row, column] as [NSNumber]] = value
+            }
+        }
+        let path = try WordTimestampAligner.dynamicTimeWarping(padded, tokenCount: 4)
+        let expected = try WordTimestampAligner.dynamicTimeWarping(dense, tokenCount: 4)
+        #expect(path.map(\.token) == expected.map(\.token))
+        #expect(path.map(\.column) == expected.map(\.column))
+        #expect(path.first?.token == 0 && path.first?.column == 0)
+        #expect(path.last?.token == 3 && path.last?.column == columns - 1)
+        #expect(throws: (any Error).self) { try WordTimestampAligner.dynamicTimeWarping(padded, tokenCount: 5) }
+        dense[[1, 100] as [NSNumber]] = NSNumber(value: Double.nan)
+        #expect(throws: (any Error).self) { try WordTimestampAligner.dynamicTimeWarping(dense, tokenCount: 4) }
+    }
+
     @Test func preservesAbsoluteTextAndConfidenceAndRejectsDroppedCollapsedText() throws {
         let segment = TranscriptionSegment(start: 1, end: 2, text: " hello", avgLogprob: -0.2, noSpeechProb: 0.01,
             words: [WordTiming(word: " hello", tokens: [42], start: 1, end: 2, probability: 0.9)])

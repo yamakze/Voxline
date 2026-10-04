@@ -57,12 +57,10 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
         }
         // Restrict DTW input to real audio frames, before alignment, rather than clipping output timestamps.
         let cropped = try Self.validAudioColumns(alignmentWeights, frameCount: segmentSize)
-        guard let aligned = try SegmentSeeker().addWordTimestamps(segments: segments, alignmentWeights: cropped,
-            tokenizer: tokenizer, seek: seek, segmentSize: segmentSize, prependPunctuations: prependPunctuations,
-            appendPunctuations: appendPunctuations, lastSpeechTimestamp: lastSpeechTimestamp,
-            options: options, timings: timings) else {
-            throw WhisperTranscriptionError.invalidAlignment("词对齐未返回结果。")
-        }
+        let aligned = try WordTimestampAligner.align(segments: segments, alignmentWeights: cropped,
+            tokenizer: tokenizer, seek: seek, prependPunctuations: prependPunctuations,
+            appendPunctuations: appendPunctuations,
+            lastSpeechTimestamp: lastSpeechTimestamp)
         let raw = aligned.map { Self.raw($0, offset: sourceOffsetSeconds) }
         state.withLock { $0[$0.count - 1].alignedSegments = raw }
         guard aligned.map(\.text) == segments.map(\.text), aligned.map(\.tokens) == segments.map(\.tokens) else {
@@ -89,7 +87,7 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
               shape[0] > 0, shape[1] > 0, frameCount >= samplesPerColumn else {
             throw WhisperTranscriptionError.invalidAlignment("对齐矩阵或实际音频窗口不足一个 20 毫秒帧。")
         }
-        // The pinned SDK's alignment implementation reads FloatType (Float16) bytes directly.
+        // The pinned model emits Float16 weights; copy its logical rows before alignment.
         guard weights.dataType == .float16 else {
             throw WhisperTranscriptionError.invalidAlignment("固定 SDK 的词对齐只支持 Float16 权重。")
         }
