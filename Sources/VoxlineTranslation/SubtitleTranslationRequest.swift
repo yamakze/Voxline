@@ -14,8 +14,7 @@ public struct SubtitleTranslationRequest: Sendable {
 
     public init(inputs: [TranslationBatchInput], cues: [SubtitleCue]) throws {
         guard !inputs.isEmpty, Set(inputs.map(\.cueID)).count == inputs.count,
-              inputs.allSatisfy({ input in cues.contains { $0.id == input.cueID && $0.sourceText == input.sourceText &&
-                  $0.sourceRevision == input.sourceRevision && $0.translation == input.previousTranslation } }),
+              inputs.allSatisfy({ input in cues.contains { input.matches($0) } }),
               let first = cues.firstIndex(where: { $0.id == inputs.first?.cueID }),
               let last = cues.firstIndex(where: { $0.id == inputs.last?.cueID }), first <= last else {
             throw SubtitleTranslationError.invalidRequest

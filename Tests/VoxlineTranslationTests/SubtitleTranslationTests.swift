@@ -138,6 +138,23 @@ struct SubtitleTranslationTests {
         #expect(cues.allSatisfy { $0.sourceText == "Put it down." && $0.translation == .pending })
     }
 
+    @Test func retryAfterAndBackoffDistinguishTemporaryFailures() {
+        let now = Date(timeIntervalSince1970: 1445412480)
+        #expect(SubtitleTranslationError.rateLimited(retryAfter: "120").retryDelay(attempt: 1, now: now, jitter: 0) == 120)
+        #expect(SubtitleTranslationError.temporarilyUnavailable(statusCode: 503, retryAfter: "Wed, 21 Oct 2015 07:30:00 GMT")
+            .retryDelay(attempt: 1, now: now, jitter: 0) == 120)
+        #expect(SubtitleTranslationError.rateLimited(retryAfter: "Wed, 21 Oct 2015 07:27:00 GMT")
+            .retryDelay(attempt: 1, now: now, jitter: 0) == 0)
+        for (attempt, delay) in [(1, 5.0), (2, 15.0), (3, 45.0)] {
+            #expect(SubtitleTranslationError.temporarilyUnavailable(statusCode: 503, retryAfter: "invalid")
+                .retryDelay(attempt: attempt, now: now, jitter: 0) == delay)
+            #expect(SubtitleTranslationError.timeout.retryDelay(attempt: attempt, jitter: 1) == delay * 1.2)
+        }
+        for error in [SubtitleTranslationError.authenticationFailed, .invalidTranslationResult, .httpFailure(400), .connectionFailed] {
+            #expect(error.retryDelay(attempt: 1, jitter: 0) == nil)
+        }
+    }
+
     @Test func HTTPFailuresAndTimeoutAreExplicitWithoutLeakingResponseBody() async throws {
         let cues = try cues(count: 1)
         let input = try SubtitleTranslationRequest(inputs: cues.map(TranslationBatchInput.init), cues: cues)
@@ -146,7 +163,7 @@ struct SubtitleTranslationTests {
         defer { connection.invalidateAndCancel() }
         let client = OpenAICompatibleTranslationClient(session: connection)
         for (status, expected) in [(401, SubtitleTranslationError.authenticationFailed), (403, .authenticationFailed),
-            (429, .rateLimited(retryAfter: "10")), (500, .httpFailure(500)), (503, .httpFailure(503))] {
+            (429, .rateLimited(retryAfter: "10")), (500, .temporarilyUnavailable(statusCode: 500, retryAfter: "10")), (503, .temporarilyUnavailable(statusCode: 503, retryAfter: "10"))] {
             TranslationStubProtocol.handler.withLock { $0 = { _ in (status, ["Retry-After": "10"], Data("sensitive-upstream-message".utf8)) } }
             await #expect(throws: expected) { try await client.translate(settings: settings, apiKey: "secret", request: input) }
             #expect(!expected.localizedDescription.contains("sensitive-upstream-message"))

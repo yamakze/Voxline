@@ -201,6 +201,12 @@ public struct TaskDetailView: View {
                                     if queue.taskID == task.id, queue.mediaID == item.id {
                                         Text(queue.isCancelling ? "正在取消，等待当前操作结束" : queue.progressText ?? "处理中")
                                             .font(.caption2).foregroundStyle(.tint)
+                                        if let wait = queue.translationRetryWait, !queue.isCancelling {
+                                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                                Text(wait.label(at: context.date))
+                                                    .font(.caption2.monospacedDigit()).foregroundStyle(.primary)
+                                            }
+                                        }
                                         if let fraction = queue.extractionFraction {
                                             ProgressView(value: fraction).frame(width: 180)
                                         }
@@ -218,7 +224,7 @@ public struct TaskDetailView: View {
                                 // In-line Action Buttons
                                 HStack(spacing: 6) {
                                     if item.status.isRetryable {
-                                        Button("重试", systemImage: "arrow.clockwise") {
+                                        Button(item.status.isTranslationPaused ? "继续翻译" : "重试", systemImage: "arrow.clockwise") {
                                             do { try queue.start(taskID: task.id, mediaID: item.id) }
                                             catch { errorMessage = error.localizedDescription }
                                         }
@@ -249,6 +255,17 @@ public struct TaskDetailView: View {
                             .padding(.horizontal, 14)
 
                             // Inline Failure Diagnosis Drawer
+                            if case .translationPaused(let reason) = item.status {
+                                Label {
+                                    Text("翻译暂停，成果已保存。\(reason) 可稍后继续翻译，或进入校对导出原文。")
+                                        .foregroundStyle(.primary)
+                                } icon: {
+                                    Image(systemName: "pause.circle").foregroundStyle(.orange)
+                                }
+                                    .font(.caption)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 14).padding(.vertical, 8)
+                            }
                             if case .failed(let reason) = item.status {
                                 HStack(spacing: 8) {
                                     Image(systemName: "exclamationmark.octagon.fill")

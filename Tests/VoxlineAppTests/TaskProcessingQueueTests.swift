@@ -210,6 +210,142 @@ struct TaskProcessingQueueTests {
         #expect(await transcription.events == previousEvents)
     }
 
+    @Test func transientFailuresPauseAfterThreeRetriesAndResumeWithoutTranscription() async throws {
+        let (directory, library, initial) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        var parameters = task.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!,
+            modelID: "frozen-model", targetLanguage: "zh-Hans", serviceID: UUID())
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let transcription = ControlledPipeline(cuesPerChunk: 16)
+        let unavailable = SubtitleTranslationError.temporarilyUnavailable(statusCode: 503, retryAfter: nil)
+        let translation = ControlledTranslationPipeline(errors: [2: unavailable, 3: unavailable, 4: unavailable, 5: unavailable])
+        let waits = RetrySleepRecorder()
+        let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation,
+            retrySleep: { await waits.record($0) }, retryJitter: { 0 })
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        #expect(await waits.durations == [.seconds(5), .seconds(15), .seconds(45)])
+        let paused = try #require(library.task(for: task.id))
+        #expect(paused.status == .translationPaused)
+        #expect(paused.items[0].status.isTranslationPaused)
+        #expect(paused.items[1].status == .completed)
+        #expect(paused.items[0].checkpoint?.translationBatches.map(\.isCompleted) == [true, false])
+        let badge = XcodeStepPipelineView(item: paused.items[0])
+        #expect(badge.transcriptionState == .completed && badge.translationState == .paused)
+        #expect(queue.translationRetryWait == nil)
+        let calls = await translation.requests
+        #expect(calls.count == 7 && Array(calls[1...4]).allSatisfy { $0 == calls[1] })
+        let transcriptionEvents = await transcription.events
+        let reopened = TaskLibrary(tasksDirectory: directory)
+        try reopened.commitCheckpoint(taskID: task.id) {
+            $0.items[0].cues[0].translation = .succeeded(text: "人工译文", sourceRevision: 1)
+        }
+        let successfulBatch = try #require(paused.items[0].checkpoint?.translationBatches[0])
+        let resumed = TaskProcessingQueue(library: reopened, pipeline: transcription, translationPipeline: translation)
+        try resumed.start(taskID: task.id, mediaID: task.items[0].id)
+        await resumed.waitUntilIdle()
+        let completed = try TaskDocumentCodec.decode(Data(contentsOf: reopened.defaultURL(for: task.id)))
+        #expect(completed.status == .completed)
+        #expect(completed.items[0].cues[0].translation == .succeeded(text: "人工译文", sourceRevision: 1))
+        #expect(completed.items[0].checkpoint?.translationBatches[0] == successfulBatch)
+        #expect(completed.items[1] == paused.items[1])
+        #expect(await translation.requests.last == calls[1])
+        #expect(await transcription.events == transcriptionEvents)
+    }
+
+    @Test(arguments: [true, false])
+    func retryWaitSupportsCancellationAndProtectsEdits(cancel: Bool) async throws {
+        let (directory, library, initial) = try fixture(count: 1)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        var parameters = task.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!,
+            modelID: "frozen-model", targetLanguage: "zh-Hans", serviceID: UUID())
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let translation = ControlledTranslationPipeline(errors: [1: .rateLimited(retryAfter: "120")])
+        let wait = RetrySleepRecorder(hold: true)
+        let queue = TaskProcessingQueue(library: library, pipeline: ControlledPipeline(), translationPipeline: translation,
+            retrySleep: { try await wait.sleep($0) }, retryJitter: { 0 })
+        try queue.start(taskID: task.id)
+        await wait.waitUntilHeld()
+        let progress = try #require(queue.translationRetryWait)
+        #expect(progress.attempt == 1)
+        #expect(progress.label(at: progress.deadline.addingTimeInterval(-30)).contains("30 秒"))
+        #expect(queue.progressText?.contains("已译 0／2 句") == true)
+        #expect(await wait.durations == [.seconds(120)])
+        var reopened = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        reopened.interruptRunningItems()
+        #expect(reopened.items[0].status == .interrupted(stage: .translation))
+        if cancel {
+            try queue.cancel()
+            #expect(throws: QueueError.busy) { try queue.start(taskID: task.id) }
+        } else {
+            try library.commitCheckpoint(taskID: task.id) { try $0.items[0].cues[0].replaceSourceText(with: "人工修正") }
+        }
+        await wait.release()
+        await queue.waitUntilIdle()
+        #expect(await translation.requests.count == 1)
+        #expect(queue.translationRetryWait == nil)
+        let result = try #require(library.task(for: task.id))
+        if cancel { #expect(result.items[0].status == .cancelled) }
+        else {
+            #expect(result.items[0].status == .failed(reason: CheckpointError.editedCue.localizedDescription))
+            #expect(result.items[0].cues[0].sourceText == "人工修正")
+        }
+    }
+
+    @Test func cancellationInterruptsRealRetrySleepImmediately() async throws {
+        let (directory, library, initial) = try fixture(count: 1)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        var parameters = task.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!,
+            modelID: "frozen-model", targetLanguage: "zh-Hans", serviceID: UUID())
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let translation = ControlledTranslationPipeline(errors: [1: .rateLimited(retryAfter: "120")])
+        let queue = TaskProcessingQueue(library: library, pipeline: ControlledPipeline(), translationPipeline: translation)
+        try queue.start(taskID: task.id)
+        for _ in 0..<2000 {
+            if queue.translationRetryWait != nil { break }
+            await Task.yield()
+        }
+        _ = try #require(queue.translationRetryWait)
+        let start = ContinuousClock.now
+        try queue.cancel(mediaID: task.items[0].id)
+        await queue.waitUntilIdle()
+        #expect(start.duration(to: .now) < .seconds(2))
+        #expect(library.task(for: task.id)?.items[0].status == .cancelled)
+        #expect(await translation.requests.count == 1)
+    }
+
+    @Test func transientRetrySucceedsWithSameBatchAndServerDelay() async throws {
+        let (directory, library, initial) = try fixture(count: 1)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        var parameters = task.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!,
+            modelID: "frozen-model", targetLanguage: "zh-Hans", serviceID: UUID())
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let translation = ControlledTranslationPipeline(errors: [1: .rateLimited(retryAfter: "10"),
+            2: .temporarilyUnavailable(statusCode: 503, retryAfter: nil)])
+        let waits = RetrySleepRecorder()
+        let queue = TaskProcessingQueue(library: library, pipeline: ControlledPipeline(), translationPipeline: translation,
+            retrySleep: { await waits.record($0) }, retryJitter: { 0 })
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        #expect(await waits.durations == [.seconds(10), .seconds(15)])
+        #expect(library.task(for: task.id)?.status == .completed)
+        #expect(await translation.requests.count == 3)
+        #expect(await Set(translation.requests).count == 1)
+        #expect(library.task(for: task.id)?.items[0].checkpoint?.translationBatches.count == 1)
+    }
+
     @Test func translationFailureRetriesOnlyUncommittedBatchAndPreservesManualTranslation() async throws {
         let (directory, library, initial) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -515,12 +651,15 @@ private actor ControlledPipeline: MediaTranscriptionPipeline {
 
 private actor ControlledTranslationPipeline: SubtitleTranslationPipeline {
     private var failCall: Int?
+    private let errors: [Int: SubtitleTranslationError]
     private var holdFirst: Bool
     private var held: CheckedContinuation<Void, Never>?
     private var observer: CheckedContinuation<Void, Never>?
     private(set) var requests: [[UUID]] = []
     private(set) var settingsUsed: [TranslationSettings] = []
-    init(failCall: Int? = nil, holdFirstCall: Bool = false) { self.failCall = failCall; holdFirst = holdFirstCall }
+    init(failCall: Int? = nil, holdFirstCall: Bool = false, errors: [Int: SubtitleTranslationError] = [:]) {
+        self.failCall = failCall; holdFirst = holdFirstCall; self.errors = errors
+    }
     func waitForRequest() async {
         if held != nil { return }
         await withCheckedContinuation { observer = $0 }
@@ -533,7 +672,27 @@ private actor ControlledTranslationPipeline: SubtitleTranslationPipeline {
             holdFirst = false
             await withCheckedContinuation { held = $0; observer?.resume(); observer = nil }
         }
-        if failCall == requests.count { throw SubtitleTranslationError.rateLimited(retryAfter: "10") }
+        if let error = errors[requests.count] { throw error }
+        if failCall == requests.count { throw SubtitleTranslationError.httpFailure(400) }
         return request.inputs.map { .init(cueID: $0.cueID, text: "Test-only translation") }
     }
+}
+
+private actor RetrySleepRecorder {
+    private(set) var durations: [Duration] = []
+    private let hold: Bool
+    private var held: CheckedContinuation<Void, Never>?
+    private var observer: CheckedContinuation<Void, Never>?
+    init(hold: Bool = false) { self.hold = hold }
+    func record(_ duration: Duration) { durations.append(duration) }
+    func sleep(_ duration: Duration) async throws {
+        durations.append(duration)
+        if hold { await withCheckedContinuation { held = $0; observer?.resume(); observer = nil } }
+        try Task.checkCancellation()
+    }
+    func waitUntilHeld() async {
+        if held != nil { return }
+        await withCheckedContinuation { observer = $0 }
+    }
+    func release() { held?.resume(); held = nil }
 }

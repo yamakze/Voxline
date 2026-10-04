@@ -118,7 +118,7 @@ public struct TaskStatusBadge: View {
         case .queued: return "clock"
         case .needsReview: return "exclamationmark.triangle"
         case .running: return "arrow.triangle.2.circlepath.circle"
-        case .interrupted: return "pause.circle"
+        case .interrupted, .translationPaused: return "pause.circle"
         case .completed: return "checkmark.circle.fill"
         case .partiallyFailed: return "exclamationmark.circle"
         case .failed: return "xmark.circle.fill"
@@ -132,7 +132,7 @@ public struct TaskStatusBadge: View {
         case .queued: return .blue
         case .needsReview: return .orange
         case .running: return .blue
-        case .interrupted: return .orange
+        case .interrupted, .translationPaused: return .orange
         case .completed: return .green
         case .partiallyFailed: return .orange
         case .failed: return .red
@@ -146,7 +146,7 @@ public struct TaskStatusBadge: View {
         case .queued: return .blue
         case .needsReview: return .orange
         case .running: return .blue
-        case .interrupted: return .orange
+        case .interrupted, .translationPaused: return .orange
         case .completed: return .green
         case .partiallyFailed: return .orange
         case .failed: return .red
@@ -188,7 +188,7 @@ public struct MediaStatusBadge: View {
         case .completed: return "checkmark.circle.fill"
         case .failed: return "xmark.circle.fill"
         case .cancelled: return "nosign"
-        case .interrupted: return "pause.circle"
+        case .interrupted, .translationPaused: return "pause.circle"
         }
     }
 
@@ -200,7 +200,7 @@ public struct MediaStatusBadge: View {
         case .completed: return .green
         case .failed: return .red
         case .cancelled: return .gray
-        case .interrupted: return .orange
+        case .interrupted, .translationPaused: return .orange
         }
     }
 
@@ -212,7 +212,7 @@ public struct MediaStatusBadge: View {
         case .completed: return .green
         case .failed: return .red
         case .cancelled: return .secondary
-        case .interrupted: return .orange
+        case .interrupted, .translationPaused: return .orange
         }
     }
 }
@@ -230,7 +230,7 @@ public struct XcodeStepPipelineView: View {
     private var status: TaskMediaStatus { item.status }
 
     enum StepState {
-        case completed, inProgress, waiting, failed, cancelled
+        case completed, inProgress, waiting, paused, failed, cancelled
     }
 
     public var body: some View {
@@ -241,7 +241,7 @@ public struct XcodeStepPipelineView: View {
 
             if hasTranslation {
                 connectorLine(isActive: translationState != .waiting)
-                stepChip(title: "字幕翻译", state: translationState)
+                stepChip(title: status.isTranslationPaused ? "翻译暂停" : "字幕翻译", state: translationState)
             }
 
             connectorLine(isActive: isCompleted)
@@ -257,7 +257,7 @@ public struct XcodeStepPipelineView: View {
         case .pending: return .waiting
         case .running(let stage):
             return stage == .audioExtraction ? .inProgress : .completed
-        case .completed, .needsReview: return .completed
+        case .completed, .needsReview, .translationPaused: return .completed
         case .failed: return .failed
         case .cancelled: return .cancelled
         case .interrupted(let stage):
@@ -275,7 +275,7 @@ public struct XcodeStepPipelineView: View {
             if stage == .audioExtraction { return .waiting }
             if stage == .transcription { return .inProgress }
             return .completed
-        case .completed, .needsReview: return .completed
+        case .completed, .needsReview, .translationPaused: return .completed
         case .failed: return .failed
         case .cancelled: return .cancelled
         case .interrupted(let stage):
@@ -294,6 +294,7 @@ public struct XcodeStepPipelineView: View {
         case .running(let stage):
             return stage == .translation ? .inProgress : .waiting
         case .completed, .needsReview: return .completed
+        case .translationPaused: return .paused
         case .failed: return .failed
         case .cancelled: return .cancelled
         case .interrupted(let stage):
@@ -326,6 +327,8 @@ public struct XcodeStepPipelineView: View {
                 ProgressView().controlSize(.mini)
             case .waiting:
                 Circle().fill(Color.secondary.opacity(0.3)).frame(width: 6, height: 6)
+            case .paused:
+                Image(systemName: "pause.fill").font(.system(size: 8)).foregroundStyle(.orange)
             case .failed:
                 Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.red)
             case .cancelled:

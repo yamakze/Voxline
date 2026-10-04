@@ -42,7 +42,7 @@ public struct TranslationBatchInput: Codable, Equatable, Sendable {
         previousTranslation = cue.translation
     }
 
-    func matches(_ cue: SubtitleCue) -> Bool {
+    public func matches(_ cue: SubtitleCue) -> Bool {
         cueID == cue.id && sourceText == cue.sourceText && sourceRevision == cue.sourceRevision &&
         previousTranslation == cue.translation
     }
@@ -143,6 +143,12 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
             }
         }
         guard runningCount <= 1 else { throw CheckpointError.invalidRecord }
+        if case .translationPaused = status {
+            guard parameters.translation != nil, chunks.allSatisfy(\.isCompleted),
+                  translationBatches.contains(where: { if case .failed = $0.state { true } else { false } }) else {
+                throw CheckpointError.incompleteWork
+            }
+        }
         if status == .completed {
             guard chunks.allSatisfy(\.isCompleted),
                   !cues.contains(where: { $0.requiresTimingReview == true }),
@@ -327,14 +333,14 @@ public extension TaskMediaItem {
         self = updated
     }
 
-    mutating func recordTranslationFailure(_ batchID: UUID, reason: String) throws {
+    mutating func recordTranslationFailure(_ batchID: UUID, reason: String, pauseForRetry: Bool = false) throws {
         var record = try checkpointForCurrentMedia()
         guard let index = record.translationBatches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
         guard record.translationBatches[index].state == .running else { throw CheckpointError.staleResult }
         guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CheckpointError.invalidRecord }
         record.translationBatches[index].state = .failed(reason: reason)
         checkpoint = record
-        status = .failed(reason: reason)
+        status = pauseForRetry ? .translationPaused(reason: reason) : .failed(reason: reason)
     }
 
     mutating func recordTranslationCancellation(_ batchID: UUID) throws {

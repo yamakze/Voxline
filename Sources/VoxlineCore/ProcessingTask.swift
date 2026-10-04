@@ -75,6 +75,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
     public var status: ProcessingTaskStatus {
         if items.contains(where: { if case .running = $0.status { true } else { false } }) { return .running }
         if items.contains(where: { if case .interrupted = $0.status { true } else { false } }) { return .interrupted }
+        if items.contains(where: { if case .translationPaused = $0.status { true } else { false } }) { return .translationPaused }
         if items.contains(where: { $0.status == .needsReview }) { return .needsReview }
         if items.isEmpty { return .draft }
         if items.contains(where: { $0.status == .pending }) { return startedAt == nil ? .draft : .queued }
@@ -107,7 +108,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
                 guard checkpoint.parameters == parameters else { throw CheckpointError.incompatibleContext }
             }
             switch item.status {
-            case .running, .interrupted, .completed:
+            case .running, .interrupted, .completed, .translationPaused:
                 guard startedAt != nil else { throw TaskValidationError.workBeforeStart(item.id) }
                 guard item.media != nil else { throw TaskValidationError.unassociatedMedia(item.id) }
             case .pending, .needsReview, .failed, .cancelled: break
@@ -213,8 +214,12 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
         try media?.validate()
         try SubtitleCue.validateTimeline(cues, within: media)
         try checkpoint?.validate(media: media, cues: cues, status: status)
-        if case .failed(let reason) = status, reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            throw TaskValidationError.emptyFailureReason(id)
+        switch status {
+        case .failed(let reason), .translationPaused(let reason):
+            if reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw TaskValidationError.emptyFailureReason(id)
+            }
+        default: break
         }
     }
 }
@@ -235,10 +240,11 @@ public enum TaskMediaStatus: Codable, Equatable, Sendable {
     case failed(reason: String)
     case cancelled
     case interrupted(stage: ProcessingStage)
+    case translationPaused(reason: String)
 }
 
 public enum ProcessingTaskStatus: Sendable {
-    case draft, queued, needsReview, running, interrupted, completed, partiallyFailed, failed, cancelled
+    case draft, queued, needsReview, running, interrupted, translationPaused, completed, partiallyFailed, failed, cancelled
 }
 
 public enum TaskValidationError: Error, LocalizedError, Equatable {

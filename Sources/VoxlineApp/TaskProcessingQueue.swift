@@ -11,6 +11,8 @@ final class TaskProcessingQueue {
     private let library: TaskLibrary
     private let pipeline: any MediaTranscriptionPipeline
     private let translationPipeline: any SubtitleTranslationPipeline
+    private let retrySleep: @Sendable (Duration) async throws -> Void
+    private let retryJitter: @Sendable () -> Double
     private var worker: Task<Void, Never>?
     private var mediaWork: Task<Void, any Error>?
     private var queuedIDs: [UUID] = []
@@ -23,12 +25,17 @@ final class TaskProcessingQueue {
     private(set) var progressText: String?
     private(set) var extractionFraction: Double?
     private(set) var errorMessage: String?
+    private(set) var translationRetryWait: TranslationRetryWait?
 
     init(library: TaskLibrary, pipeline: any MediaTranscriptionPipeline = LocalMediaTranscriptionPipeline(),
-         translationPipeline: any SubtitleTranslationPipeline = LocalSubtitleTranslationPipeline()) {
+         translationPipeline: any SubtitleTranslationPipeline = LocalSubtitleTranslationPipeline(),
+         retrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+         retryJitter: @escaping @Sendable () -> Double = { Double.random(in: 0...1) }) {
         self.library = library
         self.pipeline = pipeline
         self.translationPipeline = translationPipeline
+        self.retrySleep = retrySleep
+        self.retryJitter = retryJitter
     }
 
     func start(taskID: UUID, mediaID: UUID? = nil) throws {
@@ -141,6 +148,10 @@ final class TaskProcessingQueue {
                 if let translationBatchIDs {
                     guard let settings = parameters.translation else { throw QueueError.unavailable("本次任务未配置翻译服务。") }
                     try await self.translateBatches(taskID: taskID, mediaID: id, settings: settings, batchIDs: translationBatchIDs)
+                } else if let settings = parameters.translation,
+                          self.library.task(for: taskID)?.items.first(where: { $0.id == id })?
+                            .checkpoint?.chunks.allSatisfy(\.isCompleted) == true {
+                    try await self.translateMedia(taskID: taskID, mediaID: id, settings: settings)
                 } else {
                     try await self.transcribeMedia(taskID: taskID, mediaID: id, parameters: parameters)
                 }
@@ -325,7 +336,8 @@ final class TaskProcessingQueue {
     }
 
     private func translateBatches(taskID: UUID, mediaID: UUID, settings: TranslationSettings, batchIDs: [UUID]) async throws {
-        for (index, batchID) in batchIDs.enumerated() {
+        defer { translationRetryWait = nil }
+        for batchID in batchIDs {
             if Task.isCancelled {
                 try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .cancelled }
                 return
@@ -343,19 +355,53 @@ final class TaskProcessingQueue {
                 try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .failed(reason: error.localizedDescription) }
                 return
             }
-            progressText = "翻译批次 \(index + 1)／\(batchIDs.count)，等待服务响应"
-            let outputs: [TranslationBatchOutput]
-            do {
-                outputs = try await translationPipeline.translate(settings: settings, request: request)
-                try Task.checkCancellation()
-            } catch {
-                if Task.isCancelled || error is CancellationError {
-                    try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationCancellation(batchID) }
-                } else {
-                    try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationFailure(batchID, reason: error.localizedDescription) }
+            guard let current = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }),
+                  let batches = current.checkpoint?.translationBatches,
+                  let batchIndex = batches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
+            progressText = "已译 \(current.cues.filter(\.hasCurrentTranslation).count)／\(current.cues.count) 句，翻译批次 \(batchIndex + 1)／\(batches.count)"
+            var outputs: [TranslationBatchOutput]?
+            var retries = 0
+            while outputs == nil {
+                do {
+                    try Task.checkCancellation()
+                    if retries > 0 {
+                        guard let latest = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }),
+                              request.inputs.allSatisfy({ input in latest.cues.contains { input.matches($0) } }) else {
+                            throw CheckpointError.editedCue
+                        }
+                    }
+                    outputs = try await translationPipeline.translate(settings: settings, request: request)
+                    try Task.checkCancellation()
+                } catch {
+                    if Task.isCancelled || error is CancellationError {
+                        try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationCancellation(batchID) }
+                        return
+                    }
+                    let delay = (error as? SubtitleTranslationError)?.retryDelay(attempt: retries + 1, jitter: retryJitter())
+                    guard let delay, retries < 3 else {
+                        try updateMedia(taskID: taskID, mediaID: mediaID) {
+                            try $0.recordTranslationFailure(batchID, reason: error.localizedDescription, pauseForRetry: delay != nil)
+                        }
+                        return
+                    }
+                    retries += 1
+                    translationRetryWait = TranslationRetryWait(deadline: .now.addingTimeInterval(delay),
+                        attempt: retries, reason: error.localizedDescription)
+                    do {
+                        try await retrySleep(.seconds(delay))
+                        try Task.checkCancellation()
+                    } catch {
+                        if Task.isCancelled || error is CancellationError {
+                            try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationCancellation(batchID) }
+                        } else {
+                            try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationFailure(batchID, reason: error.localizedDescription) }
+                        }
+                        return
+                    }
+                    translationRetryWait = nil
                 }
-                return
             }
+            guard let outputs else { throw CheckpointError.staleResult }
             do {
                 try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.commitTranslationBatch(batchID, outputs: outputs) }
             } catch let error as CheckpointError {
@@ -371,6 +417,17 @@ final class TaskProcessingQueue {
             guard let index = task.items.firstIndex(where: { $0.id == mediaID }) else { throw CheckpointError.unknownWork }
             return try mutation(&task.items[index])
         }
+    }
+}
+
+struct TranslationRetryWait {
+    let deadline: Date
+    let attempt: Int
+    let reason: String
+
+    func label(at date: Date) -> String {
+        let seconds = max(0, ceil(deadline.timeIntervalSince(date)))
+        return "\(reason) \(seconds.formatted(.number.precision(.fractionLength(0)))) 秒后自动重试（\(attempt)／3）"
     }
 }
 

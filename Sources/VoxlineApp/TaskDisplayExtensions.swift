@@ -2,6 +2,11 @@ import SwiftUI
 import VoxlineCore
 
 public extension TaskMediaStatus {
+    var isTranslationPaused: Bool {
+        if case .translationPaused = self { return true }
+        return false
+    }
+
     var isFailure: Bool {
         if case .failed = self { return true }
         return false
@@ -9,7 +14,7 @@ public extension TaskMediaStatus {
 
     var isRetryable: Bool {
         switch self {
-        case .failed, .interrupted, .cancelled:
+        case .failed, .interrupted, .cancelled, .translationPaused:
             return true
         default:
             return false
@@ -28,6 +33,8 @@ public extension TaskMediaStatus {
             return "已完成"
         case .failed(let reason):
             return "失败：\(reason)"
+        case .translationPaused:
+            return "翻译暂停"
         case .cancelled:
             return "已取消"
         case .interrupted(let stage):
@@ -81,6 +88,8 @@ public extension ProcessingTaskStatus {
             return "部分失败"
         case .failed:
             return "失败"
+        case .translationPaused:
+            return "翻译暂停"
         case .cancelled:
             return "已取消"
         }
