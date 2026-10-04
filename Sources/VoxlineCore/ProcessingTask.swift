@@ -1,7 +1,7 @@
 import Foundation
 
 public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
-    public static let currentFormatVersion = 4
+    public static let currentFormatVersion = 5
     public let formatVersion: Int
     public let id: UUID
     public var title: String
@@ -23,7 +23,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .formatVersion)
-        guard version == 2 || version == 3 || version == Self.currentFormatVersion else {
+        guard version == 2 || version == 3 || version == 4 || version == Self.currentFormatVersion else {
             throw ProjectValidationError.unsupportedVersion(version)
         }
         formatVersion = Self.currentFormatVersion
@@ -56,7 +56,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
             hasReadyMedia = true
         }
         guard hasReadyMedia else { throw TaskValidationError.noReadyMedia }
-        if let translation = parameters.translation, translation.serviceID == nil {
+        if let translation = parameters.translation, case .openAICompatible(let api) = translation.engine, api.serviceID == nil {
             throw TaskValidationError.unconfiguredTranslationService
         }
         startedAt = date
@@ -96,7 +96,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
             throw TaskValidationError.emptyTitle
         }
         try parameters.validate()
-        if startedAt != nil, let translation = parameters.translation, translation.serviceID == nil {
+        if startedAt != nil, let translation = parameters.translation, case .openAICompatible(let api) = translation.engine, api.serviceID == nil {
             throw TaskValidationError.unconfiguredTranslationService
         }
         var identities = Set<UUID>()

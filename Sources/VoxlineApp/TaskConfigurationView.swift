@@ -12,6 +12,10 @@ public struct TaskConfigurationView: View {
     @State private var modelID: String
     @State private var languageMode: TranscriptionSettings.LanguageMode
     @State private var languageCode: String
+    private enum TranslationEngineChoice { case api, apple }
+    @State private var translationEngine: TranslationEngineChoice
+    @State private var appleSourceLanguage: String
+    @State private var appleBatchSize: Int
     @State private var translates: Bool
     @State private var selectedServiceID: UUID?
     @State private var translationModel: String
@@ -45,12 +49,21 @@ public struct TaskConfigurationView: View {
         _modelID = State(initialValue: value.parameters.transcription.modelID)
         _languageMode = State(initialValue: value.parameters.transcription.languageMode)
         _languageCode = State(initialValue: value.parameters.transcription.languageCode ?? "en")
+        if case .appleTranslation(let source) = value.parameters.translation?.engine {
+            _translationEngine = State(initialValue: .apple)
+            _appleSourceLanguage = State(initialValue: source)
+            _appleBatchSize = State(initialValue: value.parameters.translation?.batchSize ?? TranslationSettings.defaultBatchSize)
+        } else {
+            _translationEngine = State(initialValue: .api)
+            _appleSourceLanguage = State(initialValue: "en")
+            _appleBatchSize = State(initialValue: TranslationSettings.defaultBatchSize)
+        }
         _translates = State(initialValue: value.parameters.translation != nil)
-        _selectedServiceID = State(initialValue: value.parameters.translation?.serviceID)
-        _translationModel = State(initialValue: value.parameters.translation?.modelID ?? "gpt-4o-mini")
+        _selectedServiceID = State(initialValue: value.parameters.translation?.api?.serviceID)
+        _translationModel = State(initialValue: value.parameters.translation?.api?.modelID ?? "gpt-4o-mini")
         _targetLanguage = State(initialValue: value.parameters.translation?.targetLanguage ?? "zh-Hans")
         _translationBatchSize = State(initialValue: value.parameters.translation?.batchSize ?? TranslationSettings.defaultBatchSize)
-        _translationSystemPrompt = State(initialValue: value.parameters.translation?.systemPrompt ?? TranslationSettings.defaultSystemPrompt)
+        _translationSystemPrompt = State(initialValue: value.parameters.translation?.api?.systemPrompt ?? TranslationSettings.defaultSystemPrompt)
         _outputs = State(initialValue: Set(value.parameters.srtOutputs))
         _existingItems = State(initialValue: value.items)
     }
@@ -514,40 +527,49 @@ public struct TaskConfigurationView: View {
                         Toggle("启用字幕翻译", isOn: $translates)
 
                         if translates {
-                            if serviceStore.services.isEmpty {
-                                HStack {
-                                    Text("尚未配置翻译服务")
-                                        .font(.caption).foregroundStyle(.orange)
-                                    Spacer()
-                                    Button("去配置", systemImage: "gear") {
-                                        showTranslationSettings = true
-                                    }
-                                }
+                            Picker("翻译引擎", selection: $translationEngine) {
+                                Text("OpenAI 兼容接口").tag(TranslationEngineChoice.api)
+                                Text("Apple Translation · 本机").tag(TranslationEngineChoice.apple)
+                            }
+                            if translationEngine == .apple {
+                                AppleTranslationLanguageSettings(source: $appleSourceLanguage, target: $targetLanguage,
+                                                                 batchSize: $appleBatchSize)
                             } else {
-                                Picker("服务提供商", selection: $selectedServiceID) {
-                                    Text("请选择服务").tag(nil as UUID?)
-                                    ForEach(serviceStore.services) { service in
-                                        Text(service.name).tag(Optional(service.id))
+                                if serviceStore.services.isEmpty {
+                                    HStack {
+                                        Text("尚未配置翻译服务")
+                                            .font(.caption).foregroundStyle(.orange)
+                                        Spacer()
+                                        Button("去配置", systemImage: "gear") {
+                                            showTranslationSettings = true
+                                        }
+                                    }
+                                } else {
+                                    Picker("服务提供商", selection: $selectedServiceID) {
+                                        Text("请选择服务").tag(nil as UUID?)
+                                        ForEach(serviceStore.services) { service in
+                                            Text(service.name).tag(Optional(service.id))
+                                        }
                                     }
                                 }
-                            }
 
-                            TextField("翻译模型（如 gpt-4o-mini）", text: $translationModel)
-                                .textFieldStyle(.roundedBorder)
+                                TextField("翻译模型（如 gpt-4o-mini）", text: $translationModel)
+                                    .textFieldStyle(.roundedBorder)
 
-                            TextField("目标语言（默认 zh-Hans）", text: $targetLanguage)
-                                .textFieldStyle(.roundedBorder)
-                            Text("每批最多 \(translationBatchSize) 条字幕").font(.caption)
-                            DisclosureGroup("系统提示词") {
-                                Text(translationSystemPrompt).font(.caption).textSelection(.enabled)
+                                TextField("目标语言（默认 zh-Hans）", text: $targetLanguage)
+                                    .textFieldStyle(.roundedBorder)
+                                Text("每批最多 \(translationBatchSize) 条字幕").font(.caption)
+                                DisclosureGroup("系统提示词") {
+                                    Text(translationSystemPrompt).font(.caption).textSelection(.enabled)
+                                }
+                                Button("编辑服务参数…") { showTranslationSettings = true }
+                                    .buttonStyle(.borderless)
                             }
-                            Button("编辑服务参数…") { showTranslationSettings = true }
-                                .buttonStyle(.borderless)
                         }
                     }
                     .padding(.top, 6)
                 } label: {
-                    Label("字幕翻译 (OpenAI 兼容)", systemImage: "character.bubble")
+                    Label("字幕翻译", systemImage: "character.bubble")
                         .font(.subheadline.bold())
                 }
                 .padding(12)
@@ -611,7 +633,7 @@ public struct TaskConfigurationView: View {
             .disabled(isInspecting || isSaving)
 
             if translates {
-                Text("字幕文本发送至所选服务；音频保持本地。")
+                Text(translationEngine == .apple ? "本机翻译，字幕文本和音频保持本地。" : "字幕文本发送至所选服务；音频保持本地。")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -630,7 +652,7 @@ public struct TaskConfigurationView: View {
                 return "媒体“\(candidate.url.lastPathComponent)”尚未选择音轨。"
             }
         }
-        if translates {
+        if translates && translationEngine == .api {
             if serviceStore.isLoading || serviceStore.isSaving { return "翻译服务配置正在读取或保存。" }
             if let error = serviceStore.errorMessage { return error }
             if selectedServiceID == nil || serviceStore.services.isEmpty {
@@ -656,7 +678,11 @@ public struct TaskConfigurationView: View {
             )
 
             var translation: TranslationSettings?
-            if translates {
+            if translates && translationEngine == .apple {
+                _ = try await AppleTranslationCoordinator.languagePair(sourceID: appleSourceLanguage, targetID: targetLanguage)
+                translation = try TranslationSettings(appleSourceLanguage: appleSourceLanguage,
+                                                      targetLanguage: targetLanguage, batchSize: appleBatchSize)
+            } else if translates {
                 guard let serviceID = selectedServiceID,
                       let service = serviceStore.services.first(where: { $0.id == serviceID }) else {
                     throw TaskValidationError.unconfiguredTranslationService

@@ -21,6 +21,15 @@ struct SubtitleTranslationTests {
         return URLSession(configuration: configuration)
     }
 
+    @Test func remoteClientRejectsNativeEngineBeforeNetworkAccess() async throws {
+        let cues = try cues(count: 1)
+        let settings = try TranslationSettings(appleSourceLanguage: "en", targetLanguage: "zh-Hans")
+        let request = try SubtitleTranslationRequest(inputs: cues.map(TranslationBatchInput.init), cues: cues)
+        await #expect(throws: SubtitleTranslationError.invalidRequest) {
+            try await OpenAICompatibleTranslationClient(session: session()).translate(settings: settings, apiKey: "test", request: request)
+        }
+    }
+
     @Test func strictIDsRejectMissingDuplicateExtraBlankAndTimelineFields() throws {
         let cues = try cues(count: 2)
         let valid = cues.map { ["id": $0.id.uuidString, "text": "放下它。"] }
@@ -118,11 +127,11 @@ struct SubtitleTranslationTests {
                 bodyData = data
             }
             let body = try #require(try JSONSerialization.jsonObject(with: bodyData) as? [String: Any])
-            #expect(body["model"] as? String == settings.modelID)
+            #expect(body["model"] as? String == settings.api?.modelID)
             let messages = try #require(body["messages"] as? [[String: String]])
             #expect(messages[0]["role"] == "system")
             let instructions = try #require(messages[0]["content"])
-            #expect(instructions.hasPrefix(settings.systemPrompt + "\n"))
+            #expect(instructions.hasPrefix(try #require(settings.api).systemPrompt + "\n"))
             #expect(instructions.contains("Include every subtitles ID exactly once"))
             let payload = try #require(try JSONSerialization.jsonObject(with: Data(messages[1]["content"]!.utf8)) as? [String: Any])
             #expect(payload["targetLanguage"] as? String == settings.targetLanguage)

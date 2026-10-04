@@ -55,7 +55,7 @@ struct ProcessingTaskTests {
         var reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task))
         #expect(reopened.startedAt == startedAt)
         #expect(reopened.parameters == task.parameters)
-        #expect(reopened.parameters.translation?.serviceID == serviceID)
+        #expect(reopened.parameters.translation?.api?.serviceID == serviceID)
         #expect(throws: TaskValidationError.parametersFrozen) { try reopened.freezeParameters() }
         let json = try #require(String(data: TaskDocumentCodec.encode(reopened), encoding: .utf8))
         #expect(!json.contains("apiKey"))

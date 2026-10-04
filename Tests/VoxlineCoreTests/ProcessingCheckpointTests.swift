@@ -7,10 +7,10 @@ struct ProcessingCheckpointTests {
     private let ranges = [TranscriptionChunkRange(sourceStartMilliseconds: 0, durationMilliseconds: 2000),
                           TranscriptionChunkRange(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)]
 
-    private func task(translates: Bool = false) throws -> ProcessingTask {
+    private func task(translates: Bool = false, apple: Bool = false) throws -> ProcessingTask {
         let media = try MediaIdentity(fileName: "sample.mp4", byteCount: 123, sha256: String(repeating: "a", count: 64),
                                       durationMilliseconds: 5000, audioTrackID: 1)
-        let translation = translates ? try TranslationSettings(baseURL: URL(string: "https://example.test/v1")!,
+        let translation = apple ? try TranslationSettings(appleSourceLanguage: "en", targetLanguage: "zh-Hans", batchSize: 7) : translates ? try TranslationSettings(baseURL: URL(string: "https://example.test/v1")!,
             modelID: "model", targetLanguage: "zh-Hans", serviceID: UUID()) : nil
         let parameters = TaskParameters(transcription: .whisperKitBaseline, translation: translation)
         var task = ProcessingTask(items: [.init(title: "Sample", kind: .video,
@@ -20,13 +20,60 @@ struct ProcessingCheckpointTests {
         return task
     }
 
+    @Test func nativeParametersAndCommittedBatchesSurviveMigrationAndRecovery() throws {
+        var original = try task(apple: true)
+        _ = try complete(&original, index: 0)
+        _ = try complete(&original, index: 1)
+        let ids = original.items[0].cues.map(\.id)
+        let first = try original.items[0].prepareTranslationBatch(cueIDs: [ids[0]])
+        try original.items[0].beginTranslationBatch(first)
+        try original.items[0].commitTranslationBatch(first, outputs: [.init(cueID: ids[0], text: "保留")])
+        let second = try original.items[0].prepareTranslationBatch(cueIDs: [ids[1]])
+        try original.items[0].beginTranslationBatch(second)
+        try original.items[0].recordTranslationFailure(second, reason: "Language download cancelled")
+        let data = try TaskDocumentCodec.encode(original)
+        #expect(!String(decoding: data, as: UTF8.self).contains("baseURL"))
+        #expect(!String(decoding: data, as: UTF8.self).contains("systemPrompt"))
+        var reopened = try TaskDocumentCodec.decode(data)
+        #expect(reopened == original)
+        #expect(reopened.parameters.translation?.api == nil)
+        #expect(reopened.parameters.translation?.engine == .appleTranslation(sourceLanguage: "en"))
+        #expect(reopened.parameters.translation?.batchSize == 7)
+        try reopened.items[0].beginTranslationBatch(second)
+        try reopened.items[0].commitTranslationBatch(second, outputs: [.init(cueID: ids[1], text: "继续")])
+        #expect(reopened.items[0].status == .completed)
+        #expect(reopened.items[0].cues.map(\.translation) == [
+            .succeeded(text: "保留", sourceRevision: 1), .succeeded(text: "继续", sourceRevision: 1)])
+    }
+
+    @Test func versionFourFlatAPISettingsKeepFrozenParameters() throws {
+        let original = try task(translates: true)
+        let api = try #require(original.parameters.translation?.api)
+        var object = try #require(JSONSerialization.jsonObject(with: TaskDocumentCodec.encode(original)) as? [String: Any])
+        object["formatVersion"] = 4
+        var parameters = try #require(object["parameters"] as? [String: Any])
+        parameters["translation"] = ["baseURL": api.baseURL.absoluteString, "modelID": api.modelID,
+            "serviceID": try #require(api.serviceID).uuidString, "targetLanguage": "zh-Hans",
+            "batchSize": 30, "systemPrompt": api.systemPrompt] as [String: Any]
+        object["parameters"] = parameters
+        var items = try #require(object["items"] as? [[String: Any]])
+        var checkpoint = try #require(items[0]["checkpoint"] as? [String: Any])
+        checkpoint["parameters"] = parameters
+        items[0]["checkpoint"] = checkpoint
+        object["items"] = items
+        #expect(try TaskDocumentCodec.decode(JSONSerialization.data(withJSONObject: object)) == original)
+    }
+
     @Test func versionThreeMigratesTranslationDefaultsInTaskAndCheckpointWithoutChangingResults() throws {
         var original = try task(translates: true)
         _ = try complete(&original, index: 0)
         var object = try #require(try JSONSerialization.jsonObject(with: TaskDocumentCodec.encode(original)) as? [String: Any])
         object["formatVersion"] = 3
         var parameters = try #require(object["parameters"] as? [String: Any])
-        var translation = try #require(parameters["translation"] as? [String: Any])
+        let api = try #require(original.parameters.translation?.api)
+        var translation: [String: Any] = ["baseURL": api.baseURL.absoluteString,
+            "modelID": api.modelID, "serviceID": try #require(api.serviceID).uuidString,
+            "targetLanguage": try #require(original.parameters.translation).targetLanguage]
         translation.removeValue(forKey: "batchSize")
         translation.removeValue(forKey: "systemPrompt")
         parameters["translation"] = translation
@@ -39,9 +86,9 @@ struct ProcessingCheckpointTests {
         let legacy = try JSONSerialization.data(withJSONObject: object)
         let migrated = try TaskDocumentCodec.decode(legacy)
         #expect(migrated == original)
-        #expect(migrated.formatVersion == 4)
+        #expect(migrated.formatVersion == ProcessingTask.currentFormatVersion)
         #expect(migrated.parameters.translation?.batchSize == 30)
-        #expect(migrated.parameters.translation?.systemPrompt == TranslationSettings.defaultSystemPrompt)
+        #expect(migrated.parameters.translation?.api?.systemPrompt == TranslationSettings.defaultSystemPrompt)
         #expect(migrated.items[0].checkpoint?.parameters == migrated.parameters)
         #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(migrated)) == migrated)
         for invalid in [NSNull(), 0, "seven"] as [Any] {

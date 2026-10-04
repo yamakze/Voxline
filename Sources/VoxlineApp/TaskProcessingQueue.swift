@@ -28,7 +28,7 @@ final class TaskProcessingQueue {
     private(set) var translationRetryWait: TranslationRetryWait?
 
     init(library: TaskLibrary, pipeline: any MediaTranscriptionPipeline = LocalMediaTranscriptionPipeline(),
-         translationPipeline: any SubtitleTranslationPipeline = LocalSubtitleTranslationPipeline(),
+         translationPipeline: any SubtitleTranslationPipeline = ConfiguredSubtitleTranslationPipeline(),
          retrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
          retryJitter: @escaping @Sendable () -> Double = { Double.random(in: 0...1) }) {
         self.library = library

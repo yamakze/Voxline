@@ -110,14 +110,18 @@ public struct TaskDetailView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("字幕翻译").font(.caption2.bold()).foregroundStyle(.secondary)
                         if let translation = task.parameters.translation {
-                            Text("\(translation.modelID) (\(translation.targetLanguage))")
-                                .font(.caption.bold())
-                            Text("每批最多 \(translation.batchSize) 条字幕").font(.caption2)
-                            DisclosureGroup("系统提示词") {
-                                Text(translation.systemPrompt).font(.caption2).textSelection(.enabled)
+                            switch translation.engine {
+                            case .openAICompatible(let api):
+                                Text("\(api.modelID) (\(translation.targetLanguage))").font(.caption.bold())
+                                DisclosureGroup("系统提示词") {
+                                    Text(api.systemPrompt).font(.caption2).textSelection(.enabled)
+                                }
+                                Text(api.baseURL.absoluteString).font(.caption2).foregroundStyle(.secondary)
+                            case .appleTranslation(let source):
+                                Text("Apple Translation · 本机").font(.caption.bold())
+                                Text("\(source) → \(translation.targetLanguage)").font(.caption2)
                             }
-                            Text(translation.baseURL.absoluteString)
-                                .font(.caption2).foregroundStyle(.secondary)
+                            Text("每批最多 \(translation.batchSize) 条字幕").font(.caption2)
                         } else {
                             Text("未启用翻译").font(.caption).foregroundStyle(.secondary)
                         }

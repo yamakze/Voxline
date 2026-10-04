@@ -113,47 +113,92 @@ public struct TranscriptionSettings: Codable, Equatable, Sendable {
 public struct TranslationSettings: Codable, Equatable, Sendable {
     public static let defaultBatchSize = 30
     public static let defaultSystemPrompt = "Translate the subtitles into the targetLanguage in the user JSON. Preserve meaning, tone and readable subtitle phrasing."
-    public let serviceID: UUID?
-    public let baseURL: URL
-    public let modelID: String
+
+    public struct APIConfiguration: Codable, Equatable, Sendable {
+        public let serviceID: UUID?
+        public let baseURL: URL
+        public let modelID: String
+        public let systemPrompt: String
+    }
+
+    public enum Engine: Codable, Equatable, Sendable {
+        case openAICompatible(APIConfiguration)
+        case appleTranslation(sourceLanguage: String)
+    }
+
+    public let engine: Engine
     public let targetLanguage: String
     public let batchSize: Int
-    public let systemPrompt: String
+
+    public var api: APIConfiguration? {
+        if case .openAICompatible(let configuration) = engine { return configuration }
+        return nil
+    }
 
     public init(baseURL: URL, modelID: String, targetLanguage: String, serviceID: UUID? = nil,
                 batchSize: Int = Self.defaultBatchSize, systemPrompt: String = Self.defaultSystemPrompt) throws {
-        self.serviceID = serviceID
-        self.baseURL = baseURL
-        self.modelID = modelID
+        engine = .openAICompatible(APIConfiguration(serviceID: serviceID, baseURL: baseURL,
+                                                    modelID: modelID, systemPrompt: systemPrompt))
         self.targetLanguage = targetLanguage
         self.batchSize = batchSize
-        self.systemPrompt = systemPrompt
         try validate()
     }
 
-    private enum CodingKeys: String, CodingKey { case serviceID, baseURL, modelID, targetLanguage, batchSize, systemPrompt }
+    public init(appleSourceLanguage: String, targetLanguage: String, batchSize: Int = Self.defaultBatchSize) throws {
+        engine = .appleTranslation(sourceLanguage: appleSourceLanguage)
+        self.targetLanguage = targetLanguage
+        self.batchSize = batchSize
+        try validate()
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case engine, targetLanguage, batchSize
+        case serviceID, baseURL, modelID, systemPrompt // Decode-only legacy API settings.
+    }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(baseURL: values.decode(URL.self, forKey: .baseURL),
-                      modelID: values.decode(String.self, forKey: .modelID),
-                      targetLanguage: values.decode(String.self, forKey: .targetLanguage),
-                      serviceID: values.decodeIfPresent(UUID.self, forKey: .serviceID),
-                      batchSize: values.contains(.batchSize) ? values.decode(Int.self, forKey: .batchSize) : Self.defaultBatchSize,
-                      systemPrompt: values.contains(.systemPrompt) ? values.decode(String.self, forKey: .systemPrompt) : Self.defaultSystemPrompt)
+        targetLanguage = try values.decode(String.self, forKey: .targetLanguage)
+        batchSize = try values.contains(.batchSize) ? values.decode(Int.self, forKey: .batchSize) : Self.defaultBatchSize
+        if values.contains(.engine) {
+            engine = try values.decode(Engine.self, forKey: .engine)
+        } else {
+            engine = .openAICompatible(APIConfiguration(
+                serviceID: try values.decodeIfPresent(UUID.self, forKey: .serviceID),
+                baseURL: try values.decode(URL.self, forKey: .baseURL),
+                modelID: try values.decode(String.self, forKey: .modelID),
+                systemPrompt: try values.contains(.systemPrompt) ? values.decode(String.self, forKey: .systemPrompt) : Self.defaultSystemPrompt))
+        }
+        try validate()
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(engine, forKey: .engine)
+        try values.encode(targetLanguage, forKey: .targetLanguage)
+        try values.encode(batchSize, forKey: .batchSize)
     }
 
     public func validate() throws {
         guard batchSize > 0 else { throw ProjectValidationError.invalidTranslationBatchSize }
-        guard !systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ProjectValidationError.emptyTranslationSystemPrompt
-        }
-        guard let parts = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
-              parts.scheme == "https" || parts.scheme == "http", let host = parts.host, !host.isEmpty,
-              parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
-              !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !targetLanguage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !targetLanguage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ProjectValidationError.invalidTranslationSettings
+        }
+        switch engine {
+        case .appleTranslation(let sourceLanguage):
+            guard !sourceLanguage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw ProjectValidationError.invalidSourceLanguage
+            }
+        case .openAICompatible(let api):
+            guard !api.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw ProjectValidationError.emptyTranslationSystemPrompt
+            }
+            guard let parts = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false),
+                  parts.scheme == "https" || parts.scheme == "http", let host = parts.host, !host.isEmpty,
+                  parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
+                  !api.modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw ProjectValidationError.invalidTranslationSettings
+            }
         }
     }
 }

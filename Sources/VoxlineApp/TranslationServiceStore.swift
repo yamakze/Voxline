@@ -166,16 +166,17 @@ public final class TranslationServiceStore {
     }
 
     func apiKey(for settings: TranslationSettings) async throws -> String {
+        guard let api = settings.api else { throw ProjectValidationError.invalidTranslationSettings }
         await initialLoad?.value
         guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
         guard errorMessage == nil else { throw TranslationServiceError.configurationUnavailable }
-        guard let id = settings.serviceID, let service = services.first(where: { $0.id == id }) else { throw TranslationServiceError.unknownService }
-        guard service.baseURL == settings.baseURL else { throw TranslationServiceError.changedEndpoint }
+        guard let id = api.serviceID, let service = services.first(where: { $0.id == id }) else { throw TranslationServiceError.unknownService }
+        guard service.baseURL == api.baseURL else { throw TranslationServiceError.changedEndpoint }
         let key = try await vault.read(serviceID: id)
         guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
         guard errorMessage == nil else { throw TranslationServiceError.configurationUnavailable }
         guard let current = services.first(where: { $0.id == id }) else { throw TranslationServiceError.unknownService }
-        guard current.baseURL == settings.baseURL else { throw TranslationServiceError.changedEndpoint }
+        guard current.baseURL == api.baseURL else { throw TranslationServiceError.changedEndpoint }
         credentialPresence[id] = key != nil
         // Empty credentials explicitly use no Authorization header; authentication failures remain visible.
         return key ?? ""

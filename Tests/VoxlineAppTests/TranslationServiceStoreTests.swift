@@ -29,7 +29,7 @@ struct TranslationServiceStoreTests {
         await reopened.load()
         #expect(reopened.services == [configured])
         #expect(snapshot.batchSize == 7)
-        #expect(snapshot.systemPrompt == "译为简体中文，保留专名。")
+        #expect(snapshot.api?.systemPrompt == "译为简体中文，保留专名。")
         #expect(try await reopened.apiKey(for: snapshot) == "test-only-secret")
         let data = try Data(contentsOf: url)
         #expect(!String(decoding: data, as: UTF8.self).contains("test-only-secret"))
