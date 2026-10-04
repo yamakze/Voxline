@@ -24,6 +24,7 @@ public struct MediaDetailProofreadingView: View {
     // Sheets
     @State private var showTimeOffsetSheet = false
     @State private var showSRTExportSheet = false
+    @State private var showBurnInSheet = false
     @State private var showRelinkSheet = false
 
     public var onBack: (() -> Void)?
@@ -111,6 +112,11 @@ public struct MediaDetailProofreadingView: View {
                     showSRTExportSheet = true
                 }
                 .disabled(item.cues.isEmpty || editingCueID != nil)
+
+                if item.kind == .video {
+                    Button("烧录字幕…", systemImage: "film.stack") { showBurnInSheet = true }
+                        .disabled(item.cues.isEmpty || editingCueID != nil)
+                }
             }
         }
         .alert("无法完成操作", isPresented: Binding(
@@ -136,6 +142,7 @@ public struct MediaDetailProofreadingView: View {
                 cues: item.cues, media: item.media, initialKind: initialOutputKind
             )
         }
+        .sheet(isPresented: $showBurnInSheet) { SubtitleBurnInSheet(item: item) }
         .sheet(isPresented: $showRelinkSheet, onDismiss: {
             Task { await playbackController.loadMedia(for: item) }
         }) {

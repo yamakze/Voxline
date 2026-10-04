@@ -124,3 +124,15 @@ VOXLINE_PLAYBACK_FIXTURE_DIRECTORY="$PWD/tmp/playback-validation" \
 默认验证真实 AVPlayer 的准备、播放、暂停、结束、定位、所选音轨、媒体失败与释放，以及完整时间轴的原子偏移。可选入口将已有多音轨视频以原生直通方式扩展为 20 秒，生成 preview.mov 和 preview.voxline；打开任务并关联该 MOV 可复核画面、三种字幕预览及编辑。此任务使用明确标记的测试字幕，不能作为真实转写或 API 翻译质量证据。
 
 需要验证真实画面时，可向该可选入口传入 VOXLINE_PLAYBACK_VIDEO_SOURCE 本地视频绝对路径；任务关联原视频，不复制或转码文件，仍使用测试字幕，只验证播放和校对交互。
+
+## 字幕烧录验证
+
+```sh
+swift test --filter 'SubtitleBurnInTests|SubtitleExporterTests|MediaPlaybackControllerTests'
+VOXLINE_BURN_IN_SAMPLE="/absolute/path/S001-30s.mp4" \
+VOXLINE_BURN_IN_TASK="/absolute/path/reviewed.voxline" \
+VOXLINE_BURN_IN_OUTPUT="$PWD/tmp/burn-in-validation" \
+  swift test --filter realSampleProducesThreeSubtitledVideosFromReviewedText
+```
+
+普通入口直接编码和解码原生视频，检查字幕前／中／后的帧、源帧时间、方向变换、H.264／HEVC、所选音轨、过期译文、覆盖和实际导出取消。私有入口从已校对 Task 选取片段时长内的完整字幕，生成原文／译文／双语三个 MP4、验收任务与实际耗时／磁盘数据；不重复转写或调用翻译服务。输出目录中的同名测试样本会被明确替换。播放器人工验收读取生成的 MP4，不能用测试通过代替实机结果。
