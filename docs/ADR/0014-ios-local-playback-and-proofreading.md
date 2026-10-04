@@ -6,7 +6,7 @@
 
 iOS 手动导入 Mac 任务成果，保存独立设备副本；相同任务 ID 再次导入前确认替换。音视频通过 Files 关联，媒体保持引用，授权只保存在本设备。校对草稿通过 Core 校验并原子写入，成功后发布到任务库。
 
-MediaPlaybackController 移入 Media 模块，由 Mac 与 iOS 共用。iOS 使用 AVKit VideoPlayer 与原生导航，字幕版本、整体偏移、身份检查和所选音轨复用现有能力；不引入移动端推理队列。
+MediaPlaybackController 移入 Media 模块，由 Mac 与 iOS 共用。iOS 使用 AVKit VideoPlayer 与原生导航，字幕版本、整体偏移、身份检查和所选音轨复用现有能力。首轮范围为播放与校对；后续独立处理和队列扩展见 [ADR-0015](0015-ios-feature-parity.md)。
 
 ## 理由
 
