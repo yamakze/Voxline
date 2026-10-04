@@ -3,8 +3,7 @@ import CoreGraphics
 import Foundation
 import Testing
 import VoxlineCore
-import VoxlineMedia
-@testable import VoxlineApp
+@testable import VoxlineMedia
 
 @Suite("Native subtitle burn-in", .serialized, .timeLimit(.minutes(2)))
 @MainActor

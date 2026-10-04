@@ -1,7 +1,9 @@
+#if os(macOS)
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import VoxlineCore
+import VoxlineMedia
 
 struct SubtitleBurnInSheet: View {
     @State private var item: TaskMediaItem
@@ -170,3 +172,5 @@ struct SubtitleBurnInSheet: View {
         }
     }
 }
+
+#endif

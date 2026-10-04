@@ -1,3 +1,6 @@
+#if os(macOS)
+import VoxlineTranslation
+import VoxlineWhisperKit
 import SwiftUI
 import UniformTypeIdentifiers
 import VoxlineCore
@@ -766,3 +769,5 @@ public struct TaskConfigurationView: View {
         }
     }
 }
+
+#endif

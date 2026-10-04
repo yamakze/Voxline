@@ -1,3 +1,5 @@
+#if os(macOS)
+import VoxlineWorkflow
 import SwiftUI
 import AVKit
 import Observation
@@ -664,3 +666,5 @@ public struct MediaDetailProofreadingView: View {
     }
 
 }
+
+#endif

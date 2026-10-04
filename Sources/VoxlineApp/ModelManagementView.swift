@@ -1,3 +1,5 @@
+#if os(macOS)
+import VoxlineWhisperKit
 import SwiftUI
 import AppKit
 import VoxlineCore
@@ -282,3 +284,5 @@ public struct ModelManagementView: View {
         .background(Color.secondary.opacity(0.1), in: .capsule)
     }
 }
+
+#endif

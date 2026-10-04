@@ -14,7 +14,7 @@ compile_and_run.sh 构建成功后停止当前仓库产物对应的旧进程，�
 
 ## iOS
 
-Voxline.xcodeproj 共享 VoxlineIOS scheme。Core 框架直接使用 Sources/VoxlineCore；应用使用 Sources/VoxlineIOS，并复用 Mac 的 TaskDisplayExtensions。无第三方构建工具要求，也不下载或链接 WhisperKit。Xcode 可打开工程进行断点调试与 SwiftUI Preview。
+Voxline.xcodeproj 保留 VoxlineIOS scheme，应用 target 为 VoxlineApp；两平台应用源码统一在 Sources/VoxlineApp。Core／Media 框架直接使用相同源码目录，平台适配通过条件编译选择。当前 iOS 不下载或链接 WhisperKit。Xcode 可打开工程进行断点调试与 SwiftUI Preview。
 
 ```sh
 Scripts/build-ios-ipa.sh
@@ -28,9 +28,13 @@ Scripts/compile_and_run_ios.sh <模拟器UDID> release
 - compile_and_run_ios.sh 默认为 debug，优先选择已启动的 iOS 模拟器，否则选择第一个可用 iPhone。指定 UDID 可切换设备；没有可用 runtime 或参数不合法时明确退出。
 - 构建成功后按需启动模拟器、等待开机、安装应用并替换旧进程；保留应用数据。构建失败时不安装、不终止旧应用。
 - build-ios.sh 是两者共用的构建入口，分别保留 build/ios/device 和 build/ios/simulator 下的 DerivedData。完整日志为对应目录下的 build.log，包含总耗时和 Build Timing Summary。
-- IPA 是设备架构 arm64，不能安装到模拟器。普通真机仍需有效签名；可用现有签名工具处理 IPA，或在 Xcode 的 Signing & Capabilities 中选择开发 Team 后运行。当前没有真机签名或运行证据。
+- IPA 是设备架构 arm64，不能安装到模拟器。普通真机需有效签名；可用现有签名工具处理 IPA，或在 Xcode 的 Signing & Capabilities 中选择开发 Team 后运行。
 
 当前 iOS 功能与文件规则见 [架构](architecture/README.md)。
+
+## 软件包验证
+
+测试与能力模块归属一致：Core 的格式、字幕与 SRT，Media 的访问、提取、播放与烧录，Translation 的协议与凭据，WhisperKit 的模型与 Provider，Workflow 的持久化与队列。VoxlineAppTests 验证原生系统接线。平台 source guard 的检查通过实际 Mac 与 iPhoneOS／模拟器构建完成。
 
 ## 缩短反馈时间
 

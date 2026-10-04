@@ -1,3 +1,4 @@
+#if os(macOS)
 import AVKit
 import SwiftUI
 
@@ -20,3 +21,5 @@ struct NativeVideoPlayer: NSViewRepresentable {
         view.player = nil
     }
 }
+
+#endif

@@ -1,5 +1,4 @@
-import SwiftUI
-import VoxlineCore
+import Foundation
 
 public extension TaskMediaStatus {
     var isTranslationPaused: Bool {

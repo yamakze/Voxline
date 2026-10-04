@@ -1,11 +1,41 @@
 import Foundation
 import Testing
 import VoxlineCore
-@testable import VoxlineApp
+@testable import VoxlineWorkflow
 
-@Suite("Task persistence after UI refactoring", .serialized)
+@Suite("Task document persistence", .serialized)
 @MainActor
 struct TaskLibraryTests {
+    @Test func nativeRecentDocumentsAreReadWithoutRewritingAndRegistrationIsSeparateFromSaving() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let external = directory.appendingPathComponent("external.voxline")
+        let broken = directory.appendingPathComponent("broken.voxline")
+        let task = ProcessingTask(title: "External task")
+        let original = try TaskDocumentCodec.encode(task)
+        try original.write(to: external)
+        try Data("broken".utf8).write(to: broken)
+        var noted: [URL] = []
+        let library = TaskLibrary(tasksDirectory: directory.appendingPathComponent("local"),
+            recentDocumentURLs: { [external, external, broken] }, noteRecentDocument: { noted.append($0) })
+        #expect(library.entries.count == 2)
+        #expect(library.task(for: task.id) == task)
+        #expect(library.entries.contains { $0.url == broken && $0.error != nil })
+        #expect(noted.isEmpty)
+        #expect(try Data(contentsOf: external) == original)
+        library.register(task, at: external)
+        library.register(task, at: external)
+        #expect(noted == [external])
+        #expect(try Data(contentsOf: external) == original)
+        var invalid = task
+        invalid.title = " "
+        #expect(throws: TaskValidationError.emptyTitle) { try library.save(invalid) }
+        #expect(noted == [external])
+        #expect(library.task(for: task.id) == task)
+        #expect(try Data(contentsOf: external) == original)
+    }
+
     @Test func openingLegacyTaskDoesNotRewriteOriginalAndFailedSaveKeepsLastDocument() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

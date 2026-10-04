@@ -1,5 +1,5 @@
 import UniformTypeIdentifiers
 
 extension UTType {
-    static let voxlineProject = UTType(exportedAs: "dev.voxline.project", conformingTo: .json)
+    static let voxlineTask = UTType(exportedAs: "dev.voxline.project", conformingTo: .json)
 }

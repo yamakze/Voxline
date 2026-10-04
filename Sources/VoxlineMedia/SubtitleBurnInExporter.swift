@@ -1,9 +1,9 @@
+#if os(macOS)
 @preconcurrency import AVFoundation
 import CoreImage
 import CoreText
 import Foundation
 import VoxlineCore
-import VoxlineMedia
 
 public enum BurnInCodec: String, CaseIterable, Sendable {
     case h264, hevc
@@ -331,3 +331,5 @@ private final class BurnInTextRenderer: @unchecked Sendable {
         return (frame, width, height, padding)
     }
 }
+
+#endif

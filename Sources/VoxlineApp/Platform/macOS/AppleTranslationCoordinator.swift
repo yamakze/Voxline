@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import Observation
 import SwiftUI
@@ -166,3 +167,5 @@ struct AppleTranslationSessionHost: View {
             .accessibilityHidden(true)
     }
 }
+
+#endif

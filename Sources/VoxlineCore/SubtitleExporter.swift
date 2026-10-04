@@ -1,5 +1,4 @@
 import Foundation
-import VoxlineCore
 
 public enum SubtitleExportError: LocalizedError, Equatable {
     case emptyCues

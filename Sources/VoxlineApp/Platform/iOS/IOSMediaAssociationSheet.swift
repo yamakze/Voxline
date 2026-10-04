@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import VoxlineCore
 import VoxlineMedia
@@ -84,3 +85,5 @@ struct IOSMediaAssociationSheet: View {
         }
     }
 }
+
+#endif

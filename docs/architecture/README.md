@@ -2,22 +2,45 @@
 
 Mac 采用 SwiftPM，iOS 采用 Xcode 工程。依赖提交由 Package.swift / Package.resolved 锁定，Mac 只链接 WhisperKit 产品。工具链、构建与产物统一见 [开发工作流](../development.md)。
 
-iOS 链接同一份 Core 与 Media 源码，不链接推理 SDK。Sources/VoxlineIOS 提供任务浏览、手动媒体关联、原生播放及字幕校对；导入 .voxline / JSON 后验证、迁移并保存独立副本到本地 Documents。同任务 ID 再次导入须确认覆盖本地校对，原文件不写回，Mac 书签不传入 iOS。
+两平台使用 Sources/VoxlineApp 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态组件和设置控件在应用模块内共用。当前任务准备与处理页面仍为 Mac 范围，iOS 使用原生浏览和校对入口，功能补齐时逐步共用主要页面。
+
+iOS 当前只链接同一份 Core 与 Media，不链接 Workflow、Translation 或推理 SDK。导入 .voxline / JSON 后验证、迁移并保存独立副本到本地 Documents。同任务 ID 再次导入须确认覆盖本地校对，原文件不写回，Mac 书签不传入 iOS。
 
 ## 模块职责
 
-- VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证、转写协议、原始窗口证据、可读字幕切分与处理检查点。只依赖 Foundation，不保存设备路径、书签或密钥。
-- VoxlineWhisperKit：固定版本模型清单、下载与安装校验、本地目录占用、WhisperKit 实例生命周期及有界输入的转写 Provider。SDK 类型只存在于该模块；应用接收真实下载、加载和推理状态。同一进程复用唯一已加载实例。
-- VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地只读书签、有界 PCM 提取和两平台共用的 MediaPlaybackController。AVFoundation 类型不进入 Core 或 Task 文件；媒体保持引用，书签与媒体条目 ID、内容及音轨绑定。
-- VoxlineTranslation：OpenAI 兼容聊天请求、字幕批次容量及相邻上下文、严格结果校验和 HTTP 错误。只依赖 Foundation 与 Core，不持有设备服务配置或 Keychain。
-- VoxlineApp：单窗口导航、TaskLibrary、单执行者队列、任务准备、详情、原生播放、字幕校对及模型／服务管理界面。队列组织媒体与推理模块的实际调用；绑定修改 Task，TaskLibrary 通过 TaskDocumentCodec 原子保存唯一任务文件。UI 不导入 WhisperKit。
-- VoxlineIOS：原生任务列表、文件导入、媒体关联、播放与字幕编辑。复用 Core 文档、身份、版本和时间校验，以及 Media 的检查、书签与播放器；不执行转写或翻译。
+- VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证、转写协议、原始证据、字幕切分与检查点。阶段状态和文本、SRT 生成与导出也在此模块；SRT 文件写入使用调用方传入的 URL，不管理设备目录。只依赖 Foundation，不保存设备路径、书签或密钥。
+- VoxlineWhisperKit：固定模型清单、下载与安装校验、本地占用、实例生命周期、有界输入 Provider 和 ModelManager 的可观察状态。SDK 类型只存在于该模块；应用接收真实下载、加载和推理状态。同一进程复用唯一已加载实例。
+- VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地书签、有界 PCM 提取和共用播放器。Mac 字幕烧录的快照、合成、预览与导出在此模块，使用 macOS 条件编译；iOS 尚未接入烧录。AVFoundation 类型不进入 Core 或 Task 文件。
+- VoxlineTranslation：聊天客户端、上下文批次、结果校验、HTTP 错误、设备服务元数据和异步 Keychain 凭据。依赖 Foundation、Observation、Security 与 Core，不依赖应用或 SwiftUI。
+- VoxlineWorkflow：TaskLibrary、单执行者 TaskProcessingQueue 与媒体／翻译外部调用边界。依赖 Core、Media、WhisperKit、Translation；组织实际操作、恢复与原子成果提交，不导入 AppKit、SwiftUI 或应用模块。翻译执行实例由应用接线传入。
+- VoxlineApp：两平台入口、主要页面、导航与原生适配。MacWorkflow 配置任务目录、系统最近文档和真实翻译路线；Apple Translation 视图会话保持在稳定根页面。iOS 设备副本库保留独立文件交接语义，当前不执行转写或翻译。UI 不导入第三方 WhisperKit SDK。
 
 Core 和字幕文档不依赖 UI、AVFoundation 或具体推理 SDK。JSON 是持久字幕权威来源，SRT 是导出物，内存任务库是界面状态。
 
+Mac SwiftPM 依赖如下；iOS 的当前链接范围见上文。
+
+```mermaid
+graph TD
+    App[VoxlineApp] --> Workflow[VoxlineWorkflow]
+    App --> Core[VoxlineCore]
+    App --> Media[VoxlineMedia]
+    App --> Translation[VoxlineTranslation]
+    App --> Whisper[VoxlineWhisperKit]
+    Workflow --> Core
+    Workflow --> Media
+    Workflow --> Translation
+    Workflow --> Whisper
+    Media --> Core
+    Translation --> Core
+    Whisper --> Core
+    Whisper --> SDK[WhisperKit SDK]
+```
+
+底层模块不得反向引用应用。测试直接依赖被测模块；应用测试只验证平台接线和视图会话。选择理由见 [ADR-0016](../ADR/0016-workflow-and-capability-ownership.md)。
+
 ## Task 持久化
 
-新任务保存至应用本地 Application Support/Voxline/Tasks；导入已有文件后保存到原 URL，不保留额外副本。TaskLibrary 登记不写文件，保存先编码验证，再原子写入，成功后更新任务库。读写或目录错误明确显示，损坏任务保留错误条目，保存失败保留编辑状态与最后成功写入的成果。
+Mac 新任务保存至应用本地 Application Support/Voxline/Tasks；导入已有文件后保存到原 URL，不保留额外副本。Workflow 的 TaskLibrary 由调用方传入目录，系统最近文档通过 Mac 接线提供；登记不写文件，保存先编码验证，再原子写入，成功后更新任务库。条目只能由任务库发布。读写或目录错误明确显示，损坏任务保留错误条目，保存失败保留编辑状态与最后成功写入的成果。iOS 设备副本规则见“iOS 本地播放与校对”。
 
 版本 5 的 .voxline 根对象为 ProcessingTask。版本 2／3／4 迁移保持 Task、媒体、参数、字幕与状态，不虚构检查点；版本 1 的 SubtitleProject 保持原项目 ID 为媒体 ID，复用书签，已有字幕标记为待确认。打开只迁移内存结构，不主动改写原文件；明确保存才写版本 5。运行媒体及内部转写块／翻译批次转换为 interrupted，保留已提交成果。
 
@@ -53,7 +76,7 @@ TaskProcessingQueue 在应用进程中只有一个执行者，按 Task 的媒体
 
 启用翻译时，转写全部提交后建立或复用持久翻译批次，完成媒体要求全部当前译文已提交。批次失败停止该媒体的翻译并继续其他媒体，明确重试才重新请求；成功块与批次跳过，过期批次使用当前内容重建。恢复时已完成转写的媒体直接进入翻译，不重复检查或提取音频；仍需转写时保留原生媒体恢复检查。网络请求取消后等待实际操作返回，迟到响应不提交。MediaTranscriptionPipeline 与 SubtitleTranslationPipeline 划定外部调用边界；可控执行仅用于测试，产品实例调用原生媒体、WhisperKit，以及冻结参数指定的实际聊天接口或 Apple Translation。
 
-队列阶段显示读取媒体检查点：后续翻译失败或取消时，已经完成的音频提取和转写保持完成；尚未开始的翻译保持等待。
+Core 按媒体检查点推导阶段事实，界面只负责显示：后续翻译失败或取消时，已经完成的音频提取和转写保持完成；尚未开始的翻译保持等待。
 
 ## 字幕聊天翻译
 

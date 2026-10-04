@@ -1,3 +1,5 @@
+#if os(macOS)
+import VoxlineWorkflow
 import SwiftUI
 import VoxlineCore
 
@@ -24,12 +26,12 @@ public struct TaskDetailView: View {
                 // Parameter Snapshot (Read-only, clean disclosure)
                 parametersSnapshotCard
 
-                // Xcode Build Tasks Pipeline Queue
-                xcodeBuildTasksQueue
+                // Media processing queue
+                mediaQueue
             }
             .padding(24)
-            if let reason = ProcessingAvailability.reason(for: task) {
-                Text(reason).font(.callout).foregroundStyle(.secondary).padding()
+            if task.items.isEmpty {
+                Text("请先添加本地音视频。").font(.callout).foregroundStyle(.secondary).padding()
             }
             if let error = queue.errorMessage {
                 Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled).padding()
@@ -149,8 +151,8 @@ public struct TaskDetailView: View {
         .liquidGlassSurface()
     }
 
-    // MARK: - Xcode Build Tasks Pipeline Queue
-    private var xcodeBuildTasksQueue: some View {
+    // MARK: - Media processing queue
+    private var mediaQueue: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("批处理流水线清单", systemImage: "list.bullet.rectangle.portrait")
@@ -220,7 +222,7 @@ public struct TaskDetailView: View {
                                 Spacer()
 
                                 // Xcode Step Pipeline Badge (Audio -> Transcription -> Translation -> Ready)
-                                XcodeStepPipelineView(
+                                MediaProcessingStepsView(
                                     item: item,
                                     hasTranslation: task.parameters.translation != nil
                                 )
@@ -234,7 +236,7 @@ public struct TaskDetailView: View {
                                         }
                                             .buttonStyle(.bordered)
                                             .controlSize(.small)
-                                            .disabled(queue.taskID != nil || ProcessingAvailability.reason(for: task) != nil)
+                                            .disabled(queue.taskID != nil || task.items.isEmpty)
                                     }
 
                                     if queue.taskID == task.id,
@@ -296,3 +298,5 @@ public struct TaskDetailView: View {
         }
     }
 }
+
+#endif

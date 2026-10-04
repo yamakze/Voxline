@@ -1,7 +1,6 @@
 import Foundation
 import Testing
-import VoxlineCore
-@testable import VoxlineApp
+@testable import VoxlineCore
 
 @Suite("Strict SRT export")
 struct SubtitleExporterTests {

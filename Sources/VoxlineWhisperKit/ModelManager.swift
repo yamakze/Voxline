@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import VoxlineWhisperKit
 import VoxlineCore
 
 public enum ModelStatus: Equatable, Sendable {

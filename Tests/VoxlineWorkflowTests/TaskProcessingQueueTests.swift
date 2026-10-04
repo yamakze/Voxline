@@ -4,7 +4,7 @@ import VoxlineCore
 import VoxlineMedia
 import VoxlineWhisperKit
 import VoxlineTranslation
-@testable import VoxlineApp
+@testable import VoxlineWorkflow
 
 @Suite("Sequential task execution", .serialized)
 @MainActor
@@ -25,14 +25,14 @@ struct TaskProcessingQueueTests {
         let (directory, library, task) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let pipeline = ControlledPipeline(failFirstChunkOf: task.items[0].id)
-        let queue = TaskProcessingQueue(library: library, pipeline: pipeline)
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try queue.start(taskID: task.id)
         await queue.waitUntilIdle()
         let processed = try #require(library.task(for: task.id))
         #expect(processed.status == .partiallyFailed)
         #expect(processed.items[1].status == .completed)
         #expect(processed.items[0].checkpoint?.chunks[0].isCompleted == false)
-        let failedTranscription = XcodeStepPipelineView(item: processed.items[0])
+        let failedTranscription = processed.items[0]
         #expect(failedTranscription.extractionState == .completed)
         #expect(failedTranscription.transcriptionState == .failed)
         #expect(failedTranscription.translationState == .waiting)
@@ -60,7 +60,7 @@ struct TaskProcessingQueueTests {
         let (directory, library, task) = try fixture(count: 3)
         defer { try? FileManager.default.removeItem(at: directory) }
         let pipeline = ControlledPipeline(holdFirstDecode: true)
-        let queue = TaskProcessingQueue(library: library, pipeline: pipeline)
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try queue.start(taskID: task.id)
         await pipeline.waitForHeldDecode()
         try queue.cancel(mediaID: task.items[0].id)
@@ -88,7 +88,7 @@ struct TaskProcessingQueueTests {
         let (directory, library, task) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let pipeline = ControlledPipeline(holdFirstDecode: true)
-        let queue = TaskProcessingQueue(library: library, pipeline: pipeline)
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try queue.start(taskID: task.id)
         await pipeline.waitForHeldDecode()
         try queue.cancel()
@@ -98,7 +98,7 @@ struct TaskProcessingQueueTests {
         #expect(await !pipeline.events.contains("extract:\(task.items[1].id)"))
         let reopenedLibrary = TaskLibrary(tasksDirectory: directory)
         #expect(reopenedLibrary.task(for: task.id)?.items.allSatisfy { $0.status == .cancelled } == true)
-        let resumedQueue = TaskProcessingQueue(library: reopenedLibrary, pipeline: pipeline)
+        let resumedQueue = TaskProcessingQueue(library: reopenedLibrary, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try resumedQueue.start(taskID: task.id)
         await resumedQueue.waitUntilIdle()
         #expect(reopenedLibrary.task(for: task.id)?.status == .completed)
@@ -108,7 +108,7 @@ struct TaskProcessingQueueTests {
         let (directory, library, task) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let pipeline = ControlledPipeline(holdStartMilliseconds: 2000)
-        let queue = TaskProcessingQueue(library: library, pipeline: pipeline)
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try queue.start(taskID: task.id)
         await pipeline.waitForHeldDecode()
         let originalURL = library.defaultURL(for: task.id)
@@ -143,7 +143,7 @@ struct TaskProcessingQueueTests {
             ranges: [.init(sourceStartMilliseconds: 0, durationMilliseconds: 4000)])
         task.items[0].status = .interrupted(stage: .transcription)
         try library.save(task)
-        let queue = TaskProcessingQueue(library: library, pipeline: ControlledPipeline())
+        let queue = TaskProcessingQueue(library: library, pipeline: ControlledPipeline(), translationPipeline: UnavailableServicePipeline())
         try queue.start(taskID: task.id)
         await queue.waitUntilIdle()
         #expect(library.task(for: task.id)?.items[0].status == .failed(reason: CheckpointError.incompatibleContext.localizedDescription))
@@ -162,7 +162,7 @@ struct TaskProcessingQueueTests {
         let (directory, library, task) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let pipeline = ControlledPipeline(holdStartMilliseconds: 2000)
-        let queue = TaskProcessingQueue(library: library, pipeline: pipeline)
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try queue.start(taskID: task.id)
         await pipeline.waitForHeldDecode()
         var edited = try #require(library.task(for: task.id))
@@ -233,7 +233,7 @@ struct TaskProcessingQueueTests {
         #expect(paused.items[0].status.isTranslationPaused)
         #expect(paused.items[1].status == .completed)
         #expect(paused.items[0].checkpoint?.translationBatches.map(\.isCompleted) == [true, false])
-        let badge = XcodeStepPipelineView(item: paused.items[0])
+        let badge = paused.items[0]
         #expect(badge.transcriptionState == .completed && badge.translationState == .paused)
         #expect(queue.translationRetryWait == nil)
         let calls = await translation.requests
@@ -362,7 +362,7 @@ struct TaskProcessingQueueTests {
         let processed = try #require(library.task(for: task.id))
         #expect(processed.status == .partiallyFailed)
         #expect(processed.items[0].checkpoint?.translationBatches.map(\.isCompleted) == [true, false])
-        let failedTranslation = XcodeStepPipelineView(item: processed.items[0])
+        let failedTranslation = processed.items[0]
         #expect(failedTranslation.extractionState == .completed)
         #expect(failedTranslation.transcriptionState == .completed)
         #expect(failedTranslation.translationState == .failed)
@@ -408,7 +408,7 @@ struct TaskProcessingQueueTests {
         let stopped = try #require(library.task(for: task.id))
         #expect(stopped.items[1].status == .completed)
         #expect(stopped.items[0].cues.allSatisfy { $0.translation == .pending })
-        let stoppedTranslation = XcodeStepPipelineView(item: stopped.items[0])
+        let stoppedTranslation = stopped.items[0]
         #expect(stoppedTranslation.extractionState == .completed)
         #expect(stoppedTranslation.transcriptionState == .completed)
         #expect(stoppedTranslation.translationState == (cancel ? .cancelled : .failed))
@@ -542,7 +542,7 @@ struct TaskProcessingQueueTests {
         let pipeline = LocalMediaTranscriptionPipeline(mediaStore: bookmarks,
             extractor: AudioExtractor(directory: directory.appendingPathComponent("audio")),
             modelStore: WhisperModelStore(directory: models))
-        let queue = TaskProcessingQueue(library: library, pipeline: pipeline)
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try queue.start(taskID: task.id)
         await queue.waitUntilIdle()
         #expect(queue.errorMessage == nil)
@@ -570,7 +570,7 @@ struct TaskProcessingQueueTests {
         let freshLibrary = TaskLibrary(tasksDirectory: library.tasksDirectory)
         #expect(freshLibrary.task(for: task.id) == reopened)
         try await bookmarks.save(projectID: task.items[0].id, identity: videoIdentity, url: video)
-        let retryQueue = TaskProcessingQueue(library: freshLibrary, pipeline: pipeline)
+        let retryQueue = TaskProcessingQueue(library: freshLibrary, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try retryQueue.start(taskID: task.id, mediaID: task.items[0].id)
         await retryQueue.waitUntilIdle()
         let completed = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
@@ -695,4 +695,17 @@ private actor RetrySleepRecorder {
         await withCheckedContinuation { observer = $0 }
     }
     func release() { held?.resume(); held = nil }
+}
+
+private struct TranslationNotExpected: SubtitleTranslationPipeline {
+    func translate(settings: TranslationSettings, request: SubtitleTranslationRequest) async throws -> [TranslationBatchOutput] {
+        Issue.record("Translation was invoked for a transcription-only task")
+        throw QueueError.unavailable("Unexpected translation in a transcription-only test")
+    }
+}
+
+private struct UnavailableServicePipeline: SubtitleTranslationPipeline {
+    func translate(settings: TranslationSettings, request: SubtitleTranslationRequest) async throws -> [TranslationBatchOutput] {
+        throw TranslationServiceError.unknownService
+    }
 }

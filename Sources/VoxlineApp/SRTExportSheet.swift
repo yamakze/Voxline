@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import UniformTypeIdentifiers
 import VoxlineCore
@@ -100,3 +101,5 @@ public struct SRTExportSheet: View {
         catch { errorMessage = error.localizedDescription }
     }
 }
+
+#endif

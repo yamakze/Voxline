@@ -1,0 +1,96 @@
+import SwiftUI
+
+// MARK: - Storage usage
+public struct StorageBreakdownBar: View {
+    public struct Segment: Identifiable {
+        public let id = UUID()
+        public let title: String
+        public let byteCount: Int64
+        public let color: Color
+
+        public init(title: String, byteCount: Int64, color: Color) {
+            self.title = title
+            self.byteCount = byteCount
+            self.color = color
+        }
+    }
+
+    public let totalDiskBytes: Int64
+    public let segments: [Segment]
+
+    public init(totalDiskBytes: Int64, segments: [Segment]) {
+        self.totalDiskBytes = totalDiskBytes
+        self.segments = segments
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Segmented Bar
+            GeometryReader { geometry in
+                let total = max(Double(totalDiskBytes), 1.0)
+                HStack(spacing: 2) {
+                    ForEach(segments) { segment in
+                        let width = max(Double(segment.byteCount) / total * geometry.size.width, segment.byteCount > 0 ? 4.0 : 0.0)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(segment.color)
+                            .frame(width: width)
+                    }
+                    // Free space
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.secondary.opacity(0.18))
+                }
+            }
+            .frame(height: 14)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+
+            // Legend
+            HStack(spacing: 16) {
+                ForEach(segments) { segment in
+                    HStack(spacing: 5) {
+                        Circle().fill(segment.color).frame(width: 8, height: 8)
+                        Text(segment.title).font(.caption).foregroundStyle(.primary)
+                        let mb = Double(segment.byteCount) / 1_000_000.0
+                        Text(mb >= 1000 ? String(format: "%.1f GB", mb / 1000.0) : String(format: "%.0f MB", mb))
+                            .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+            }
+        }
+    }
+}
+
+// MARK: - Password visibility
+public struct PasswordVisibilityField: View {
+    public let title: String
+    @Binding public var text: String
+    @State private var isRevealed: Bool = false
+
+    public init(_ title: String, text: Binding<String>) {
+        self.title = title
+        _text = text
+    }
+
+    public var body: some View {
+        HStack(spacing: 6) {
+            Group {
+                if isRevealed {
+                    TextField(title, text: $text)
+                } else {
+                    SecureField(title, text: $text)
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+
+            Button {
+                isRevealed.toggle()
+            } label: {
+                Image(systemName: isRevealed ? "eye.slash" : "eye")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(isRevealed ? "隐藏密钥" : "显示明文密钥")
+        }
+    }
+}

@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import AVKit
 import UniformTypeIdentifiers
@@ -269,3 +270,5 @@ private struct IOSSubtitleSurface: ViewModifier {
         }
     }
 }
+
+#endif

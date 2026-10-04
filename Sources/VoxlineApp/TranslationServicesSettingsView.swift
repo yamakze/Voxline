@@ -1,3 +1,5 @@
+#if os(macOS)
+import VoxlineTranslation
 import SwiftUI
 import VoxlineCore
 
@@ -368,3 +370,5 @@ private struct ServiceEditorModal: View {
         } catch { keyReadFailed = true; errorMessage = error.localizedDescription }
     }
 }
+
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 @preconcurrency import Translation
 
@@ -65,3 +66,5 @@ struct AppleTranslationLanguageSettings: View {
         }
     }
 }
+
+#endif

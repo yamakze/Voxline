@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import VoxlineCore
 
@@ -105,3 +106,5 @@ public struct TimeOffsetSheet: View {
         dismiss()
     }
 }
+
+#endif

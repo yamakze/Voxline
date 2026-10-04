@@ -6,8 +6,7 @@ import VoxlineTranslation
 
 @Observable
 @MainActor
-final class TaskProcessingQueue {
-    static let shared = TaskProcessingQueue(library: .shared)
+public final class TaskProcessingQueue {
     private let library: TaskLibrary
     private let pipeline: any MediaTranscriptionPipeline
     private let translationPipeline: any SubtitleTranslationPipeline
@@ -19,16 +18,16 @@ final class TaskProcessingQueue {
     private var cancelledIDs: Set<UUID> = []
     private var stopRequested = false
     private var progressID: UUID?
-    private(set) var taskID: UUID?
-    private(set) var mediaID: UUID?
-    private(set) var isCancelling = false
-    private(set) var progressText: String?
-    private(set) var extractionFraction: Double?
-    private(set) var errorMessage: String?
-    private(set) var translationRetryWait: TranslationRetryWait?
+    public private(set) var taskID: UUID?
+    public private(set) var mediaID: UUID?
+    public private(set) var isCancelling = false
+    public private(set) var progressText: String?
+    public private(set) var extractionFraction: Double?
+    public private(set) var errorMessage: String?
+    public private(set) var translationRetryWait: TranslationRetryWait?
 
-    init(library: TaskLibrary, pipeline: any MediaTranscriptionPipeline = LocalMediaTranscriptionPipeline(),
-         translationPipeline: any SubtitleTranslationPipeline = ConfiguredSubtitleTranslationPipeline(),
+    public init(library: TaskLibrary, pipeline: any MediaTranscriptionPipeline = LocalMediaTranscriptionPipeline(),
+         translationPipeline: any SubtitleTranslationPipeline,
          retrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
          retryJitter: @escaping @Sendable () -> Double = { Double.random(in: 0...1) }) {
         self.library = library
@@ -38,10 +37,10 @@ final class TaskProcessingQueue {
         self.retryJitter = retryJitter
     }
 
-    func start(taskID: UUID, mediaID: UUID? = nil) throws {
+    public func start(taskID: UUID, mediaID: UUID? = nil) throws {
         guard worker == nil else { throw QueueError.busy }
         guard let task = library.task(for: taskID) else { throw CheckpointError.taskUnavailable }
-        if let reason = ProcessingAvailability.reason(for: task) { throw QueueError.unavailable(reason) }
+        guard !task.items.isEmpty else { throw QueueError.unavailable("请先添加本地音视频。") }
         let candidates = task.items.filter { item in
             (mediaID == nil || item.id == mediaID) && item.status != .completed &&
             !(item.checkpoint == nil && !item.cues.isEmpty) && item.media != nil
@@ -65,7 +64,7 @@ final class TaskProcessingQueue {
     }
 
     /// Cancellation keeps the worker occupied until the actual extraction/inference has returned.
-    func cancel(mediaID requestedID: UUID? = nil) throws {
+    public func cancel(mediaID requestedID: UUID? = nil) throws {
         guard let taskID else { return }
         if let requestedID {
             guard queuedIDs.contains(requestedID) || requestedID == mediaID else { throw CheckpointError.unknownWork }
@@ -93,7 +92,7 @@ final class TaskProcessingQueue {
 
     func waitUntilIdle() async { await worker?.value }
 
-    func startRetranslation(taskID: UUID, mediaID: UUID, cueIDs: [UUID], replacingExistingTranslations: Bool) throws {
+    public func startRetranslation(taskID: UUID, mediaID: UUID, cueIDs: [UUID], replacingExistingTranslations: Bool) throws {
         guard worker == nil else { throw QueueError.busy }
         guard let task = library.task(for: taskID),
               let item = task.items.first(where: { $0.id == mediaID }),
@@ -420,20 +419,20 @@ final class TaskProcessingQueue {
     }
 }
 
-struct TranslationRetryWait {
-    let deadline: Date
-    let attempt: Int
-    let reason: String
+public struct TranslationRetryWait {
+    public let deadline: Date
+    public let attempt: Int
+    public let reason: String
 
-    func label(at date: Date) -> String {
+    public func label(at date: Date) -> String {
         let seconds = max(0, ceil(deadline.timeIntervalSince(date)))
         return "\(reason) \(seconds.formatted(.number.precision(.fractionLength(0)))) 秒后自动重试（\(attempt)／3）"
     }
 }
 
-enum QueueError: Error, LocalizedError, Equatable {
+public enum QueueError: Error, LocalizedError, Equatable {
     case busy, noWork, unavailable(String)
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .busy: "已有任务处理中，请等待处理或取消结束后再开始。"
         case .noWork: "没有可处理的媒体；已完成成果与已有校对字幕不会重跑。"

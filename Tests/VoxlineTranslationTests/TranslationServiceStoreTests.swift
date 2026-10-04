@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import VoxlineCore
-@testable import VoxlineApp
+@testable import VoxlineTranslation
 
 @Suite("Local translation settings and credentials", .serialized)
 @MainActor
@@ -38,7 +38,7 @@ struct TranslationServiceStoreTests {
             try await reopened.addOrUpdate(configured, apiKey: "replacement-test-key")
         }
         #expect(try Data(contentsOf: url) == data)
-        #expect(try await vault.read(serviceID: configured.id) == "test-only-secret")
+        #expect(await vault.read(serviceID: configured.id) == "test-only-secret")
     }
 
     @Test func legacyServiceUsesDeclaredDefaultsAndMalformedNewValuesFailLoading() async throws {
@@ -100,7 +100,7 @@ struct TranslationServiceStoreTests {
         #expect(store.errorMessage != nil)
         #expect(store.services.isEmpty)
         #expect(try Data(contentsOf: url) == legacy)
-        #expect(try await vault.read(serviceID: first.id) == "test-only-secret-0")
+        #expect(await vault.read(serviceID: first.id) == "test-only-secret-0")
         await vault.failWrites(for: nil)
         await store.load()
         #expect(store.errorMessage == nil)
@@ -133,16 +133,16 @@ struct TranslationServiceStoreTests {
         updated.name = "New metadata"
         await #expect(throws: (any Error).self) { try await store.addOrUpdate(updated, apiKey: "new-test-key") }
         #expect(store.services == [original])
-        #expect(try await vault.read(serviceID: original.id) == "old-test-key")
+        #expect(await vault.read(serviceID: original.id) == "old-test-key")
         #expect(try Data(contentsOf: backup.appendingPathComponent("services.json")) == saved)
         await #expect(throws: (any Error).self) { try await store.remove(id: original.id) }
         #expect(store.services == [original])
-        #expect(try await vault.read(serviceID: original.id) == "old-test-key")
+        #expect(await vault.read(serviceID: original.id) == "old-test-key")
         try FileManager.default.removeItem(at: parent)
         try FileManager.default.moveItem(at: backup, to: parent)
         try await store.remove(id: original.id)
         #expect(store.services.isEmpty)
-        #expect(try await vault.read(serviceID: original.id) == nil)
+        #expect(await vault.read(serviceID: original.id) == nil)
         #expect(try JSONDecoder().decode([TranslationServiceConfig].self, from: Data(contentsOf: url)).isEmpty)
     }
 

@@ -5,17 +5,16 @@
     objectVersion = 77;
     objects = {
         A00000000000000000000001 = {isa = PBXProject; attributes = {BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 2620;}; buildConfigurationList = A00000000000000000000002; compatibilityVersion = "Xcode 16.0"; developmentRegion = zh-Hans; knownRegions = (en, "zh-Hans", Base); mainGroup = A00000000000000000000003; productRefGroup = A00000000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000010, A00000000000000000000020, A00000000000000000000060);};
-        A00000000000000000000003 = {isa = PBXGroup; children = (A00000000000000000000005, A00000000000000000000006, A00000000000000000000007, A00000000000000000000008, A00000000000000000000009, A00000000000000000000061, A00000000000000000000004); sourceTree = "<group>";};
+        A00000000000000000000003 = {isa = PBXGroup; children = (A00000000000000000000005, A00000000000000000000006, A00000000000000000000008, A00000000000000000000009, A00000000000000000000061, A00000000000000000000004); sourceTree = "<group>";};
         A00000000000000000000004 = {isa = PBXGroup; children = (A00000000000000000000011, A00000000000000000000062, A00000000000000000000021); name = Products; sourceTree = "<group>";};
         A00000000000000000000005 = {isa = PBXFileSystemSynchronizedRootGroup; path = Sources/VoxlineCore; sourceTree = "<group>";};
-        A00000000000000000000006 = {isa = PBXFileSystemSynchronizedRootGroup; path = Sources/VoxlineIOS; sourceTree = "<group>";};
-        A00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/VoxlineApp/TaskDisplayExtensions.swift; sourceTree = "<group>";};
+        A00000000000000000000006 = {isa = PBXFileSystemSynchronizedRootGroup; path = Sources/VoxlineApp; sourceTree = "<group>";};
         A00000000000000000000008 = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = iOS/Assets.xcassets; sourceTree = "<group>";};
         A00000000000000000000009 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = iOS/Info.plist; sourceTree = "<group>";};
 
-        A00000000000000000000010 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000012; buildPhases = (A00000000000000000000013, A00000000000000000000014, A00000000000000000000015, A00000000000000000000016); buildRules = (); dependencies = (A00000000000000000000017, A00000000000000000000063); fileSystemSynchronizedGroups = (A00000000000000000000006); name = VoxlineIOS; productName = Voxline; productReference = A00000000000000000000011; productType = "com.apple.product-type.application";};
+        A00000000000000000000010 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000012; buildPhases = (A00000000000000000000013, A00000000000000000000014, A00000000000000000000015, A00000000000000000000016); buildRules = (); dependencies = (A00000000000000000000017, A00000000000000000000063); fileSystemSynchronizedGroups = (A00000000000000000000006); name = VoxlineApp; productName = Voxline; productReference = A00000000000000000000011; productType = "com.apple.product-type.application";};
         A00000000000000000000011 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Voxline.app; sourceTree = BUILT_PRODUCTS_DIR;};
-        A00000000000000000000013 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000031); runOnlyForDeploymentPostprocessing = 0;};
+        A00000000000000000000013 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
         A00000000000000000000014 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000032, A00000000000000000000065); runOnlyForDeploymentPostprocessing = 0;};
         A00000000000000000000015 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000033); runOnlyForDeploymentPostprocessing = 0;};
         A00000000000000000000016 = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 10; files = (A00000000000000000000034, A00000000000000000000066); name = "Embed Frameworks"; runOnlyForDeploymentPostprocessing = 0;};
@@ -27,7 +26,6 @@
         A00000000000000000000023 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
         A00000000000000000000024 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
 
-        A00000000000000000000031 = {isa = PBXBuildFile; fileRef = A00000000000000000000007;};
         A00000000000000000000032 = {isa = PBXBuildFile; fileRef = A00000000000000000000021;};
         A00000000000000000000033 = {isa = PBXBuildFile; fileRef = A00000000000000000000008;};
         A00000000000000000000034 = {isa = PBXBuildFile; fileRef = A00000000000000000000021; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy);};};

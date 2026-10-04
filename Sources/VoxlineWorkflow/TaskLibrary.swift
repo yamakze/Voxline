@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import Observation
 import VoxlineCore
@@ -6,9 +5,7 @@ import VoxlineCore
 @Observable
 @MainActor
 public final class TaskLibrary {
-    public static let shared = TaskLibrary()
-
-    public var entries: [Entry] = []
+    public private(set) var entries: [Entry] = []
     public private(set) var errorMessage: String?
     public private(set) var openTasks: [UUID: Entry] = [:]
 
@@ -22,11 +19,14 @@ public final class TaskLibrary {
     }
 
     public let tasksDirectory: URL
+    private let recentDocumentURLs: @MainActor () -> [URL]
+    private let noteRecentDocument: @MainActor (URL) -> Void
 
-    init(tasksDirectory: URL? = nil) {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        self.tasksDirectory = tasksDirectory ?? appSupport.appendingPathComponent("Voxline/Tasks", isDirectory: true)
+    public init(tasksDirectory: URL, recentDocumentURLs: @escaping @MainActor () -> [URL] = { [] },
+                noteRecentDocument: @escaping @MainActor (URL) -> Void = { _ in }) {
+        self.tasksDirectory = tasksDirectory
+        self.recentDocumentURLs = recentDocumentURLs
+        self.noteRecentDocument = noteRecentDocument
         refresh()
     }
 
@@ -44,7 +44,7 @@ public final class TaskLibrary {
     public func register(_ task: ProcessingTask, at url: URL?) {
         let fileURL = url ?? defaultURL(for: task.id)
         if openTasks[task.id]?.url != fileURL {
-            NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
+            noteRecentDocument(fileURL)
         }
         let entry = Entry(id: task.id.uuidString, taskID: task.id, url: fileURL, task: task, error: nil)
         openTasks[task.id] = entry
@@ -123,7 +123,7 @@ public final class TaskLibrary {
         }
 
         // 3. System recent documents
-        for url in NSDocumentController.shared.recentDocumentURLs {
+        for url in recentDocumentURLs() {
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
 

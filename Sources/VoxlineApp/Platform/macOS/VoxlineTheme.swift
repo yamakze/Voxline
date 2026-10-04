@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import AppKit
 
@@ -125,3 +126,5 @@ public struct VoxlineAppIconView: View {
         }
     }
 }
+
+#endif

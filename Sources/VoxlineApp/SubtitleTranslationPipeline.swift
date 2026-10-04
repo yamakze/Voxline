@@ -1,10 +1,9 @@
+#if os(macOS)
 import Foundation
 import VoxlineCore
 import VoxlineTranslation
 
-protocol SubtitleTranslationPipeline: Sendable {
-    func translate(settings: TranslationSettings, request: SubtitleTranslationRequest) async throws -> [TranslationBatchOutput]
-}
+import VoxlineWorkflow
 
 struct ConfiguredSubtitleTranslationPipeline: SubtitleTranslationPipeline {
     let client: OpenAICompatibleTranslationClient
@@ -20,3 +19,5 @@ struct ConfiguredSubtitleTranslationPipeline: SubtitleTranslationPipeline {
         }
     }
 }
+
+#endif

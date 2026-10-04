@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import VoxlineCore
 
@@ -75,3 +76,5 @@ public struct RetranslateConfirmationSheet: View {
         .frame(width: 520)
     }
 }
+
+#endif

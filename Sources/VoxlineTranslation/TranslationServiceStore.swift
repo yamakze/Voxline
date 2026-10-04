@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import VoxlineCore
-import VoxlineTranslation
 
 /// Persisted service metadata. Credentials are exclusively stored in Keychain.
 public struct TranslationServiceConfig: Identifiable, Codable, Equatable, Sendable {
@@ -69,9 +68,7 @@ public final class TranslationServiceStore {
 
     init(storageURL: URL? = nil, vault: any TranslationCredentialVault = KeychainTranslationCredentialVault(),
          client: OpenAICompatibleTranslationClient = .init(), autoLoad: Bool = true) {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        self.storageURL = storageURL ?? support.appendingPathComponent("Voxline/TranslationServices.json")
+        self.storageURL = storageURL ?? URL.applicationSupportDirectory.appendingPathComponent("Voxline/TranslationServices.json")
         self.vault = vault
         self.client = client
         if autoLoad { initialLoad = Task { await self.load() } }
@@ -165,7 +162,7 @@ public final class TranslationServiceStore {
         testResult[id] = nil
     }
 
-    func apiKey(for settings: TranslationSettings) async throws -> String {
+    public func apiKey(for settings: TranslationSettings) async throws -> String {
         guard let api = settings.api else { throw ProjectValidationError.invalidTranslationSettings }
         await initialLoad?.value
         guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
@@ -182,7 +179,7 @@ public final class TranslationServiceStore {
         return key ?? ""
     }
 
-    func editingAPIKey(serviceID: UUID) async throws -> String {
+    public func editingAPIKey(serviceID: UUID) async throws -> String {
         guard let service = services.first(where: { $0.id == serviceID }) else { throw TranslationServiceError.unknownService }
         let settings = try TranslationSettings(baseURL: service.baseURL, modelID: service.modelID, targetLanguage: "zh", serviceID: serviceID, batchSize: service.batchSize, systemPrompt: service.systemPrompt)
         return try await apiKey(for: settings)

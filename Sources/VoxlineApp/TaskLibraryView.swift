@@ -1,3 +1,5 @@
+#if os(macOS)
+import VoxlineWorkflow
 import SwiftUI
 import VoxlineCore
 
@@ -161,3 +163,5 @@ public struct TaskLibraryView: View {
         .buttonStyle(.plain)
     }
 }
+
+#endif

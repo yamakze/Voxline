@@ -1,3 +1,5 @@
+#if os(macOS)
+import VoxlineWorkflow
 import SwiftUI
 import UniformTypeIdentifiers
 import VoxlineCore
@@ -32,7 +34,7 @@ public struct MainWindowView: View {
         .frame(minWidth: 1100, minHeight: 700)
         .fileImporter(
             isPresented: $isOpeningFile,
-            allowedContentTypes: [.voxlineProject]
+            allowedContentTypes: [.voxlineTask]
         ) { result in
             switch result {
             case .success(let url):
@@ -226,7 +228,7 @@ public struct MainWindowView: View {
                                 catch { errorMessage = error.localizedDescription }
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(TaskProcessingQueue.shared.taskID != nil || ProcessingAvailability.reason(for: task.wrappedValue) != nil || task.wrappedValue.status == .completed)
+                            .disabled(TaskProcessingQueue.shared.taskID != nil || task.wrappedValue.items.isEmpty || task.wrappedValue.status == .completed)
                         }
                     }
                 }
@@ -271,3 +273,5 @@ public struct MainWindowView: View {
         }
     }
 }
+
+#endif

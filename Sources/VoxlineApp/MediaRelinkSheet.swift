@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import UniformTypeIdentifiers
 import VoxlineCore
@@ -163,3 +164,5 @@ public struct MediaRelinkSheet: View {
         }
     }
 }
+
+#endif

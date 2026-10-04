@@ -2,8 +2,7 @@ import AVFoundation
 import Foundation
 import Testing
 import VoxlineCore
-import VoxlineMedia
-@testable import VoxlineApp
+@testable import VoxlineMedia
 
 @Suite("Native playback and shared subtitle timeline", .serialized, .timeLimit(.minutes(1)))
 @MainActor
