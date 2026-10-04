@@ -35,7 +35,7 @@ Scripts/compile_and_run_ios.sh <模拟器UDID> release
 ## 缩短反馈时间
 
 1. 日常使用 debug 和固定 DerivedData，保留 .build 与模型缓存；只在需要发布包、性能测量或检查 Release 行为时使用 release。不要把 clean 作为日常构建步骤。
-2. UI 调整先用 Xcode Canvas / SwiftUI Preview，再跑目标平台；iOS UI 入口只依赖 Core，避免每次预览都编译推理 SDK。Mac 推理链路接通后继续保持 SDK 集成边界。
+2. UI 调整先用 Xcode Canvas / SwiftUI Preview，再跑目标平台；iOS UI 入口只依赖 Core 与 Media，避免每次预览都编译推理 SDK。Mac 推理链路接通后继续保持 SDK 集成边界。
 3. 修改哪个模块，就先执行对应验证。例如 Core 参数修改使用 swift test --filter ProcessingTaskTests；UI 布局使用构建和目标页面验收。阶段提交前按影响范围做回归，避免每个排版修改都重复全量验证。
 4. 复用固定小媒体和 Task 夹具检查选择、失败、导入与导航；转写验证独立执行。不要为了观察 UI 重复下载模型或完整转写视频。测试数据不得把模拟处理伪装成真实成果。
 5. 从 build.log 的 Timing Summary 定位慢步骤，再调整模块依赖或复杂 SwiftUI 表达式。任务耗时是步骤累加，可能并行，不能当成总耗时。

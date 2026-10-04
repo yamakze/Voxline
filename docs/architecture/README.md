@@ -2,15 +2,16 @@
 
 Mac 采用 SwiftPM，iOS 采用 Xcode 工程。依赖提交由 Package.swift / Package.resolved 锁定，Mac 只链接 WhisperKit 产品。工具链、构建与产物统一见 [开发工作流](../development.md)。
 
-iOS 只链接同一份 Core 源码，复用 Task 状态显示文本，不链接推理 SDK。Sources/VoxlineIOS 提供只读任务／字幕浏览；手动导入 .voxline / JSON 后验证、迁移并保存到本地 Documents。同任务 ID 再次导入替换本地只读副本，原文件不写回，Mac 书签不传入 iOS。媒体关联、播放及编辑由 VXL-030 交付。
+iOS 链接同一份 Core 与 Media 源码，不链接推理 SDK。Sources/VoxlineIOS 提供任务浏览、手动媒体关联、原生播放及字幕校对；导入 .voxline / JSON 后验证、迁移并保存独立副本到本地 Documents。同任务 ID 再次导入须确认覆盖本地校对，原文件不写回，Mac 书签不传入 iOS。
 
 ## 模块职责
 
 - VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证、转写协议、原始窗口证据、可读字幕切分与处理检查点。只依赖 Foundation，不保存设备路径、书签或密钥。
 - VoxlineWhisperKit：固定版本模型清单、下载与安装校验、本地目录占用、WhisperKit 实例生命周期及有界输入的转写 Provider。SDK 类型只存在于该模块；应用接收真实下载、加载和推理状态。同一进程复用唯一已加载实例。
-- VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地只读书签及有界 PCM 提取。AVFoundation 类型不进入 Core 或 Task 文件；媒体保持引用，书签与媒体条目 ID、内容及音轨绑定。
+- VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地只读书签、有界 PCM 提取和两平台共用的 MediaPlaybackController。AVFoundation 类型不进入 Core 或 Task 文件；媒体保持引用，书签与媒体条目 ID、内容及音轨绑定。
 - VoxlineTranslation：OpenAI 兼容聊天请求、字幕批次容量及相邻上下文、严格结果校验和 HTTP 错误。只依赖 Foundation 与 Core，不持有设备服务配置或 Keychain。
 - VoxlineApp：单窗口导航、TaskLibrary、单执行者队列、任务准备、详情、原生播放、字幕校对及模型／服务管理界面。队列组织媒体与推理模块的实际调用；绑定修改 Task，TaskLibrary 通过 TaskDocumentCodec 原子保存唯一任务文件。UI 不导入 WhisperKit。
+- VoxlineIOS：原生任务列表、文件导入、媒体关联、播放与字幕编辑。复用 Core 文档、身份、版本和时间校验，以及 Media 的检查、书签与播放器；不执行转写或翻译。
 
 Core 和字幕文档不依赖 UI、AVFoundation 或具体推理 SDK。JSON 是持久字幕权威来源，SRT 是导出物，内存任务库是界面状态。
 
@@ -175,6 +176,16 @@ AVFoundation Core Image 滤镜按 compositionTime 选择开始包含、结束不
 源访问保持到面板关闭。输出目录访问覆盖整个导出过程；先写同目录随机 partial.mp4，导出成功并核对编码、音轨、时长和尺寸后才发布。原视频及其硬链接不能作输出；已有输出需确认覆盖。取消停止原生导出，失败或取消移除临时文件，旧输出保留；临时文件清理失败单独明确显示。进度来自 AVAssetExportSession.states；只在发布成功后显示完成。iOS 观看验收读取实际成品，构建与帧解码不代替播放器验收。
 
 选择理由见 [ADR-0012](../ADR/0012-native-subtitle-burn-in.md)。
+
+## iOS 本地播放与校对
+
+IOSTaskLibrary 将导入成果保存为 Documents/<Task ID>.voxline；相同 ID 覆盖前明确确认。编辑在草稿中进行，写入前验证文档、媒体快照和字幕原文／译文版本，原子保存成功后才更新任务库。失败保留草稿并显示原因；取消不修改成果。设备副本可通过 Files 取得，导入源文件不写回。
+
+媒体通过原生 Files 选择，MediaInspector 检查实际内容与音轨。已有身份必须匹配原内容和所选音轨；未关联旧成果可明确选择音轨建立身份。媒体保持文件引用，iOS 使用 minimalBookmark 保存设备本地授权，Mac 继续使用只读 security-scoped bookmark。播放共用 MediaPlaybackController，缺失授权或内容变化显示重新关联入口；保存关联期间保持访问并禁止关闭面板。
+
+AVKit VideoPlayer 承载原生音视频播放，字幕浮层和定位共用实际播放器时间。原文修改保留旧译文来源版本并显示待更新；编辑译文后绑定当前原文版本。整体偏移验证完整输入、全部字幕及媒体边界后一次保存，不部分调整。关闭详情释放播放器、书签访问和观察器。
+
+iOS 26 的原生导航及字幕浮层采用 Liquid Glass，旧系统采用 Material；减少透明度时字幕浮层使用不透明系统背景。选择理由见 [ADR-0014](../ADR/0014-ios-local-playback-and-proofreading.md)。
 
 ## 翻译数量与提示词
 

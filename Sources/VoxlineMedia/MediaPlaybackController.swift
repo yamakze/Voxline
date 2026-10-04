@@ -2,7 +2,6 @@ import AVFoundation
 import Foundation
 import Observation
 import VoxlineCore
-import VoxlineMedia
 
 @Observable
 @MainActor

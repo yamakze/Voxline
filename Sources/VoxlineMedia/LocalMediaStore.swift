@@ -17,7 +17,12 @@ public actor LocalMediaStore {
         try identity.validate()
         let accessStarted = url.startAccessingSecurityScopedResource()
         defer { if accessStarted { url.stopAccessingSecurityScopedResource() } }
-        let bookmark = try url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
+        #if os(macOS)
+        let options: URL.BookmarkCreationOptions = [.withSecurityScope, .securityScopeAllowOnlyReadAccess]
+        #else
+        let options: URL.BookmarkCreationOptions = [.minimalBookmark]
+        #endif
+        let bookmark = try url.bookmarkData(options: options,
                                             includingResourceValuesForKeys: nil, relativeTo: nil)
         let record = MediaBookmarkRecord(formatVersion: 1, projectID: projectID, identity: identity, bookmark: bookmark)
         let target = try recordURL(projectID: projectID)
@@ -37,7 +42,12 @@ public actor LocalMediaStore {
             throw MediaAccessError.invalidBookmark
         }
         var stale = false
-        let url = try URL(resolvingBookmarkData: record.bookmark, options: [.withSecurityScope, .withoutUI],
+        #if os(macOS)
+        let options: URL.BookmarkResolutionOptions = [.withSecurityScope, .withoutUI]
+        #else
+        let options: URL.BookmarkResolutionOptions = [.withoutUI]
+        #endif
+        let url = try URL(resolvingBookmarkData: record.bookmark, options: options,
                           relativeTo: nil, bookmarkDataIsStale: &stale)
         return ResolvedMediaBookmark(url: url, isStale: stale)
     }
