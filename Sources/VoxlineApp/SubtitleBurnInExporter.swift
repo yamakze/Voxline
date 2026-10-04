@@ -191,6 +191,16 @@ public enum SubtitleBurnInExporter {
             throw BurnInError.unsupportedEncoding
         }
         session.videoComposition = plan.videoComposition
+        // Process the selected audio instead of passing through AAC packets with trimmed boundaries.
+        guard let selectedAudio = try await plan.asset.loadTracks(withMediaType: .audio).first else {
+            throw BurnInError.invalidOutput
+        }
+        let expectedAudioRange = try await selectedAudio.load(.timeRange)
+        let audioParameters = AVMutableAudioMixInputParameters(track: selectedAudio)
+        audioParameters.setVolume(1, at: .zero)
+        let audioMix = AVMutableAudioMix()
+        audioMix.inputParameters = [audioParameters]
+        session.audioMix = audioMix
         let temporary = destination.deletingLastPathComponent()
             .appendingPathComponent(".\(destination.deletingPathExtension().lastPathComponent).\(UUID().uuidString).partial.mp4")
         let monitor = Task { @MainActor in
@@ -207,14 +217,18 @@ public enum SubtitleBurnInExporter {
             } onCancel: { Task { @MainActor in cancelExport() } }
             try Task.checkCancellation()
             let exported = AVURLAsset(url: temporary)
+            let audioTracks = try await exported.loadTracks(withMediaType: .audio)
             guard let video = try await exported.loadTracks(withMediaType: .video).first,
-                  try await exported.loadTracks(withMediaType: .audio).count == 1 else { throw BurnInError.invalidOutput }
+                  let audio = audioTracks.first, audioTracks.count == 1 else { throw BurnInError.invalidOutput }
             let formats = try await video.load(.formatDescriptions)
             let expectedCodec = plan.options.codec == .h264 ? kCMVideoCodecType_H264 : kCMVideoCodecType_HEVC
             let actualSize = try await video.load(.naturalSize)
             let actualDuration = try await exported.load(.duration)
+            let actualAudioRange = try await audio.load(.timeRange)
             guard formats.allSatisfy({ CMFormatDescriptionGetMediaSubType($0) == expectedCodec }),
                   !formats.isEmpty, abs(actualDuration.seconds - plan.duration.seconds) < 0.1,
+                  abs(actualAudioRange.start.seconds - expectedAudioRange.start.seconds) < 0.001,
+                  abs(actualAudioRange.end.seconds - expectedAudioRange.end.seconds) < 0.001,
                   actualSize.width > 0, actualSize.height > 0 else { throw BurnInError.invalidOutput }
             if plan.options.quality == .original {
                 guard abs(actualSize.width - plan.renderSize.width) < 2,

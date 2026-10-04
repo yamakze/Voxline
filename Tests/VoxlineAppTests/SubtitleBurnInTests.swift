@@ -15,7 +15,7 @@ struct SubtitleBurnInTests {
     }
 
     private func fixture(store: LocalMediaStore, inspector: MediaInspector, directory: URL,
-                         rotated: Bool = false, repeatCount: Int = 4) async throws -> TaskMediaItem {
+                         rotated: Bool = false, repeatCount: Int = 4, colorPrimaries: String? = nil) async throws -> TaskMediaItem {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("input.mov")
         let asset = AVURLAsset(url: sourceURL)
@@ -30,7 +30,17 @@ struct SubtitleBurnInTests {
                     : try await source.load(.preferredTransform)
             }
         }
-        let session = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
+        let session = try #require(AVAssetExportSession(asset: composition,
+            presetName: colorPrimaries == nil ? AVAssetExportPresetPassthrough : AVAssetExportPresetHighestQuality))
+        if let colorPrimaries {
+            let videoComposition = try await AVMutableVideoComposition.videoComposition(with: composition) { request in
+                request.finish(with: request.sourceImage.cropped(to: CGRect(origin: .zero, size: request.renderSize)), context: nil)
+            }
+            videoComposition.colorPrimaries = colorPrimaries
+            videoComposition.colorTransferFunction = kCVImageBufferTransferFunction_ITU_R_709_2 as String
+            videoComposition.colorYCbCrMatrix = kCVImageBufferYCbCrMatrix_ITU_R_709_2 as String
+            session.videoComposition = videoComposition
+        }
         try await session.export(to: url, as: .mov)
         let inspection = try await inspector.inspect(url)
         let identity = try inspection.identity(audioTrackID: #require(inspection.audioTracks.last).id)
@@ -86,7 +96,12 @@ struct SubtitleBurnInTests {
         #expect(try await video.load(.naturalSize) == plan.renderSize)
         #expect(try await video.load(.preferredTransform) == .identity)
         #expect(abs(try await video.load(.nominalFrameRate) - Float(1 / plan.videoComposition.frameDuration.seconds)) < 0.01)
-        #expect(try await asset.loadTracks(withMediaType: .audio).count == 1)
+        let outputAudioTracks = try await asset.loadTracks(withMediaType: .audio)
+        #expect(outputAudioTracks.count == 1)
+        let outputAudioRange = try await #require(outputAudioTracks.first).load(.timeRange)
+        let inputAudioRange = try await audio.load(.timeRange)
+        #expect(abs(outputAudioRange.start.seconds - inputAudioRange.start.seconds) < 0.001)
+        #expect(abs(outputAudioRange.end.seconds - inputAudioRange.end.seconds) < 0.001)
         let outputBefore = try await Self.outputFrame(destination, milliseconds: 500)
         let outputDuring = try await Self.outputFrame(destination, milliseconds: 1500)
         let outputAfter = try await Self.outputFrame(destination, milliseconds: 2500)
@@ -182,6 +197,23 @@ struct SubtitleBurnInTests {
         return try await generator.image(at: CMTime(value: milliseconds, timescale: 1000)).image
     }
 
+    @Test func wideGamutTaggedVideoIsRejectedBeforeCreatingBurnInComposition() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalMediaStore(directory: directory.appendingPathComponent("access"))
+        let inspector = MediaInspector()
+        let item = try await fixture(store: store, inspector: inspector, directory: directory,
+                                     colorPrimaries: kCVImageBufferColorPrimaries_P3_D65 as String)
+        let source = AVURLAsset(url: directory.appendingPathComponent("input.mov"))
+        let video = try #require(try await source.loadTracks(withMediaType: .video).first)
+        let format = try #require(try await video.load(.formatDescriptions).first)
+        #expect(CMFormatDescriptionGetExtension(format, extensionKey: kCMFormatDescriptionExtension_ColorPrimaries) as? String
+            == kCVImageBufferColorPrimaries_P3_D65 as String)
+        await #expect(throws: BurnInError.unsupportedColor) {
+            _ = try await SubtitleBurnInExporter.composition(for: item, options: BurnInOptions(), mediaStore: store, inspector: inspector)
+        }
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_BURN_IN_SAMPLE"] != nil))
     func realSampleProducesThreeSubtitledVideosFromReviewedText() async throws {
         let environment = ProcessInfo.processInfo.environment
@@ -195,6 +227,10 @@ struct SubtitleBurnInTests {
         let inspection = try await inspector.inspect(source)
         let identity = try inspection.identity(audioTrackID: #require(inspection.audioTracks.first).id)
         let cues = reviewed.cues.filter { $0.endMilliseconds <= identity.durationMilliseconds }
+        let inputAsset = AVURLAsset(url: source)
+        let inputAudio = try #require(try await inputAsset.loadTracks(withMediaType: .audio)
+            .first { $0.trackID == identity.audioTrackID })
+        let inputAudioRange = try await inputAudio.load(.timeRange)
         #expect(!cues.isEmpty && cues.allSatisfy(\.hasCurrentTranslation))
         let item = TaskMediaItem(title: "S001 已校对短视频", kind: .video, source: .localFile(fileName: source.lastPathComponent),
                                  media: identity, status: .completed, cues: cues)
@@ -214,6 +250,11 @@ struct SubtitleBurnInTests {
             let result = try await inspector.inspect(output)
             #expect(abs(result.durationMilliseconds - inspection.durationMilliseconds) < 100)
             #expect(result.audioTracks.count == 1)
+            let exported = AVURLAsset(url: output)
+            let outputAudio = try #require(try await exported.loadTracks(withMediaType: .audio).first)
+            let outputAudioRange = try await outputAudio.load(.timeRange)
+            #expect(abs(outputAudioRange.start.seconds - inputAudioRange.start.seconds) < 0.001)
+            #expect(abs(outputAudioRange.end.seconds - inputAudioRange.end.seconds) < 0.001)
             let attributes = try FileManager.default.attributesOfItem(atPath: output.path)
             results.append(["output":filename,"elapsed":String(describing: elapsed),"bytes":String(describing:attributes[.size]!),
                             "frameSize":"\(plan.renderSize)","frameDuration":"\(plan.videoComposition.frameDuration.seconds)","cues":"\(cues.count)"])

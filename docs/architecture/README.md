@@ -173,6 +173,8 @@ SubtitleBurnInExporter 复用 LocalMediaStore、MediaInspector 与 SRT 的时间
 
 AVFoundation Core Image 滤镜按 compositionTime 选择开始包含、结束不包含的字幕，先将无限范围的 sourceImage 裁切到 renderSize。Core Text 绘制居中白字、自动换行与深色背景，只缓存当前字幕图像；预览和导出共享同一个不可变字幕快照与视频合成。所有字幕布局在编码前验证，不支持的字体区域与尺寸明确失败。预设选择 H.264／HEVC 和源尺寸最高质量／最高 1080p，原生合成保留源帧时间与画面变换。
 
+原生 audioMix 以单位音量处理所选音轨，避免 AAC 包直接复制缩短轨道尾部。导出后核对音轨起点与终点，允许不足一毫秒的时间刻度量化差异；边界不匹配拒绝发布。
+
 源访问保持到面板关闭。输出目录访问覆盖整个导出过程；先写同目录随机 partial.mp4，导出成功并核对编码、音轨、时长和尺寸后才发布。原视频及其硬链接不能作输出；已有输出需确认覆盖。取消停止原生导出，失败或取消移除临时文件，旧输出保留；临时文件清理失败单独明确显示。进度来自 AVAssetExportSession.states；只在发布成功后显示完成。iOS 观看验收读取实际成品，构建与帧解码不代替播放器验收。
 
 选择理由见 [ADR-0012](../ADR/0012-native-subtitle-burn-in.md)。
