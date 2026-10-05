@@ -221,15 +221,13 @@ public struct TaskConfigurationView: View {
 
     // MARK: - Sheet Header Bar
     private var sheetHeaderBar: some View {
-        HStack(alignment: .center) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: "film.stack")
-                .font(.title2)
+                .font(.title3)
                 .foregroundStyle(.tint)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(originalTask.items.isEmpty ? "新建任务" : "任务准备")
-                    .font(.headline)
-            }
+            Text(originalTask.items.isEmpty ? "新建任务" : "任务准备")
+                .font(.headline)
 
             Spacer()
 
@@ -239,24 +237,35 @@ public struct TaskConfigurationView: View {
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
+            .disabled(isSaving)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .background(.regularMaterial)
     }
 
-    // MARK: - Left: Final Cut Pro Media Import & Tracks Panel
+    // MARK: - Left: Media Import & Tracks Panel
     private var fcpMediaImportPane: some View {
         VStack(spacing: 0) {
             // Pane Sub-header
             HStack {
-                Label("导入媒体队列", systemImage: "arrow.down.doc.fill")
+                let totalCount = existingItems.count + candidates.count
+                Text("媒体列表")
                     .font(.subheadline.bold())
-                Spacer()
-                Button("添加音视频…", systemImage: "plus") {
-                    showMediaImporter = true
+                if totalCount > 0 {
+                    Text("(\(totalCount))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.borderedProminent)
+
+                Spacer()
+
+                Button {
+                    showMediaImporter = true
+                } label: {
+                    Label("添加…", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(isInspecting)
             }
@@ -268,13 +277,15 @@ public struct TaskConfigurationView: View {
 
             // Media list
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     if existingItems.isEmpty && candidates.isEmpty {
-                        // FCP-style Drag & Drop target area
-                        VStack(spacing: 12) {
-                            Text("添加本地媒体")
-                                .font(.callout.bold())
-                            Text("MP4, MOV, M4V, M4A, MP3, WAV")
+                        VStack(spacing: 8) {
+                            Image(systemName: "arrow.down.doc")
+                                .font(.system(size: 28))
+                                .foregroundStyle(.secondary)
+                            Text("添加音视频媒体文件")
+                                .font(.callout.weight(.medium))
+                            Text("支持 MP4, MOV, M4V, M4A, MP3, WAV")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -282,10 +293,10 @@ public struct TaskConfigurationView: View {
                         .frame(maxWidth: .infinity)
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6]))
-                                .foregroundStyle(Color.secondary.opacity(0.3))
+                                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5]))
+                                .foregroundStyle(Color.secondary.opacity(0.25))
                         )
-                        .padding(16)
+                        .padding(14)
                     }
 
                     // Existing Items List
@@ -315,342 +326,323 @@ public struct TaskConfigurationView: View {
 
                     // Newly selected candidates
                     ForEach($candidates) { $candidate in
-                        fcpCandidateCard(candidate: $candidate)
+                        candidateCard(candidate: $candidate)
                     }
 
                     if isInspecting {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text("正在读取轨道信息与内容哈希…").font(.caption).foregroundStyle(.secondary)
+                            Text("正在读取轨道信息…").font(.caption).foregroundStyle(.secondary)
                         }
                         .padding(.vertical, 8)
                     }
                 }
-                .padding(14)
+                .padding(12)
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
     @ViewBuilder
-    private func fcpCandidateCard(candidate: Binding<ImportCandidate>) -> some View {
+    private func candidateCard(candidate: Binding<ImportCandidate>) -> some View {
         let cand = candidate.wrappedValue
         VStack(alignment: .leading, spacing: 8) {
-            candidateHeader(cand: cand)
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(cand.kind == .video ? Color.blue.opacity(0.12) : Color.purple.opacity(0.12))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: cand.kind == .video ? "film" : "waveform")
+                        .font(.system(size: 18))
+                        .foregroundStyle(cand.kind == .video ? .blue : .purple)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(cand.url.lastPathComponent)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+
+                    if let inspection = cand.inspection {
+                        HStack(spacing: 6) {
+                            Text(cand.kind == .video ? "视频" : "音频")
+                                .font(.system(size: 10, weight: .bold))
+                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                .background(Color.secondary.opacity(0.12), in: .capsule)
+                            let sec = Double(inspection.durationMilliseconds) / 1000.0
+                            Text(String(format: "%.1fs", sec))
+                            Text("•").foregroundStyle(.tertiary)
+                            let mb = Double(inspection.byteCount) / 1_048_576.0
+                            Text(String(format: "%.1f MB", mb))
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    } else if let error = cand.error {
+                        Text(error).font(.caption2).foregroundStyle(.red)
+                    } else {
+                        Text("解析中…").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    candidates.removeAll { $0.id == cand.id }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
             if let inspection = cand.inspection {
-                candidateTracksView(candidate: candidate, inspection: inspection)
+                if inspection.audioTracks.count > 1 {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("选择转写音轨：")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.secondary)
+
+                        ForEach(inspection.audioTracks) { track in
+                            let isSelected = (cand.trackID == track.id)
+                            Button {
+                                if track.isDecodable {
+                                    candidate.trackID.wrappedValue = track.id
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                                        .font(.caption)
+                                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+
+                                    Text("音轨 \(track.id)")
+                                        .font(.caption.monospacedDigit().bold())
+
+                                    Text(track.language ?? "未知语言")
+                                        .font(.caption)
+
+                                    Spacer()
+
+                                    Text(track.isDecodable ? "可解码" : "无法解码")
+                                        .font(.caption2)
+                                        .foregroundStyle(track.isDecodable ? Color.secondary : .red)
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear, in: .rect(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!track.isDecodable)
+                        }
+                    }
+                    .padding(8)
+                    .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 6))
+                }
+
+                if cand.trackID == nil {
+                    Text("请选择转写音轨")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .padding(10)
         .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 8))
     }
 
-    @ViewBuilder
-    private func candidateHeader(cand: ImportCandidate) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(cand.kind == .video ? Color.blue.opacity(0.15) : Color.purple.opacity(0.15))
-                    .frame(width: 44, height: 44)
-                Image(systemName: cand.kind == .video ? "film" : "waveform")
-                    .font(.title3)
-                    .foregroundStyle(cand.kind == .video ? .blue : .purple)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(cand.url.lastPathComponent)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-
-                if let inspection = cand.inspection {
-                    HStack(spacing: 8) {
-                        Text(cand.kind == .video ? "视频" : "音频")
-                            .font(.system(size: 10, weight: .bold))
-                            .padding(.horizontal, 4).padding(.vertical, 1)
-                            .background(Color.secondary.opacity(0.15), in: .capsule)
-                        let sec = Double(inspection.durationMilliseconds) / 1000.0
-                        Text(String(format: "%.1fs", sec))
-                        let mb = Double(inspection.byteCount) / 1_048_576.0
-                        Text(String(format: "%.1fMB", mb))
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    ForEach(inspection.videoTracks) { track in
-                        Text("视频轨 \(track.id) · \(track.codecs.joined(separator: ", ")) · \(track.isDecodable ? "可解码" : "无法解码")")
-                            .font(.caption2).foregroundStyle(.secondary)
-                    }
-                } else if let error = cand.error {
-                    Text(error).font(.caption2).foregroundStyle(.red)
-                } else {
-                    Text("解析中…").font(.caption2).foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer()
-
-            Button {
-                candidates.removeAll { $0.id == cand.id }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    @ViewBuilder
-    private func candidateTracksView(candidate: Binding<ImportCandidate>, inspection: MediaInspection) -> some View {
-        let cand = candidate.wrappedValue
-        VStack(alignment: .leading, spacing: 4) {
-            Text("选择处理音轨：")
-                .font(.caption2.bold())
-                .foregroundStyle(.secondary)
-
-            ForEach(inspection.audioTracks) { track in
-                let isSelected = (cand.trackID == track.id)
-                Button {
-                    if track.isDecodable {
-                        candidate.trackID.wrappedValue = track.id
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                            .font(.caption)
-                            .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
-
-                        Text("音轨 \(track.id)")
-                            .font(.caption.monospacedDigit().bold())
-
-                        Text(track.language ?? "未知语言")
-                            .font(.caption)
-
-                        Text(track.codecs.joined(separator: ", "))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-
-                        Spacer()
-
-                        Text(track.isDecodable ? "可解码" : "无法解码")
-                            .font(.caption2)
-                            .foregroundStyle(track.isDecodable ? Color.secondary : .red)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear, in: .rect(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .disabled(!track.isDecodable)
-            }
-
-            if cand.trackID == nil {
-                Text("⚠️ 请明确选择一个转写音轨")
-                    .font(.caption2.bold())
-                    .foregroundStyle(.orange)
-                    .padding(.top, 2)
-            }
-        }
-        .padding(8)
-        .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 6))
-    }
-
-    // MARK: - Right: Pages/Keynote Parameters Form
+    // MARK: - Right: Parameters Form
     private var pagesParametersPane: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                // Group 1: Task Title
-                DisclosureGroup(isExpanded: .constant(true)) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        TextField("任务名称", text: $draftTitle)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    .padding(.top, 6)
-                } label: {
-                    Label("任务信息", systemImage: "doc.text")
-                        .font(.subheadline.bold())
-                }
-                .padding(12)
-                .liquidGlassSurface()
-
-                // Group 2: Transcription Engine
-                DisclosureGroup(isExpanded: .constant(true)) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Picker("模型", selection: $modelID) {
-                            if !ModelManager.availableModels.contains(where: { $0.id == modelID }) {
-                                Text("尚未支持：\(modelID)").tag(modelID)
-                            }
-                            ForEach(ModelManager.availableModels) { model in
-                                Text(model.name).tag(model.id)
-                            }
-                        }
-
-                        let status = modelManager.status(for: modelID)
-                        HStack(spacing: 6) {
-                            Text("状态：")
-                            switch status {
-                            case .ready:
-                                Text(status.label).foregroundStyle(.green)
-                            case .downloaded:
-                                Text(status.label).foregroundStyle(.secondary)
-                                Button("加载") { modelManager.load(modelID: modelID) }
-                                    .buttonStyle(.borderless)
-                            case .downloading, .checking, .cancelling:
-                                Text(status.label).foregroundStyle(.blue)
-                            case .notDownloaded, .cancelled:
-                                Text("未下载（建议提前就绪）").foregroundStyle(.orange)
-                                Button("下载") { modelManager.download(modelID: modelID) }
-                                    .buttonStyle(.borderless)
-                            case .failed, .corrupted:
-                                Text(status.label).foregroundStyle(.red)
-                            case .loading:
-                                Text("加载中…").foregroundStyle(.blue)
-                            }
-                            Spacer()
-                            Button("模型管理…", systemImage: "square.grid.2x2") {
-                                showModelManager = true
-                            }
-                            .buttonStyle(.borderless)
-                            .font(.caption)
-                        }
-                        .font(.caption2)
-
-                        Divider()
-
-                        Picker("原文语言", selection: $languageMode) {
-                            Text("自动识别语言").tag(TranscriptionSettings.LanguageMode.automatic)
-                            Text("选择语言").tag(TranscriptionSettings.LanguageMode.specified)
-                        }
-
-                        if languageMode == .specified {
-                            LanguagePicker(title: "原文语言", selection: $languageCode, identifiers: WhisperKitLanguages.codes)
-                        }
-                    }
-                    .disabled(!originalTask.canChangeTranscription)
-                    .padding(.top, 6)
-                    if !originalTask.canChangeTranscription {
-                        Text("已有转写记录或字幕，模型与原文语言保持原值。")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                } label: {
-                    Label("转写引擎 (WhisperKit)", systemImage: "cpu")
-                        .font(.subheadline.bold())
-                }
-                .padding(12)
-                .liquidGlassSurface()
-
-                // Group 3: Subtitle Translation
-                DisclosureGroup(isExpanded: .constant(true)) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Toggle("启用字幕翻译", isOn: $translates)
-
-                        if translates {
-                            Picker("翻译引擎", selection: $translationEngine) {
-                                Text("OpenAI 兼容接口").tag(TranslationEngineChoice.api)
-                                Text("Apple Translation · 本机").tag(TranslationEngineChoice.apple)
-                            }
-                            if translationEngine == .apple {
-                                AppleTranslationLanguageSettings(source: $appleSourceLanguage, target: $targetLanguage,
-                                                                 batchSize: $appleBatchSize)
-                            } else {
-                                if serviceStore.services.isEmpty {
-                                    HStack {
-                                        Text("尚未配置翻译服务")
-                                            .font(.caption).foregroundStyle(.orange)
-                                        Spacer()
-                                        Button("去配置", systemImage: "gear") {
-                                            showTranslationSettings = true
-                                        }
-                                    }
-                                } else {
-                                    Picker("服务提供商", selection: $selectedServiceID) {
-                                        Text("请选择服务").tag(nil as UUID?)
-                                        ForEach(serviceStore.services) { service in
-                                            Text(service.name).tag(Optional(service.id))
-                                        }
-                                    }
-                                }
-
-                                TextField("翻译模型（如 gpt-4o-mini）", text: $translationModel)
-                                    .textFieldStyle(.roundedBorder)
-
-                                LanguagePicker(title: "目标语言", selection: $targetLanguage)
-                                Text("每批最多 \(translationBatchSize) 条字幕").font(.caption)
-                                DisclosureGroup("系统提示词") {
-                                    Text(translationSystemPrompt).font(.caption).textSelection(.enabled)
-                                }
-                                Button("编辑服务参数…") { showTranslationSettings = true }
-                                    .buttonStyle(.borderless)
-                            }
-                        }
-                    }
-                    .padding(.top, 6)
-                } label: {
-                    Label("字幕翻译", systemImage: "character.bubble")
-                        .font(.subheadline.bold())
-                }
-                .padding(12)
-                .liquidGlassSurface()
-
-                // Group 4: Output SRT Options
-                DisclosureGroup(isExpanded: .constant(true)) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Toggle("原文 SRT (.source.srt)", isOn: Binding(
-                            get: { outputs.contains(.source) },
-                            set: { if $0 { outputs.insert(.source) } else { outputs.remove(.source) } }
-                        ))
-
-                        Toggle("译文 SRT (.translation.srt)", isOn: Binding(
-                            get: { outputs.contains(.translation) },
-                            set: { if $0 { outputs.insert(.translation) } else { outputs.remove(.translation) } }
-                        ))
-                        .disabled(!translates)
-
-                        Toggle("双语 SRT (.bilingual.srt)", isOn: Binding(
-                            get: { outputs.contains(.bilingual) },
-                            set: { if $0 { outputs.insert(.bilingual) } else { outputs.remove(.bilingual) } }
-                        ))
-                        .disabled(!translates)
-                    }
-                    .padding(.top, 6)
-                } label: {
-                    Label("字幕导出选项", systemImage: "doc.badge.arrow.up")
-                        .font(.subheadline.bold())
-                }
-                .padding(12)
-                .liquidGlassSurface()
+        Form {
+            Section("基本信息") {
+                TextField("任务名称", text: $draftTitle, prompt: Text("输入任务名称"))
             }
-            .padding(14)
+
+            Section("语音转写") {
+                Picker("转写模型", selection: $modelID) {
+                    if !ModelManager.availableModels.contains(where: { $0.id == modelID }) {
+                        Text("未收录：\(modelID)").tag(modelID)
+                    }
+                    ForEach(ModelManager.availableModels) { model in
+                        Text(model.name).tag(model.id)
+                    }
+                }
+
+                HStack {
+                    let status = modelManager.status(for: modelID)
+                    HStack(spacing: 5) {
+                        switch status {
+                        case .ready:
+                            Circle().fill(Color.green).frame(width: 7, height: 7)
+                            Text("就绪").foregroundStyle(.green)
+                        case .downloaded:
+                            Circle().fill(Color.secondary).frame(width: 7, height: 7)
+                            Text("已下载").foregroundStyle(.secondary)
+                            Button("加载") { modelManager.load(modelID: modelID) }
+                                .buttonStyle(.borderless)
+                        case .downloading, .checking:
+                            ProgressView().controlSize(.mini)
+                            Text("下载中…").foregroundStyle(.blue)
+                        case .notDownloaded, .cancelled:
+                            Text("未下载").foregroundStyle(.secondary)
+                            Button("下载") { modelManager.download(modelID: modelID) }
+                                .buttonStyle(.borderless)
+                        case .failed, .corrupted:
+                            Text("异常").foregroundStyle(.red)
+                        case .loading, .cancelling:
+                            ProgressView().controlSize(.mini)
+                        }
+                    }
+                    .font(.caption)
+
+                    Spacer()
+
+                    Button("管理模型…") {
+                        showModelManager = true
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                }
+
+                Picker("原文语言", selection: $languageMode) {
+                    Text("自动识别").tag(TranscriptionSettings.LanguageMode.automatic)
+                    Text("指定语言").tag(TranscriptionSettings.LanguageMode.specified)
+                }
+
+                if languageMode == .specified {
+                    LanguagePicker(title: "语言", selection: $languageCode, identifiers: WhisperKitLanguages.codes)
+                }
+
+                if !originalTask.canChangeTranscription {
+                    Text("已有转写记录，模型与原文语言已锁定")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .disabled(!originalTask.canChangeTranscription)
+
+            Section("字幕翻译") {
+                Toggle("启用字幕翻译", isOn: $translates)
+
+                if translates {
+                    Picker("翻译服务", selection: $translationEngine) {
+                        Text("在线接口 (OpenAI / DeepSeek)").tag(TranslationEngineChoice.api)
+                        Text("Apple Translation (本机)").tag(TranslationEngineChoice.apple)
+                    }
+
+                    if translationEngine == .apple {
+                        AppleTranslationLanguageSettings(
+                            source: $appleSourceLanguage,
+                            target: $targetLanguage,
+                            batchSize: $appleBatchSize
+                        )
+                    } else {
+                        if serviceStore.services.isEmpty {
+                            HStack {
+                                Text("尚未配置翻译服务")
+                                    .font(.caption).foregroundStyle(.orange)
+                                Spacer()
+                                Button("去配置…") {
+                                    showTranslationSettings = true
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        } else {
+                            Picker("服务提供商", selection: $selectedServiceID) {
+                                Text("请选择服务").tag(nil as UUID?)
+                                ForEach(serviceStore.services) { service in
+                                    Text(service.name).tag(Optional(service.id))
+                                }
+                            }
+                        }
+
+                        TextField("模型", text: $translationModel, prompt: Text("例如 gpt-4o-mini"))
+
+                        LanguagePicker(title: "目标语言", selection: $targetLanguage)
+
+                        DisclosureGroup("高级选项") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text("每批字幕数")
+                                    Spacer()
+                                    TextField("数量", value: $translationBatchSize, format: .number)
+                                        .multilineTextAlignment(.trailing)
+                                        .frame(width: 60)
+                                }
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text("系统提示词")
+                                        Spacer()
+                                        Button("恢复默认") {
+                                            translationSystemPrompt = TranslationSettings.defaultSystemPrompt
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .font(.caption2)
+                                    }
+                                    TextEditor(text: $translationSystemPrompt)
+                                        .font(.caption)
+                                        .frame(minHeight: 60)
+                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
+                    }
+                }
+            }
+
+            Section("导出选项") {
+                Toggle("导出原文字幕 (.source.srt)", isOn: Binding(
+                    get: { outputs.contains(.source) },
+                    set: { if $0 { outputs.insert(.source) } else { outputs.remove(.source) } }
+                ))
+
+                Toggle("导出译文字幕 (.translation.srt)", isOn: Binding(
+                    get: { outputs.contains(.translation) },
+                    set: { if $0 { outputs.insert(.translation) } else { outputs.remove(.translation) } }
+                ))
+                .disabled(!translates)
+
+                Toggle("导出双语字幕 (.bilingual.srt)", isOn: Binding(
+                    get: { outputs.contains(.bilingual) },
+                    set: { if $0 { outputs.insert(.bilingual) } else { outputs.remove(.bilingual) } }
+                ))
+                .disabled(!translates)
+            }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .formStyle(.grouped)
     }
 
     // MARK: - Bottom Action Bar
     private var bottomActionBar: some View {
         HStack(spacing: 12) {
-            // Left: Preflight check status chip
             if let blockReason = preflightBlockReason {
                 HStack(spacing: 5) {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     Text(blockReason).font(.caption).foregroundStyle(.orange)
                 }
             } else {
-                HStack(spacing: 5) {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    let totalCount = existingItems.count + candidates.filter({ $0.error == nil }).count
-                    Text("可准备 \(totalCount) 个媒体，保存时校验参数").font(.caption).foregroundStyle(.green)
-                }
+                let totalCount = existingItems.count + candidates.filter({ $0.error == nil }).count
+                Text("共 \(totalCount) 个媒体文件")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
 
+            Button("取消") {
+                importTask?.cancel()
+                saveTask?.cancel()
+                dismiss()
+            }
+            .keyboardShortcut(.cancelAction)
+            .disabled(isSaving)
+
             Button(originalTask.startedAt == nil ? "保存草稿" : "保存参数") {
                 saveTask = Task { await commitTask() }
             }
-            .disabled(isInspecting || isSaving)
-
-            if translates {
-                Text(translationEngine == .apple ? "本机翻译，字幕文本和音频保持本地。" : "字幕文本发送至所选服务；音频保持本地。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+            .disabled(isInspecting || isSaving || preflightBlockReason != nil)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
