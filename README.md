@@ -1,6 +1,6 @@
 # Voxline
 
-Voxline 是面向个人使用的 macOS 与 iOS 原生音视频字幕应用。Mac 以 Task 批处理本地媒体，完成转写、翻译、播放校对和 SRT 导出；iOS 支持导入成果、播放校对、模型管理与 API／Apple 本机翻译。界面使用 Liquid Glass，旧系统使用原生材质。
+Voxline 是面向个人使用的 macOS 与 iOS 原生音视频字幕应用。Mac 以 Task 批处理本地媒体，完成转写、翻译、播放校对和 SRT 导出；iOS 支持本地 Task 创建、前台顺序转写与翻译、取消恢复、导入成果和播放校对。两平台共用模型管理与 API／Apple 本机翻译能力。界面使用 Liquid Glass，旧系统使用原生材质。
 
 ## 快速启动
 
