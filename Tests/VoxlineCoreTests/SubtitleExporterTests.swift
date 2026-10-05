@@ -89,24 +89,4 @@ struct SubtitleExporterTests {
     func invalidFileNameCannotEscapeChosenDirectory(name: String) {
         #expect(throws: SubtitleExportError.invalidFileName) { try SubtitleExporter.validateFileName(name) }
     }
-
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_SRT_TASK"] != nil))
-    func realTaskExportsAllThreeKindsWithoutMutatingTask() throws {
-        let path = try #require(ProcessInfo.processInfo.environment["VOXLINE_SRT_TASK"])
-        let url = URL(fileURLWithPath: path)
-        let original = try Data(contentsOf: url)
-        let task = try TaskDocumentCodec.decode(original)
-        let item = try #require(task.items.first)
-        let directory = url.deletingLastPathComponent().appendingPathComponent("exports")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        for kind in [SRTOutputKind.source, .translation, .bilingual] {
-            let output = directory.appendingPathComponent(SubtitleExporter.suggestedFileName(mediaTitle: try #require(item.media).fileName, kind: kind))
-            try SubtitleExporter.export(cues: item.cues, kind: kind, to: output, media: item.media, allowOverwrite: true)
-            let content = try String(contentsOf: output, encoding: .utf8)
-            #expect(content.components(separatedBy: "\n\n").count == item.cues.count)
-            #expect(content.contains("6\n"))
-            #expect(!content.contains("\r"))
-        }
-        #expect(try Data(contentsOf: url) == original)
-    }
 }

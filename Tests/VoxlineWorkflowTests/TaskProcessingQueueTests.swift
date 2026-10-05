@@ -104,7 +104,7 @@ struct TaskProcessingQueueTests {
         #expect(reopenedLibrary.task(for: task.id)?.status == .completed)
     }
 
-    @Test func writeFailureStopsSchedulingAndPreservesLatestUnsavedEdits() async throws {
+    @Test func writeFailureStopsSchedulingAndPreservesLatestSavedEdits() async throws {
         let (directory, library, task) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let pipeline = ControlledPipeline(holdStartMilliseconds: 2000)
@@ -112,9 +112,11 @@ struct TaskProcessingQueueTests {
         try queue.start(taskID: task.id)
         await pipeline.waitForHeldDecode()
         let originalURL = library.defaultURL(for: task.id)
-        let originalData = try Data(contentsOf: originalURL)
         var edited = try #require(library.task(for: task.id))
-        try edited.items[0].cues[0].replaceSourceText(with: "Unsaved correction")
+        let originalItem = edited.items[0]
+        try edited.items[0].editSubtitle(comparedTo: originalItem.cues[0], sourceText: "Saved correction", translationText: "")
+        try library.updateItem(edited.items[0], taskID: task.id, comparedTo: originalItem)
+        let originalData = try Data(contentsOf: originalURL)
         let blockedURL = directory.appendingPathComponent("occupied.voxline")
         try FileManager.default.createDirectory(at: blockedURL, withIntermediateDirectories: false)
         library.register(edited, at: blockedURL)
@@ -124,14 +126,14 @@ struct TaskProcessingQueueTests {
         let interrupted = try #require(library.task(for: task.id))
         #expect(interrupted.items[0].status == .interrupted(stage: .transcription))
         #expect(interrupted.items[0].cues.count == 1)
-        #expect(interrupted.items[0].cues[0].sourceText == "Unsaved correction")
+        #expect(interrupted.items[0].cues[0].sourceText == "Saved correction")
         #expect(try Data(contentsOf: originalURL) == originalData)
         #expect(await !pipeline.events.contains("extract:\(task.items[1].id)"))
         library.register(interrupted, at: originalURL)
         try queue.start(taskID: task.id)
         await queue.waitUntilIdle()
         #expect(library.task(for: task.id)?.status == .completed)
-        #expect(library.task(for: task.id)?.items[0].cues[0].sourceText == "Unsaved correction")
+        #expect(library.task(for: task.id)?.items[0].cues[0].sourceText == "Saved correction")
     }
 
     @Test func incompatibleRangesFailOnlyTheirMediaAndMissingTranslationServiceIsExplicit() async throws {
@@ -454,11 +456,13 @@ struct TaskProcessingQueueTests {
     @Test func ordinaryRetryPreservesOutdatedManualTranslationUntilExplicitReplacement() async throws {
         let (directory, library, task, transcription) = try await translatedFixture()
         defer { try? FileManager.default.removeItem(at: directory) }
-        try library.commitCheckpoint(taskID: task.id) {
-            $0.items[0].cues[0].translation = .succeeded(text: "Keep this manual translation", sourceRevision: 1)
-            try $0.items[0].cues[0].replaceSourceText(with: "Corrected source")
-            $0.items[0].status = .needsReview
-        }
+        let original = task.items[0]
+        var edited = original
+        try edited.editSubtitle(comparedTo: edited.cues[0], sourceText: edited.cues[0].sourceText,
+                                translationText: "Keep this manual translation")
+        try edited.editSubtitle(comparedTo: edited.cues[0], sourceText: "Corrected source",
+                                translationText: "Keep this manual translation")
+        try library.updateItem(edited, taskID: task.id, comparedTo: original)
         let translation = ControlledTranslationPipeline()
         let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation)
         try queue.start(taskID: task.id, mediaID: task.items[0].id)

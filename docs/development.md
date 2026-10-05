@@ -46,7 +46,7 @@ xcodebuild -project Voxline.xcodeproj -scheme VoxlineIOS \
 
 ## 软件包验证
 
-测试与能力模块归属一致：Core 的格式、字幕与 SRT，Media 的访问、提取、播放与烧录，Translation 的协议与凭据，WhisperKit 的模型与 Provider，Workflow 的持久化与队列。VoxlineAppTests 验证原生系统接线。平台 source guard 的检查通过实际 Mac 与 iPhoneOS／模拟器构建完成。
+测试与能力模块归属一致：Core 的格式、字幕与 SRT，Media 的访问、提取、播放与烧录，Translation 的协议与凭据，WhisperKit 的模型与 Provider，Workflow 的持久化与队列。VoxlineAppTests 检查 Apple 语言标识匹配与响应 ID 映射；iOS 原生集成测试检查资源、Keychain、设备副本和错误边界。平台 source guard 的检查通过实际 Mac 与 iPhoneOS／模拟器构建完成；SwiftUI 页面、文件选择器和系统翻译会话仍须目标平台运行验收。
 
 ## 缩短反馈时间
 
@@ -133,13 +133,9 @@ unset VOXLINE_TRANSLATION_API_KEY
 
 ```sh
 swift test --filter 'MediaPlaybackControllerTests|SubtitleTimeOffsetTests'
-VOXLINE_PLAYBACK_FIXTURE_DIRECTORY="$PWD/tmp/playback-validation" \
-  swift test --filter exportNativePreviewFixtureForSandboxUI
 ```
 
-默认验证真实 AVPlayer 的准备、播放、暂停、结束、定位、所选音轨、媒体失败与释放，以及完整时间轴的原子偏移。可选入口将已有多音轨视频以原生直通方式扩展为 20 秒，生成 preview.mov 和 preview.voxline；打开任务并关联该 MOV 可复核画面、三种字幕预览及编辑。此任务使用明确标记的测试字幕，不能作为真实转写或 API 翻译质量证据。
-
-需要验证真实画面时，可向该可选入口传入 VOXLINE_PLAYBACK_VIDEO_SOURCE 本地视频绝对路径；任务关联原视频，不复制或转码文件，仍使用测试字幕，只验证播放和校对交互。
+默认验证真实 AVPlayer 的准备、播放、暂停、结束、定位、所选音轨、媒体失败与释放，以及完整时间轴的原子偏移。页面验收使用已保存 Task 和对应原媒体，在应用中核对画面、字幕预览、定位、编辑提交和保存失败后的草稿；控制器测试通过不能代替原生页面与文件选择器验收。
 
 ## 字幕烧录验证
 

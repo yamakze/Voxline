@@ -31,6 +31,10 @@ struct TaskLibraryTests {
         var invalid = task
         invalid.title = " "
         #expect(throws: TaskValidationError.emptyTitle) { try library.save(invalid) }
+        invalid = task
+        let item = TaskMediaItem(title: "Duplicate", kind: .audio, source: .unassociated)
+        invalid.items = [item, item]
+        #expect(throws: TaskValidationError.duplicateMedia(item.id)) { try library.save(invalid) }
         #expect(noted == [external])
         #expect(library.task(for: task.id) == task)
         #expect(try Data(contentsOf: external) == original)

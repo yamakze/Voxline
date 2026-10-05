@@ -107,47 +107,6 @@ struct MediaPlaybackControllerTests {
         #expect(controller.currentTimeSeconds == 0 && controller.durationSeconds == 0)
     }
 
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_PLAYBACK_FIXTURE_DIRECTORY"] != nil))
-    func exportNativePreviewFixtureForSandboxUI() async throws {
-        let directory = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["VOXLINE_PLAYBACK_FIXTURE_DIRECTORY"]))
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let source = ProcessInfo.processInfo.environment["VOXLINE_PLAYBACK_VIDEO_SOURCE"]
-        let url = source.map { URL(fileURLWithPath: $0) } ?? directory.appendingPathComponent("preview.mov")
-        if source == nil { try await Self.exportRepeatedVideo(from: videoURL, to: url) }
-        let inspector = MediaInspector()
-        let inspection = try await inspector.inspect(url)
-        let identity = try inspection.identity(audioTrackID: #require(inspection.audioTracks.last).id)
-        let start: Int64 = source == nil ? 1000 : 26820
-        var first = try SubtitleCue(id: UUID(), startMilliseconds: start, endMilliseconds: start + 9000, sourceText: "First test subtitle")
-        first.translation = .succeeded(text: "第一条测试字幕", sourceRevision: first.sourceRevision)
-        var last = try SubtitleCue(id: UUID(), startMilliseconds: start + 9000, endMilliseconds: start + 18000, sourceText: "Second test subtitle")
-        last.translation = .succeeded(text: "第二条测试字幕", sourceRevision: last.sourceRevision)
-        var task = ProcessingTask(title: "VXL-015 播放校对验证（测试字幕）", items: [
-            TaskMediaItem(title: source == nil ? "原生多音轨视频" : "真实视频画面验证（测试字幕）", kind: .video, source: .localFile(fileName: identity.fileName),
-                          media: identity, cues: [first, last])])
-        try task.freezeParameters()
-        task.items[0].status = .completed
-        let document = directory.appendingPathComponent("preview.voxline")
-        try TaskDocumentCodec.encode(task).write(to: document, options: .atomic)
-        #expect(try TaskDocumentCodec.decode(Data(contentsOf: document)) == task)
-    }
-
-    nonisolated private static func exportRepeatedVideo(from sourceURL: URL, to url: URL) async throws {
-        let asset = AVURLAsset(url: sourceURL)
-        let tracks = try await asset.loadTracks(withMediaType: .video) + asset.loadTracks(withMediaType: .audio)
-        let composition = AVMutableComposition()
-        for source in tracks {
-            let track = try #require(composition.addMutableTrack(withMediaType: source.mediaType, preferredTrackID: kCMPersistentTrackID_Invalid))
-            let range = try await source.load(.timeRange)
-            for index in 0..<20 {
-                try track.insertTimeRange(range, of: source, at: CMTime(seconds: Double(index), preferredTimescale: 600))
-            }
-            if source.mediaType == .video { track.preferredTransform = try await source.load(.preferredTransform) }
-        }
-        let exporter = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
-        try await exporter.export(to: url, as: .mov)
-    }
-
     @Test func audioPreviewHasNoVideoAndFailuresAndLateLoadCannotReviveReleasedPlayer() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

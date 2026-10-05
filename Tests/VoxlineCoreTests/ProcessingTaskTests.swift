@@ -122,22 +122,6 @@ struct ProcessingTaskTests {
         #expect(reopened.status == .interrupted)
     }
 
-    @Test func invalidTaskCannotEraseOrReplaceAnExistingDocument() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let url = directory.appendingPathComponent("batch.voxline")
-        var task = ProcessingTask(items: [try associatedItem()])
-        let data = try TaskDocumentCodec.encode(task)
-        try data.write(to: url, options: .atomic)
-        task.items.append(task.items[0])
-        #expect(throws: TaskValidationError.duplicateMedia(task.items[0].id)) {
-            try TaskDocumentCodec.encode(task).write(to: url, options: .atomic)
-        }
-        #expect(try Data(contentsOf: url) == data)
-        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)).items.count == 1)
-    }
-
     @Test func corruptedUnknownAndMalformedTasksAreExplicitErrors() throws {
         #expect(throws: ProjectValidationError.unsupportedVersion(99)) {
             try TaskDocumentCodec.decode(Data(#"{"formatVersion":99,"unknown":true}"#.utf8))

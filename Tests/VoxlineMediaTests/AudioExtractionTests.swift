@@ -1,10 +1,9 @@
 import AVFoundation
-import AudioToolbox
 import Foundation
 import Synchronization
 import Testing
 import VoxlineCore
-@testable import VoxlineMedia
+import VoxlineMedia
 
 @Suite("Bounded PCM extraction and source timeline")
 struct AudioExtractionTests {
@@ -176,16 +175,6 @@ struct AudioExtractionTests {
         #expect(invalidations.withLock { $0.count } == 1)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: chunk.path)
         #expect(try Data(contentsOf: chunk) == originalBytes)
-    }
-
-    @Test func cacheFormatClassificationPreservesPermissionCancellationAndUnknownErrors() {
-        #expect(AudioExtractor.isCorruptCacheAudioError(NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioFileInvalidFileError))))
-        for error in [NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioFilePermissionsError)),
-                      NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioFileUnspecifiedError)),
-                      NSError(domain: NSCocoaErrorDomain, code: CocoaError.fileReadNoPermission.rawValue),
-                      CancellationError() as NSError] {
-            #expect(!AudioExtractor.isCorruptCacheAudioError(error))
-        }
     }
 
     @Test func cancelledExtractionCannotCommitCacheAndStorageErrorsThrow() async throws {

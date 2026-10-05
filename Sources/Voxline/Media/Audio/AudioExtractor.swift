@@ -75,7 +75,12 @@ public actor AudioExtractor {
                     let file: AVAudioFile
                     do { file = try AVAudioFile(forReading: url) }
                     catch {
-                        guard Self.isCorruptCacheAudioError(error) else { throw error }
+                        // Only explicit format failures invalidate derived PCM; other errors propagate.
+                        let audioError = error as NSError
+                        guard audioError.domain == NSOSStatusErrorDomain || audioError.domain == "com.apple.coreaudio.avfaudio",
+                              [kAudioFileUnsupportedFileTypeError, kAudioFileUnsupportedDataFormatError,
+                               kAudioFileInvalidFileError, kAudioFileInvalidChunkError, kAudioFileEndOfFileError]
+                                .contains(where: { Int($0) == audioError.code }) else { throw error }
                         throw AudioExtractionError.invalidCache
                     }
                     guard file.length == chunk.frameCount, file.processingFormat.sampleRate == 16_000,
@@ -196,15 +201,6 @@ public actor AudioExtractor {
 
     fileprivate static func chunkURL(in directory: URL, index: Int) -> URL {
         directory.appendingPathComponent(String(format: "%06d.wav", index))
-    }
-
-    /// Only file-format failures invalidate derived PCM; permissions, cancellation and unknown I/O errors propagate.
-    static func isCorruptCacheAudioError(_ error: any Error) -> Bool {
-        let error = error as NSError
-        return (error.domain == NSOSStatusErrorDomain || error.domain == "com.apple.coreaudio.avfaudio") && [
-            kAudioFileUnsupportedFileTypeError, kAudioFileUnsupportedDataFormatError,
-            kAudioFileInvalidFileError, kAudioFileInvalidChunkError, kAudioFileEndOfFileError
-        ].contains { Int($0) == error.code }
     }
 }
 

@@ -36,7 +36,7 @@ graph TD
     Whisper --> SDK[WhisperKit SDK]
 ```
 
-底层模块不得反向引用应用。测试直接依赖被测模块；应用测试只验证平台接线和视图会话。选择理由见 [ADR-0016](../ADR/0016-workflow-and-capability-ownership.md)。
+底层模块不得反向引用应用。测试直接依赖被测模块；应用接线中的协议映射由应用测试覆盖，页面交互和系统视图会话须在目标平台验收。选择理由见 [ADR-0016](../ADR/0016-workflow-and-capability-ownership.md)。
 
 ## Task 持久化
 
