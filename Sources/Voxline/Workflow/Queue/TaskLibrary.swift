@@ -115,16 +115,19 @@ public final class TaskLibrary {
             let localFiles = try FileManager.default.contentsOfDirectory(at: tasksDirectory, includingPropertiesForKeys: nil)
                 .filter { $0.pathExtension == "voxline" }
             let deletedURL = url.resolvingSymlinksInPath().standardizedFileURL
-            let urls = Set((localFiles + entries.compactMap(\.url) + recentDocumentURLs())
-                .map { $0.resolvingSymlinksInPath().standardizedFileURL }).subtracting([deletedURL])
+            // Canonical paths identify duplicates; file access must keep the original scoped URL.
+            let urls = entries.compactMap(\.url) + recentDocumentURLs() + localFiles
+            var checkedURLs: Set<URL> = [deletedURL]
             var retainedTasks: [ProcessingTask] = []
             for otherURL in urls {
+                let canonicalURL = otherURL.resolvingSymlinksInPath().standardizedFileURL
+                guard checkedURLs.insert(canonicalURL).inserted else { continue }
                 let access = otherURL.startAccessingSecurityScopedResource()
                 defer { if access { otherURL.stopAccessingSecurityScopedResource() } }
                 do {
                     let persisted = try TaskDocumentCodec.decode(Data(contentsOf: otherURL))
                     retainedTasks.append(persisted)
-                    if let published = entries.first(where: { $0.url?.resolvingSymlinksInPath().standardizedFileURL == otherURL })?.task {
+                    if let published = entries.first(where: { $0.url?.resolvingSymlinksInPath().standardizedFileURL == canonicalURL })?.task {
                         retainedTasks.append(published)
                     }
                 } catch let error as CocoaError where error.code == .fileReadNoSuchFile { continue }

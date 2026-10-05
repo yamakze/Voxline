@@ -31,12 +31,14 @@ case "$configuration" in
 esac
 
 mkdir -p "build/ios/$platform"
+build_version=$(python3 Scripts/build-metadata.py version)
 build_started=$SECONDS
 xcodebuild -project Voxline.xcodeproj -scheme VoxlineIOS \
     -configuration "$xcode_configuration" -destination "$destination" \
     -derivedDataPath "$PWD/build/ios/$platform/DerivedData" \
-    "${signing_arguments[@]}" -showBuildTimingSummary build \
+    "${signing_arguments[@]}" CURRENT_PROJECT_VERSION="$build_version" -showBuildTimingSummary build \
     2>&1 | tee "build/ios/$platform/build.log"
 
 echo "构建耗时：$((SECONDS - build_started)) 秒"
 echo "构建完成：build/ios/$platform/DerivedData/Build/Products/$xcode_configuration-$sdk/Voxline.app"
+echo "Bundle ID: dev.voxline.ios · Build: $build_version"

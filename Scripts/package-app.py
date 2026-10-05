@@ -1,12 +1,19 @@
 import plistlib
+import os
+import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 if len(sys.argv) != 2 or sys.argv[1] not in {"debug", "release"}:
     raise SystemExit("Usage: package-app.py <debug|release>")
 root = Path(__file__).resolve().parents[1]
+identity = os.environ.get("VOXLINE_MAC_SIGN_IDENTITY")
+version = os.environ.get("VOXLINE_BUILD_VERSION")
+if not identity or not version:
+    raise SystemExit("Use Scripts/build-app.sh to select a fixed signing identity and build version")
 result = subprocess.run(
     ["swift", "build", "--configuration", sys.argv[1], "--show-bin-path"],
     cwd=root, text=True, capture_output=True, check=True,
@@ -14,7 +21,10 @@ result = subprocess.run(
 binary = Path(result.stdout.strip()) / "Voxline"
 if not binary.is_file():
     raise SystemExit(f"Missing compiled executable: {binary}")
-bundle = root / "build" / "Voxline.app"
+output = root / "build"
+output.mkdir(exist_ok=True)
+staging = tempfile.TemporaryDirectory(prefix="mac-package.", dir=output)
+bundle = Path(staging.name) / "Voxline.app"
 contents = bundle / "Contents"
 (contents / "MacOS").mkdir(parents=True, exist_ok=True)
 (contents / "Resources").mkdir(exist_ok=True)
@@ -35,7 +45,7 @@ metadata = {
     "CFBundleExecutable": "Voxline",
     "CFBundlePackageType": "APPL",
     "CFBundleShortVersionString": "0.1.0",
-    "CFBundleVersion": "1",
+    "CFBundleVersion": version,
     "CFBundleIconFile": "AppIcon",
     "CFBundleIconName": "AppIcon",
     "LSMinimumSystemVersion": "15.0",
@@ -54,10 +64,34 @@ metadata = {
 }
 with (contents / "Info.plist").open("wb") as file:
     plistlib.dump(metadata, file)
-subprocess.run(["codesign", "--force", "--sign", "-", "--entitlements",
+subprocess.run(["codesign", "--force", "--sign", identity, "--timestamp=none", "--entitlements",
                 str(root / "Scripts" / "Voxline.entitlements"), str(bundle)], check=True)
-subprocess.run(["touch", str(bundle)], check=False)
+subprocess.run(["codesign", "--verify", "--strict", str(bundle)], check=True)
+requirement = subprocess.run(["codesign", "-d", "-r-", str(bundle)],
+                             check=True, capture_output=True, text=True).stdout.strip()
+if not requirement.startswith("designated => "):
+    raise SystemExit("codesign did not return a designated requirement")
+identity_manifest = Path(staging.name) / "Voxline.identity.json"
+identity_manifest.write_text(json.dumps({
+    "bundleIdentifier": metadata["CFBundleIdentifier"], "buildVersion": version,
+    "signingIdentity": identity, "designatedRequirement": requirement.removeprefix("designated => ")
+}, indent=2) + "\n")
+target = output / "Voxline.app"
+previous = Path(staging.name) / "previous.app"
+if target.exists():
+    target.rename(previous)
+try:
+    bundle.rename(target)
+except OSError:
+    if previous.exists():
+        previous.rename(target)
+    raise
+bundle = target
+identity_manifest.replace(output / "Voxline.identity.json")
+staging.cleanup()
+subprocess.run(["touch", str(bundle)], check=True)
 lsregister = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
 if lsregister.is_file():
-    subprocess.run([str(lsregister), "-f", "-R", "-trusted", str(bundle)], check=False)
+    subprocess.run([str(lsregister), "-f", "-R", "-trusted", str(bundle)], check=True)
 print(bundle)
+print(f"Bundle ID: {metadata['CFBundleIdentifier']} · Build: {version} · Signer: {identity}")

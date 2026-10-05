@@ -12,6 +12,16 @@ swift test
 
 compile_and_run.sh 构建成功后停止当前仓库产物对应的旧进程，启动 build/Voxline.app。
 
+Mac 构建使用固定的 Apple Development 或 Developer ID Application 证书。先在 Xcode → Settings → Accounts 配置开发证书与私钥；首次构建只有一个有效证书时自动选择，并将 SHA-1 保存到忽略目录 .local/mac-signing.json。多个证书时显式指定：
+
+```sh
+VOXLINE_MAC_SIGN_IDENTITY="Apple Development: <证书名称>" Scripts/build-app.sh debug
+```
+
+也可使用证书 SHA-1。后续构建沿用保存的证书，缺失或失效时明确退出。签名与严格验证在新目录完成后才替换现有应用。固定证书和 Bundle ID 保持系统识别的应用身份；切换证书后可能需要一次钥匙串授权。证书链缺少中间证书时，通过 Apple 官方 [证书颁发机构](https://www.apple.com/certificateauthority/) 补齐对应证书。
+
+两平台 Bundle ID 分别固定为 dev.voxline.app 和 dev.voxline.ios。build-metadata.py 为每次构建生成递增的 CFBundleVersion，保存于忽略目录 .local/build-version；营销版本保持 0.1.0。Mac 产物身份记录在 build/Voxline.identity.json，包含 Bundle ID、构建号、签名证书和 designated requirement。
+
 ## iOS
 
 Voxline.xcodeproj 保留 VoxlineIOS scheme，应用 target 为 VoxlineApp；两平台应用源码统一在 Sources/Voxline/App。能力框架直接使用相同源码目录，WhisperKit 产品固定到与 SwiftPM 相同的提交。模型清单作为框架资源打包，权重由模型页按需下载。Xcode 可打开工程进行断点调试与 SwiftUI Preview。
@@ -25,11 +35,14 @@ Scripts/compile_and_run_ios.sh <模拟器UDID> release
 ```
 
 - build-ios-ipa.sh 默认为 release，构建 iPhoneOS 设备包，关闭代码签名，创建全新的 Payload 后替换 build/ios/Voxline-unsigned.ipa。失败不会覆盖上一次 IPA；打包不携带 macOS 扩展属性。
+- 打包后读取实际 IPA 的 Info.plist 并检查固定 Bundle ID，输出 build/ios/Voxline-unsigned.identity.json，记录版本、构建号、未签名状态及 SHA-256。
 - compile_and_run_ios.sh 默认为 debug，优先选择已启动的 iOS 模拟器，否则选择第一个可用 iPhone。指定 UDID 可切换设备；没有可用 runtime 或参数不合法时明确退出。
 - 模拟器使用本地临时签名，使 Keychain 可实际读写；不需要开发证书。设备 IPA 保持未签名，自行签名时应用和嵌入框架均须有效签名。
 - 构建成功后按需启动模拟器、等待开机、安装应用并替换旧进程；保留应用数据。构建失败时不安装、不终止旧应用。
 - build-ios.sh 是两者共用的构建入口，分别保留 build/ios/device 和 build/ios/simulator 下的 DerivedData。完整日志为对应目录下的 build.log，包含总耗时和 Build Timing Summary。
 - IPA 是设备架构 arm64，不能安装到模拟器。普通真机需有效签名；可用现有签名工具处理 IPA，或在 Xcode 的 Signing & Capabilities 中选择开发 Team 后运行。
+
+AltStore 覆盖更新须沿用相同原始 Bundle ID 和签名账号／Team，直接安装新版 IPA，保留已有应用。AltStore 根据这两个值复用已安装应用的重签名 Bundle ID；更换账号或原始 Bundle ID 会产生另一份安装身份。构建脚本固定原始 ID，重签名工具决定最终 ID。规则见 [AltStore provisioning 实现](https://github.com/altstoreio/AltStore/blob/develop/AltStore/Operations/FetchProvisioningProfilesOperation.swift)。更新验收检查任务、模型和翻译服务凭据是否保留。
 
 当前 iOS 功能与文件规则见 [架构](architecture/README.md)。
 
