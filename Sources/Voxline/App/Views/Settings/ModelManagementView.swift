@@ -77,9 +77,8 @@ public struct ModelManagementView: View {
             }
 
             ToolbarItem(placement: .principal) {
-                modelStorageCapsule
+                Color.clear.frame(width: 1, height: 1)
             }
-
             #endif
             ToolbarItemGroup(placement: .primaryAction) {
                 #if os(macOS)
@@ -105,35 +104,6 @@ public struct ModelManagementView: View {
         .task {
             await modelManager.refreshAll()
         }
-    }
-
-    private var modelStorageCapsule: some View {
-        let downloadedCount = ModelManager.availableModels.filter {
-            switch modelManager.status(for: $0.id) {
-            case .ready, .downloaded:
-                return true
-            default:
-                return false
-            }
-        }.count
-        let totalBytes = modelManager.totalDiskUsage()
-        let mb = Double(totalBytes) / 1_000_000.0
-        let sizeString = mb >= 1000 ? String(format: "%.2f GB", mb / 1000.0) : String(format: "%.0f MB", mb)
-
-        return HStack(spacing: 6) {
-            Image(systemName: "cpu")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            if downloadedCount > 0 {
-                Text("\(downloadedCount) 个模型就绪 · 已用 \(sizeString)")
-            } else {
-                Text("未下载模型 · 0 MB")
-            }
-        }
-        .font(.caption.weight(.medium))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(Color.voxlineControlBackground.opacity(0.8), in: .capsule)
     }
 
     @ViewBuilder

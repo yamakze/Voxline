@@ -130,24 +130,21 @@ public struct TaskLibraryView: View {
                     .background(Color.voxlineAccent.opacity(0.12), in: .circle)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(entry.title)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-
-                        if let task = entry.task {
-                            TaskStatusBadge(status: task.status)
-                        }
-                    }
+                    Text(entry.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
 
                     if let task = entry.task {
-                        HStack(spacing: 10) {
-                            Text("\(task.items.count) 个媒体")
+                        HStack(spacing: 8) {
+                            Text("\(task.items.count) 媒体")
+                            Text("·")
                             Text("\(task.completedCount) 完成")
                             if task.failedCount > 0 {
+                                Text("·")
                                 Text("\(task.failedCount) 失败").foregroundStyle(.red)
                             }
                             if let started = task.startedAt {
+                                Text("·")
                                 Text(started.formatted(date: .abbreviated, time: .shortened))
                             }
                         }
@@ -170,6 +167,10 @@ public struct TaskLibraryView: View {
                 }
 
                 Spacer()
+
+                if let task = entry.task {
+                    TaskStatusBadge(status: task.status)
+                }
 
                 Image(systemName: "chevron.right")
                     .font(.caption.bold())

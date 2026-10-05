@@ -195,11 +195,9 @@ public struct MainWindowView: View {
                         Button {
                             selectedTab = .allTasks
                         } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left")
-                                Text("全部任务")
-                            }
+                            Image(systemName: "chevron.left")
                         }
+                        .help("返回全部任务")
                     }
 
                     ToolbarItem(placement: .principal) {

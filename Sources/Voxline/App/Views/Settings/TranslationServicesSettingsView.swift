@@ -68,14 +68,6 @@ public struct TranslationServicesSettingsView: View {
             #endif
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
-                    Task { await store.load() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .help("重新读取服务与 Keychain 凭据")
-                .disabled(store.isLoading || store.isSaving)
-
-                Button {
                     isAddingService = true
                 } label: {
                     Image(systemName: "plus")

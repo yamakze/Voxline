@@ -61,20 +61,21 @@ public struct MediaDetailProofreadingView: View {
             // Left Column: QuickTime Player with Floating Glass Capsule Controls
             quickTimePlayerPane(activeCue: activeCue)
                 .frame(minWidth: 440, idealWidth: 540)
+                .frame(maxHeight: .infinity)
 
             // Right Column: Apple Podcasts Lyrics/Transcript Stream
             podcastsTranscriptPane(activeCueID: activeCue?.id)
                 .frame(minWidth: 460, idealWidth: 580)
+                .frame(maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .toolbar {
             if let onBack {
                 ToolbarItem(placement: .navigation) {
                     Button(action: onBack) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text("返回队列")
-                        }
+                        Image(systemName: "chevron.left")
                     }
+                    .help("返回任务队列")
                 }
             }
 
@@ -444,6 +445,7 @@ public struct MediaDetailProofreadingView: View {
                     systemImage: "quote.bubble",
                     description: Text("当前媒体条目尚未转写生成字幕。")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
