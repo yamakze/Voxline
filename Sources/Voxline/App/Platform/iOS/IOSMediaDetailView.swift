@@ -39,37 +39,33 @@ struct IOSMediaDetailView: View {
                     }
                     .frame(width: landscape ? geometry.size.width * 0.5 : nil)
                     List {
-                        if let settings = library.task(taskID)?.parameters.translation {
-                            Section("翻译") {
-                                Text(item.status.label).font(.caption).foregroundStyle(.secondary)
-                                switch settings.engine {
-                                case .openAICompatible:
-                                    NavigationLink("本机翻译服务") { TranslationServicesSettingsView(referencedSettings: settings, onBindService: { service in
-                                        try library.bindTranslationService(service, taskID: taskID)
-                                    }) }
-                                case .appleTranslation:
-                                    NavigationLink("准备本机语言") { IOSAppleLanguagesView(settings: settings) }
+                        // Translation progress banner
+                        if library.queue.taskID == taskID && library.queue.mediaID == mediaID {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text(library.queue.progressText ?? "正在翻译…").font(.caption)
+                                Spacer()
+                                Button(library.queue.isCancelling ? "取消中" : "取消") {
+                                    do { try library.queue.cancel() }
+                                    catch { errorMessage = error.localizedDescription }
                                 }
-                                if library.queue.taskID == taskID && library.queue.mediaID == mediaID {
-                                    ProgressView(library.queue.progressText ?? "翻译处理中…")
-                                    Button(library.queue.isCancelling ? "取消中…" : "取消翻译") {
-                                        do { try library.queue.cancel() }
-                                        catch { errorMessage = error.localizedDescription }
-                                    }
-                                    .disabled(library.queue.isCancelling)
-                                } else if !item.cues.isEmpty && !item.cues.allSatisfy(\.hasCurrentTranslation) {
-                                    Button("继续翻译") {
-                                        do { try library.startTranslation(taskID: taskID, mediaID: mediaID) }
-                                        catch { errorMessage = error.localizedDescription }
-                                    }
-                                    .disabled(library.queue.taskID != nil)
-                                }
-                                if let error = library.queue.errorMessage {
-                                    Text(error).font(.caption).foregroundStyle(.red)
-                                }
+                                .buttonStyle(.bordered).controlSize(.small)
+                                .disabled(library.queue.isCancelling)
                             }
+                            .padding(.vertical, 4)
+                        } else if let error = library.queue.errorMessage {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.circle").foregroundStyle(.red)
+                                Text(error).font(.caption).foregroundStyle(.red)
+                            }
+                            .padding(.vertical, 4)
                         }
-                        if item.cues.isEmpty { Text("还没有字幕成果").foregroundStyle(.secondary) }
+
+                        if item.cues.isEmpty {
+                            ContentUnavailableView("无字幕内容", systemImage: "character.bubble")
+                                .padding(.vertical, 40)
+                        }
+
                         ForEach(item.cues) { cue in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
@@ -113,6 +109,13 @@ struct IOSMediaDetailView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu("媒体操作", systemImage: "ellipsis") {
+                        if !item.cues.isEmpty && !item.cues.allSatisfy(\.hasCurrentTranslation) {
+                            Button("继续翻译", systemImage: "character.bubble") {
+                                do { try library.startTranslation(taskID: taskID, mediaID: mediaID) }
+                                catch { errorMessage = error.localizedDescription }
+                            }
+                            .disabled(library.queue.taskID != nil)
+                        }
                         Button("关联媒体", systemImage: "paperclip") { importingMedia = true }
                         Button("整体时间偏移", systemImage: "clock") { showingOffset = true }
                     }

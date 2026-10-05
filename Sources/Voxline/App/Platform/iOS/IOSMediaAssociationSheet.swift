@@ -47,10 +47,6 @@ struct IOSMediaAssociationSheet: View {
                                     .disabled(!track.isDecodable || candidate.item.media.map { $0.audioTrackID != track.id } == true)
                             }
                         }
-                        if candidate.item.media != nil {
-                            Text("保持 Mac 任务的媒体内容和所选音轨，字幕与校对成果不变。")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
                     } else if isInspecting { ProgressView("检查媒体…") }
                     Button("重新选择…") { isSelectingMedia = true }
                         .disabled(isInspecting || isSaving)

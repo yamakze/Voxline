@@ -29,7 +29,7 @@ struct IOSTaskLibraryView: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(task.title).font(.headline)
-                                    Text("\(task.items.count) 个媒体 · \(task.completedCount) 完成 · \(task.failedCount) 失败")
+                                    Text("\(task.items.count) 个媒体 · \(task.completedCount) 完成" + (task.failedCount > 0 ? " · \(task.failedCount) 失败" : ""))
                                         .font(.subheadline).foregroundStyle(.secondary)
                                     Text(task.status.label).font(.caption).foregroundStyle(.secondary)
                                 }
@@ -141,8 +141,6 @@ private struct IOSTaskDetailView: View {
                             LabeledContent("原文语言", value: source)
                             NavigationLink("准备本机语言") { IOSAppleLanguagesView(settings: settings) }
                         }
-                        Text("参数来自任务快照；修改服务默认值不改变本次任务。")
-                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 Section("媒体") {
