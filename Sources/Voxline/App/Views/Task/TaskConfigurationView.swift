@@ -25,6 +25,7 @@ public struct TaskConfigurationView: View {
     @State private var targetLanguage: String
     @State private var translationBatchSize: Int
     @State private var translationSystemPrompt: String
+    @State private var showAdvancedTranslationOptions = false
     @State private var outputs: Set<SRTOutputKind>
 
     @State private var existingItems: [TaskMediaItem]
@@ -558,31 +559,46 @@ public struct TaskConfigurationView: View {
 
                         LanguagePicker(title: "目标语言", selection: $targetLanguage)
 
-                        DisclosureGroup("高级选项") {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                showAdvancedTranslationOptions.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: showAdvancedTranslationOptions ? "chevron.down" : "chevron.right")
+                                    .font(.caption2.bold())
+                                Text("高级选项")
+                                    .font(.subheadline)
+                            }
+                            .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 2)
+
+                        if showAdvancedTranslationOptions {
                             TextField("每批字幕数", value: $translationBatchSize, format: .number)
 
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text("系统提示词")
-                                        .font(.subheadline)
-                                    Spacer()
+                            LabeledContent {
+                                VStack(alignment: .trailing, spacing: 4) {
+                                    TextEditor(text: $translationSystemPrompt)
+                                        .font(.callout)
+                                        .frame(minHeight: 75)
+                                        .padding(4)
+                                        .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 6))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                                        )
+
                                     Button("恢复默认") {
                                         translationSystemPrompt = TranslationSettings.defaultSystemPrompt
                                     }
                                     .buttonStyle(.borderless)
                                     .font(.caption)
                                 }
-                                TextEditor(text: $translationSystemPrompt)
-                                    .font(.callout)
-                                    .frame(minHeight: 70)
-                                    .padding(4)
-                                    .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 6))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                                    )
+                            } label: {
+                                Text("系统提示词")
                             }
-                            .padding(.vertical, 4)
                         }
                     }
                 }
