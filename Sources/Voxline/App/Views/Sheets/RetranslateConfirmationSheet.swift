@@ -1,4 +1,3 @@
-#if os(macOS)
 import SwiftUI
 import VoxlineCore
 
@@ -73,8 +72,11 @@ public struct RetranslateConfirmationSheet: View {
             }
         }
         .padding(24)
+        #if os(macOS)
         .frame(width: 520)
+        #else
+        .presentationDetents([.medium, .large])
+        #endif
     }
 }
 
-#endif
