@@ -4,7 +4,9 @@ import UniformTypeIdentifiers
 import VoxlineCore
 
 struct IOSTaskLibraryView: View {
-    @State private var library = IOSTaskLibrary()
+    @State private var library = IOSTaskLibrary.shared
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var foregroundMessage: String?
     @State private var importing = false
     @State private var deletingTask: ProcessingTask?
     @State private var replacement: ProcessingTask?
@@ -112,6 +114,18 @@ struct IOSTaskLibraryView: View {
                 Text(library.errorMessage ?? "")
             }
             .task { library.load() }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .background, library.queue.taskID != nil else { return }
+                do {
+                    try library.queue.cancel()
+                    foregroundMessage = "应用已进入后台，处理停止调度。已提交成果保留，请返回任务详情继续未完成处理。"
+                } catch { library.errorMessage = error.localizedDescription }
+            }
+            .alert("前台处理已停止", isPresented: Binding(
+                get: { foregroundMessage != nil && scenePhase == .active },
+                set: { if !$0 { foregroundMessage = nil } })) {
+                Button("好") { foregroundMessage = nil }
+            } message: { Text(foregroundMessage ?? "") }
             .onOpenURL { importTask($0) }
             .confirmationDialog("删除本地任务？", isPresented: Binding(
                 get: { deletingTask != nil }, set: { if !$0 { deletingTask = nil } }), titleVisibility: .visible) {
@@ -125,7 +139,7 @@ struct IOSTaskLibraryView: View {
                     } catch { library.errorMessage = error.localizedDescription }
                 }
                 Button("取消", role: .cancel) { deletingTask = nil }
-            } message: { Text("删除设备上的任务副本及字幕成果，导入源文件和音视频保留。") }
+            } message: { Text("删除设备任务副本、字幕成果和不再被其他任务使用的媒体关联、音频缓存及转写证据。导入源文件和音视频保留；清理失败时任务保留，可重试删除。") }
             .alert("替换本地任务？", isPresented: Binding(
                 get: { replacement != nil }, set: { if !$0 { replacement = nil } })) {
                 Button("取消", role: .cancel) { replacement = nil }
@@ -211,7 +225,11 @@ private struct IOSTaskDetailView: View {
                 if library.queue.taskID == taskID {
                     Section("处理控制") {
                         HStack {
-                            ProgressView().controlSize(.small)
+                            if let fraction = library.queue.extractionFraction {
+                                ProgressView(value: fraction).frame(width: 60)
+                            } else {
+                                ProgressView().controlSize(.small)
+                            }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(library.queue.isCancelling ? "正在取消，等待当前操作结束…" : (library.queue.progressText ?? "处理中…"))
                                     .font(.caption.weight(.medium))
@@ -233,6 +251,19 @@ private struct IOSTaskDetailView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                } else {
+                    Section("处理控制") {
+                        Button(task.startedAt == nil ? "开始处理" : "继续未完成处理", systemImage: "play.fill") {
+                            do { try library.queue.start(taskID: taskID) }
+                            catch { errorMessage = error.localizedDescription }
+                        }
+                        .disabled(library.queue.taskID != nil || !task.items.contains(where: \.canResumeProcessing))
+                        Text("请保持应用在前台；离开后若系统中断，重新打开可继续已保存的检查点。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let error = library.queue.errorMessage {
+                    Section("处理未完成") { Text(error).font(.caption).foregroundStyle(.red) }
                 }
 
                 // MARK: 3. 当前参数
@@ -283,7 +314,7 @@ private struct IOSTaskDetailView: View {
                     if task.items.isEmpty {
                         ContentUnavailableView("暂无媒体条目", systemImage: "film.stack", description: Text("请点击任务准备添加音视频。"))
                     } else {
-                        ForEach(Array(task.items.enumerated()), id: \.element.id) { index, item in
+                        ForEach(task.items) { item in
                             NavigationLink {
                                 IOSMediaDetailView(library: library, taskID: taskID, mediaID: item.id)
                             } label: {
@@ -346,31 +377,24 @@ private struct IOSTaskDetailView: View {
                                         .background(Color.red.opacity(0.08), in: .rect(cornerRadius: 6))
                                     }
 
-                                    HStack {
-                                        Spacer()
-                                        if item.status.isRetryable {
-                                            Button(item.status.isTranslationPaused ? "继续翻译" : "重试", systemImage: "arrow.clockwise") {
-                                                do { try library.queue.start(taskID: task.id, mediaID: item.id) }
-                                                catch { errorMessage = error.localizedDescription }
-                                            }
-                                            .buttonStyle(.bordered)
-                                            .controlSize(.small)
-                                            .disabled(library.queue.taskID != nil)
-                                        }
-
-                                        if library.queue.taskID == task.id,
-                                           item.status == .pending || library.queue.mediaID == item.id {
-                                            Button("取消") {
-                                                do { try library.queue.cancel(mediaID: item.id) }
-                                                catch { errorMessage = error.localizedDescription }
-                                            }
-                                            .buttonStyle(.bordered)
-                                            .controlSize(.small)
-                                            .disabled(library.queue.isCancelling && library.queue.mediaID == item.id)
-                                        }
-                                    }
                                 }
                                 .padding(.vertical, 4)
+                            }
+                            .contextMenu {
+                                if item.status.isRetryable && item.canResumeProcessing {
+                                    Button(item.status.isTranslationPaused ? "继续翻译" : "重试", systemImage: "arrow.clockwise") {
+                                        do { try library.queue.start(taskID: task.id, mediaID: item.id) }
+                                        catch { errorMessage = error.localizedDescription }
+                                    }
+                                    .disabled(library.queue.taskID != nil)
+                                }
+                                if library.queue.taskID == task.id, library.queue.isScheduled(mediaID: item.id) {
+                                    Button("取消此媒体", systemImage: "stop.circle") {
+                                        do { try library.queue.cancel(mediaID: item.id) }
+                                        catch { errorMessage = error.localizedDescription }
+                                    }
+                                    .disabled(library.queue.isCancelling && library.queue.mediaID == item.id)
+                                }
                             }
                         }
                     }

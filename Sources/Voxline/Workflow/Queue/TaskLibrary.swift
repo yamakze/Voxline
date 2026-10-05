@@ -23,12 +23,18 @@ public final class TaskLibrary {
     private var orderURL: URL { tasksDirectory.appendingPathComponent("task-order.json") }
     private let recentDocumentURLs: @MainActor () -> [URL]
     private let noteRecentDocument: @MainActor (URL) -> Void
+    private let forgetRecentDocument: @MainActor (URL) -> Void
+    private let resourceCleanup: TaskResourceCleanup
 
     public init(tasksDirectory: URL, recentDocumentURLs: @escaping @MainActor () -> [URL] = { [] },
-                noteRecentDocument: @escaping @MainActor (URL) -> Void = { _ in }) {
+                noteRecentDocument: @escaping @MainActor (URL) -> Void = { _ in },
+                forgetRecentDocument: @escaping @MainActor (URL) -> Void = { _ in },
+                resourceCleanup: TaskResourceCleanup = .init()) {
         self.tasksDirectory = tasksDirectory
         self.recentDocumentURLs = recentDocumentURLs
         self.noteRecentDocument = noteRecentDocument
+        self.forgetRecentDocument = forgetRecentDocument
+        self.resourceCleanup = resourceCleanup
         refresh()
     }
 
@@ -104,9 +110,37 @@ public final class TaskLibrary {
         guard entry.task?.status != .running else { throw CheckpointError.workRunning }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
+        if let task = entry.task {
+            // Enumerate known files as well as published entries: two copies can have the same Task ID.
+            let localFiles = try FileManager.default.contentsOfDirectory(at: tasksDirectory, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "voxline" }
+            let deletedURL = url.resolvingSymlinksInPath().standardizedFileURL
+            let urls = Set((localFiles + entries.compactMap(\.url) + recentDocumentURLs())
+                .map { $0.resolvingSymlinksInPath().standardizedFileURL }).subtracting([deletedURL])
+            var retainedTasks: [ProcessingTask] = []
+            for otherURL in urls {
+                let access = otherURL.startAccessingSecurityScopedResource()
+                defer { if access { otherURL.stopAccessingSecurityScopedResource() } }
+                do {
+                    let persisted = try TaskDocumentCodec.decode(Data(contentsOf: otherURL))
+                    retainedTasks.append(persisted)
+                    if let published = entries.first(where: { $0.url?.resolvingSymlinksInPath().standardizedFileURL == otherURL })?.task {
+                        retainedTasks.append(published)
+                    }
+                } catch let error as CocoaError where error.code == .fileReadNoSuchFile { continue }
+                catch { throw TaskDeletionError.cleanupFailed(["\(otherURL.path)：无法确认其他任务的资源引用：\(error.localizedDescription)"]) }
+            }
+            // Complete cleanup before removing the document. Any partial failure keeps the task and
+            // its IDs available across restart, so deletion can be retried without a second journal.
+            try resourceCleanup.removeResources(of: task, retaining: retainedTasks)
+        }
+        let remainingOrder = orderedURLs.filter { $0 != url }
+        try JSONEncoder().encode(remainingOrder).write(to: orderURL, options: .atomic)
         try FileManager.default.removeItem(at: url)
+        orderedURLs = remainingOrder
         openTasks[entry.taskID] = nil
         entries.removeAll { $0.id == entryID }
+        forgetRecentDocument(url)
     }
 
     /// Persist list order separately from immutable processing results.

@@ -42,8 +42,7 @@ public final class TaskProcessingQueue {
         guard let task = library.task(for: taskID) else { throw CheckpointError.taskUnavailable }
         guard !task.items.isEmpty else { throw QueueError.unavailable("请先添加本地音视频。") }
         let candidates = task.items.filter { item in
-            (mediaID == nil || item.id == mediaID) && item.status != .completed &&
-            !(item.checkpoint == nil && !item.cues.isEmpty) && item.media != nil
+            (mediaID == nil || item.id == mediaID) && item.canResumeProcessing
         }
         guard !candidates.isEmpty else { throw QueueError.noWork }
         let ids = candidates.map(\.id)
@@ -61,6 +60,10 @@ public final class TaskProcessingQueue {
         isCancelling = false
         errorMessage = nil
         worker = Task { await self.consume(taskID: taskID, parameters: task.parameters) }
+    }
+
+    public func isScheduled(mediaID: UUID) -> Bool {
+        (queuedIDs.contains(mediaID) || self.mediaID == mediaID) && !cancelledIDs.contains(mediaID)
     }
 
     /// Cancellation keeps the worker occupied until the actual extraction/inference has returned.
@@ -232,7 +235,7 @@ public final class TaskProcessingQueue {
             progressText = "转写块 \(index + 1)／\(chunks.count)"
             let evidence: TranscriptionEvidence
             do {
-                evidence = try await pipeline.transcribe(audio: audio[index], settings: parameters.transcription) { progress in
+                evidence = try await pipeline.transcribe(mediaID: mediaID, audio: audio[index], settings: parameters.transcription) { progress in
                     Task { @MainActor in
                         guard self.progressID == decodingID else { return }
                         let detail: String

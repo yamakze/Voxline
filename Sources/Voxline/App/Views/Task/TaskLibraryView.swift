@@ -107,7 +107,7 @@ public struct TaskLibraryView: View {
             }
             Button("取消", role: .cancel) { deletingEntry = nil }
         } message: {
-            Text("删除任务文件及其中的字幕成果，音视频源文件保留。\n\(deletingEntry?.url?.path ?? "")")
+            Text("删除任务文件、字幕成果和不再被其他任务使用的媒体关联、音频缓存及转写证据。音视频和已导出文件保留；清理失败时任务保留，可重试删除。\n\(deletingEntry?.url?.path ?? "")")
         }
         .alert("任务操作失败", isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {

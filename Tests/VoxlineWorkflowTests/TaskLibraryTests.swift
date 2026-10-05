@@ -6,6 +6,114 @@ import VoxlineCore
 @Suite("Task document persistence", .serialized)
 @MainActor
 struct TaskLibraryTests {
+    @Test func deletionRetainsSameIDCopiesAndMigratedMediaUntilLastKnownReference() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let local = root.appendingPathComponent("tasks")
+        let support = root.appendingPathComponent("support")
+        let caches = root.appendingPathComponent("caches")
+        let mediaID = UUID() // A migrated project keeps this ID across copies and tasks.
+        let task = ProcessingTask(title: "Migrated", items: [.init(id: mediaID, title: "Media", kind: .audio, source: .unassociated)])
+        let copy = root.appendingPathComponent("external.voxline")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try TaskDocumentCodec.encode(task).write(to: copy)
+        var recent = [copy]
+        let library = TaskLibrary(tasksDirectory: local, recentDocumentURLs: { recent },
+            forgetRecentDocument: { url in recent.removeAll { $0 == url } },
+            resourceCleanup: .init(applicationSupport: support, caches: caches))
+        try library.save(task, at: library.defaultURL(for: task.id))
+        let paths = [support.appendingPathComponent("Voxline/MediaAssociations/\(mediaID).json"),
+                     caches.appendingPathComponent("Voxline/Audio/\(mediaID)/000000.wav"),
+                     caches.appendingPathComponent("Voxline/Transcription/\(mediaID)/record.json")]
+        for path in paths {
+            try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("Device artifact".utf8).write(to: path)
+        }
+        let untouched = root.appendingPathComponent("source.wav")
+        try Data("Original source".utf8).write(to: untouched)
+        try library.reorder(entryIDs: library.entries.map(\.id))
+        try library.delete(taskID: task.id)
+        #expect(paths.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+        #expect(FileManager.default.fileExists(atPath: copy.path))
+        let order = try JSONDecoder().decode([URL].self, from: Data(contentsOf: local.appendingPathComponent("task-order.json")))
+        #expect(!order.contains(library.defaultURL(for: task.id)))
+        library.refresh()
+        #expect(library.task(for: task.id) == task) // The separate copy still exists.
+        try library.delete(taskID: task.id)
+        #expect(recent.isEmpty)
+        #expect(paths.allSatisfy { !FileManager.default.fileExists(atPath: $0.path) })
+        #expect(try Data(contentsOf: untouched) == Data("Original source".utf8))
+        #expect(TaskLibrary(tasksDirectory: local, recentDocumentURLs: { recent }).entries.isEmpty)
+    }
+
+    @Test func partialCleanupFailureKeepsTaskForRetryAfterRestart() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let support = root.appendingPathComponent("support")
+        let caches = root.appendingPathComponent("caches")
+        let tasks = root.appendingPathComponent("tasks")
+        let cleanup = TaskResourceCleanup(applicationSupport: support, caches: caches)
+        let task = ProcessingTask(items: [.init(title: "Media", kind: .audio, source: .unassociated)])
+        let library = TaskLibrary(tasksDirectory: tasks, resourceCleanup: cleanup)
+        try library.save(task)
+        let id = task.items[0].id
+        let audio = caches.appendingPathComponent("Voxline/Audio/\(id)")
+        try FileManager.default.createDirectory(at: audio, withIntermediateDirectories: true)
+        let associations = support.appendingPathComponent("Voxline/MediaAssociations")
+        try FileManager.default.createDirectory(at: associations, withIntermediateDirectories: true)
+        let record = associations.appendingPathComponent("\(id).json")
+        try Data("Blocked record".utf8).write(to: record)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: associations.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: associations.path) }
+        #expect(throws: TaskDeletionError.self) { try library.delete(taskID: task.id) }
+        #expect(!FileManager.default.fileExists(atPath: audio.path))
+        #expect(FileManager.default.fileExists(atPath: record.path))
+        #expect(library.task(for: task.id) == task)
+        let reopened = TaskLibrary(tasksDirectory: tasks, resourceCleanup: cleanup)
+        #expect(reopened.task(for: task.id) == task)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: associations.path)
+        try reopened.delete(taskID: task.id)
+        #expect(!FileManager.default.fileExists(atPath: record.path))
+        #expect(!FileManager.default.fileExists(atPath: reopened.defaultURL(for: task.id).path))
+    }
+
+    @Test func legacyEvidenceCleanupRequiresExactCheckpointAttributionAndRetainsOtherTaskEvidence() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let media = try MediaIdentity(fileName: "source.wav", byteCount: 10, sha256: String(repeating: "a", count: 64), durationMilliseconds: 1000, audioTrackID: 1)
+        var task = ProcessingTask(items: [.init(title: "Original", kind: .audio, source: .localFile(fileName: media.fileName), media: media)])
+        try task.freezeParameters()
+        try task.items[0].initializeCheckpoint(parameters: task.parameters, ranges: [.init(sourceStartMilliseconds: 0, durationMilliseconds: 1000)])
+        let chunk = try #require(task.items[0].checkpoint?.chunks.first)
+        let sourceID = try task.items[0].beginTranscriptionChunk(chunk.id)
+        let input = try TranscriptionAudio(localURL: root.appendingPathComponent("source.wav"), sourceStartMilliseconds: 0, durationMilliseconds: 1000)
+        var evidence = TranscriptionEvidence(settings: task.parameters.transcription, audio: input)
+        evidence.outcome = .completed
+        evidence.segments = [.init(startSeconds: 0, endSeconds: 0.5, text: "Original", words: nil)]
+        let result = try SubtitleSegmenter.segment(evidence, sourceID: sourceID, mediaDurationMilliseconds: 1000)
+        try task.items[0].commitTranscriptionChunk(chunk.id, result: result)
+        let caches = root.appendingPathComponent("caches")
+        let transcription = caches.appendingPathComponent("Voxline/Transcription")
+        try FileManager.default.createDirectory(at: transcription, withIntermediateDirectories: true)
+        let attributed = transcription.appendingPathComponent("\(UUID()).json")
+        let unrelated = transcription.appendingPathComponent("\(UUID()).json")
+        try JSONEncoder().encode(evidence).write(to: attributed)
+        var unrelatedEvidence = evidence
+        unrelatedEvidence.segments = [.init(startSeconds: 0, endSeconds: 0.5, text: "Different", words: nil)]
+        try JSONEncoder().encode(unrelatedEvidence).write(to: unrelated)
+        let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("tasks"), resourceCleanup: .init(applicationSupport: root, caches: caches))
+        try library.save(task)
+        var frozenOther = ProcessingTask(title: "Other", items: [.init(title: "Ready", kind: .audio, source: .localFile(fileName: media.fileName), media: media)], parameters: task.parameters)
+        try frozenOther.freezeParameters()
+        frozenOther.items = task.items
+        try library.save(frozenOther)
+        try library.delete(taskID: task.id)
+        #expect(FileManager.default.fileExists(atPath: attributed.path))
+        try library.delete(taskID: frozenOther.id)
+        #expect(!FileManager.default.fileExists(atPath: attributed.path))
+        #expect(FileManager.default.fileExists(atPath: unrelated.path))
+    }
+
     @Test func listOrderSurvivesWorkerSavesAndRestartAndDeletionDoesNotTouchMedia() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

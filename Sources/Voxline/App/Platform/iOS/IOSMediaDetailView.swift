@@ -47,10 +47,10 @@ struct IOSMediaDetailView: View {
                         if library.queue.taskID == taskID && library.queue.mediaID == mediaID {
                             HStack {
                                 ProgressView().controlSize(.small)
-                                Text(library.queue.progressText ?? "正在翻译…").font(.caption)
+                                Text(library.queue.progressText ?? "正在处理…").font(.caption)
                                 Spacer()
                                 Button(library.queue.isCancelling ? "取消中" : "取消") {
-                                    do { try library.queue.cancel() }
+                                    do { try library.queue.cancel(mediaID: mediaID) }
                                     catch { errorMessage = error.localizedDescription }
                                 }
                                 .buttonStyle(.bordered).controlSize(.small)
@@ -152,11 +152,14 @@ struct IOSMediaDetailView: View {
                         let hasTranslation = task?.parameters.translation != nil
                         if hasTranslation {
                             if !item.cues.isEmpty && !item.cues.allSatisfy(\.hasCurrentTranslation) {
+                                if !item.hasCompletedTranscription {
+                                    Text("缺少完整转写来源，请返回任务详情继续处理。")
+                                }
                                 Button("继续翻译", systemImage: "character.bubble") {
                                     do { try library.startTranslation(taskID: taskID, mediaID: mediaID) }
                                     catch { errorMessage = error.localizedDescription }
                                 }
-                                .disabled(library.queue.taskID != nil)
+                                .disabled(library.queue.taskID != nil || !item.hasCompletedTranscription)
                             }
 
                             if !item.cues.isEmpty {

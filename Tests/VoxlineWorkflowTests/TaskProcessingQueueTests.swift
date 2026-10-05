@@ -63,6 +63,8 @@ struct TaskProcessingQueueTests {
         let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try queue.start(taskID: task.id)
         await pipeline.waitForHeldDecode()
+        #expect(throws: CheckpointError.workRunning) { try library.delete(taskID: task.id) }
+        #expect(FileManager.default.fileExists(atPath: library.defaultURL(for: task.id).path))
         try queue.cancel(mediaID: task.items[0].id)
         try queue.cancel(mediaID: task.items[2].id)
         #expect(queue.isCancelling)
@@ -625,7 +627,7 @@ private actor ControlledPipeline: MediaTranscriptionPipeline {
         }
     }
 
-    func transcribe(audio: TranscriptionAudio, settings: TranscriptionSettings,
+    func transcribe(mediaID: UUID, audio: TranscriptionAudio, settings: TranscriptionSettings,
                     progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> TranscriptionEvidence {
         let id = audio.localURL.deletingPathExtension().lastPathComponent
         events.append("decode:\(id):\(audio.sourceStartMilliseconds)")

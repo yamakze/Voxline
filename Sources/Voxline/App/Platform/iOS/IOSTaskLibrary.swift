@@ -8,6 +8,7 @@ import VoxlineTranslation
 /// The shared task store owns results; iOS always imports into an independent Documents copy.
 @MainActor @Observable
 final class IOSTaskLibrary {
+    static let shared = IOSTaskLibrary()
     let storage: TaskLibrary
     let queue: TaskProcessingQueue
     var errorMessage: String?
@@ -15,10 +16,11 @@ final class IOSTaskLibrary {
         storage.entries.compactMap(\.task)
     }
 
-    init(directory: URL = .documentsDirectory) {
-        let storage = TaskLibrary(tasksDirectory: directory)
+    init(directory: URL = .documentsDirectory, pipeline: any MediaTranscriptionPipeline = LocalMediaTranscriptionPipeline(),
+         resourceCleanup: TaskResourceCleanup = .init()) {
+        let storage = TaskLibrary(tasksDirectory: directory, resourceCleanup: resourceCleanup)
         self.storage = storage
-        queue = TaskProcessingQueue(library: storage, translationPipeline: ConfiguredSubtitleTranslationPipeline())
+        queue = TaskProcessingQueue(library: storage, pipeline: pipeline, translationPipeline: ConfiguredSubtitleTranslationPipeline())
     }
 
     func load() {
@@ -55,8 +57,7 @@ final class IOSTaskLibrary {
     func startTranslation(taskID: UUID, mediaID: UUID) throws {
         guard let task = storage.task(for: taskID), task.parameters.translation != nil,
               let item = task.items.first(where: { $0.id == mediaID }),
-              let checkpoint = item.checkpoint, !checkpoint.chunks.isEmpty,
-              checkpoint.chunks.allSatisfy(\.isCompleted) else {
+              item.hasCompletedTranscription else {
             throw QueueError.unavailable("本机翻译需要启用翻译且已完成转写的任务成果。")
         }
         try queue.start(taskID: taskID, mediaID: mediaID)

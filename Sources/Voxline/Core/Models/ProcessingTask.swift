@@ -216,6 +216,16 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
         self = updated
     }
 
+    /// Legacy cues without processing evidence are proofreading results, not fresh ASR work.
+    public var canResumeProcessing: Bool {
+        media != nil && status != .completed && !(checkpoint == nil && !cues.isEmpty)
+    }
+
+    public var hasCompletedTranscription: Bool {
+        guard let checkpoint else { return false }
+        return !checkpoint.chunks.isEmpty && checkpoint.chunks.allSatisfy(\.isCompleted)
+    }
+
     public var completedProcessingStatus: TaskMediaStatus {
         cues.contains { $0.requiresTimingReview == true } ? .needsReview : .completed
     }

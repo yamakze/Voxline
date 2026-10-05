@@ -2,7 +2,7 @@
 
 Mac 采用 SwiftPM，iOS 采用 Xcode 工程。依赖提交由 Package.swift / Package.resolved 锁定，Mac 只链接 WhisperKit 产品。工具链、构建与产物统一见 [开发工作流](../development.md)。
 
-两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态、模型与翻译设置、参数编辑、原生材质组件在 Views 内共用。Apple 系统翻译接线在 Pipeline 内共用。iOS 通过原生导航进入模型管理、服务配置与语言准备，支持本地 Task 创建与媒体准备（复用 TaskConfigurationView 并适配原生触摸布局与安全作用域访问），并能继续导入成果中已完成转写的媒体翻译；完整转写与批量执行、导出分享和字幕重译入口仍待接入。主要页面接入时复用领域操作及状态，平台分支承担导航、触摸布局和原生文件 API。
+两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态、模型与翻译设置、参数编辑、原生材质组件在 Views 内共用。Apple 系统翻译接线在 Pipeline 内共用。iOS 通过原生导航进入模型管理、服务配置与语言准备，支持本地 Task 创建与媒体准备（复用 TaskConfigurationView 并适配原生触摸布局与安全作用域访问），可通过同一原生流水线前台转写与顺序处理，并支持导入成果的继续翻译、单句／全部重译和播放校对；导出分享、任意多选重译与后台继续仍待接入。主要页面接入时复用领域操作及状态，平台分支承担导航、触摸布局和原生文件 API。
 
 iOS 的 Core、Media、WhisperKit、Translation 与 Workflow 框架直接编译同一份源码，WhisperKit 集成框架只链接固定版本的 WhisperKit 软件包产品。导入 .voxline / JSON 后验证、迁移并保存独立副本到本地 Documents。同任务 ID 再次导入须确认覆盖本地校对，原文件不写回，Mac 书签不传入 iOS。
 
@@ -13,7 +13,7 @@ iOS 的 Core、Media、WhisperKit、Translation 与 Workflow 框架直接编译�
 - VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地书签、有界 PCM 提取和共用播放器。Mac 字幕烧录的快照、合成、预览与导出在此模块，使用 macOS 条件编译；iOS 尚未接入烧录。AVFoundation 类型不进入 Core 或 Task 文件。
 - VoxlineTranslation：聊天客户端、上下文批次、结果校验、HTTP 错误、设备服务元数据和异步 Keychain 凭据。依赖 Foundation、Observation、Security 与 Core，不依赖应用或 SwiftUI。
 - VoxlineWorkflow：TaskLibrary、单执行者 TaskProcessingQueue 与媒体／翻译外部调用边界。依赖 Core、Media、WhisperKit、Translation；组织实际操作、恢复与原子成果提交，不导入 AppKit、SwiftUI 或应用模块。翻译执行实例由应用接线传入。
-- VoxlineApp：两平台入口、主要页面、导航与原生适配。MacWorkflow 配置任务目录与系统最近文档；翻译引擎接线和 Apple Translation 视图会话共用，视图会话保持在稳定根页面。iOS 设备副本库适配同一 TaskLibrary 和 TaskProcessingQueue，当前只允许已完整转写的媒体继续冻结参数中的翻译。UI 不导入第三方 WhisperKit SDK。
+- VoxlineApp：两平台入口、主要页面、导航与原生适配。MacWorkflow 配置任务目录与系统最近文档；翻译引擎接线和 Apple Translation 视图会话共用，视图会话保持在稳定根页面。iOS 设备副本库适配同一 TaskLibrary 和 TaskProcessingQueue，通过同一 LocalMediaTranscriptionPipeline 执行本地媒体处理；已有完整转写成果的继续翻译保持独立入口与来源检查。UI 不导入第三方 WhisperKit SDK。
 
 Core 和字幕文档不依赖 UI、AVFoundation 或具体推理 SDK。JSON 是持久字幕权威来源，SRT 是导出物，内存任务库是界面状态。
 
@@ -50,7 +50,7 @@ Task 保存一份参数，有序媒体条目分别保存来源、身份、字幕
 
 停止执行时可显式修改翻译与 SRT 输出参数；已有转写记录或字幕时转写设置保持。ProcessingTask.updateParameters 同步更新检查点参数，翻译设置变化移除旧批次，保留原文、时间、原始转写证据和已有同目标译文。目标语言变化且已有译文时必须明确确认，再将旧译文置为待翻译；完整转写的媒体根据当前译文转为完成或待校对。执行者仍占用任务时拒绝保存，草稿提交对照当前 Task。选择理由见 [ADR-0017](../ADR/0017-explicit-task-parameter-edits.md)。
 
-TaskLibrary 的 task-order.json 保存本设备任务列表的 URL 顺序，独立于成果文档；拖拽先原子写入顺序，成功后发布。登记已有任务与检查点保存保持现有位置。删除前界面展示实际文件和成果影响；成功删除文档后移除内存条目，系统最近文档中已经不存在的文件不重新加入。Mac 删除实际任务文件，iOS 删除设备副本，媒体文件保持。正在执行的任务不能删除；排列顺序不自动启动任务。
+TaskLibrary 的 task-order.json 保存本设备任务列表的 URL 顺序，独立于成果文档；拖拽先原子写入顺序，成功后发布。登记已有任务与检查点保存保持现有位置。删除前界面展示实际文件和成果影响；删除复用 TaskLibrary 与 TaskResourceCleanup：先核对已知本地文档、打开任务和最近文档中的全部副本引用，再清理未被其他任务引用的媒体关联、PCM 和转写证据，移除排序记录，最后删除任务文件并发布列表。清理失败显示具体路径并保留任务文件及媒体 ID，已清理缓存不恢复，重启后可重试删除；不在任务文件删除后遗留待清理工作。Mac 从最近文档中移除目标并保持其余记录，iOS 删除设备副本。源音视频、其他副本、导出物、模型、服务和密钥保留。损坏的其他已知任务须先修复或移除，才能确认共享资源归属。损坏目标只能删除其文件，无法推断所属资源。正在执行的任务不能删除；排列顺序不自动启动任务。选择理由见 [ADR-0018](../ADR/0018-task-resource-cleanup.md)。
 
 长期决定见 [ADR-0005](../ADR/0005-task-document-format.md) 与 [ADR-0006](../ADR/0006-single-window-task-library.md)。
 
@@ -78,7 +78,7 @@ TaskProcessingQueue 在应用进程中只有一个执行者，按 Task 的媒体
 
 媒体、范围或手工校时冲突保存为该项失败，原始证据与编辑保留；保存错误停止后续调度，界面明确显示原因。当前运行转为中断；中断状态也无法保存时仅登记内存并明确提示，最后成功文件保持原值。修复文件写入后可继续，或重新打开已保存文件恢复。页面提供开始／继续、任务和单项取消、单项重试及详情校对入口。
 
-启用翻译时，转写全部提交后建立或复用持久翻译批次，完成媒体要求全部当前译文已提交。批次失败停止该媒体的翻译并继续其他媒体，明确重试才重新请求；成功块与批次跳过，过期批次使用当前内容重建。恢复时已完成转写的媒体直接进入翻译，不重复检查或提取音频；仍需转写时保留原生媒体恢复检查。网络请求取消后等待实际操作返回，迟到响应不提交。MediaTranscriptionPipeline 与 SubtitleTranslationPipeline 划定外部调用边界；可控执行仅用于测试，产品实例调用原生媒体、WhisperKit，以及冻结参数指定的实际聊天接口或 Apple Translation。
+启用翻译时，转写全部提交后建立或复用持久翻译批次，完成媒体要求全部当前译文已提交。批次失败停止该媒体的翻译并继续其他媒体，明确重试才重新请求；成功块与批次跳过，过期批次使用当前内容重建。恢复时已完成转写的媒体直接进入翻译，不重复检查或提取音频；仍需转写时保留原生媒体恢复检查。网络请求取消后等待实际操作返回，迟到响应不提交。MediaTranscriptionPipeline 与 SubtitleTranslationPipeline 划定外部调用边界；转写调用显式传入媒体 ID，Provider 将独立证据保存至设备缓存 Transcription/<媒体 ID>/，不从输入路径推断归属。旧的平铺证据仅在内容与持久检查点证据完整相等、且其他已知任务没有引用时清理；未能归属的历史证据保留，禁止猜测删除。可控执行仅用于测试，产品实例调用原生媒体、WhisperKit，以及冻结参数指定的实际聊天接口或 Apple Translation。
 
 Core 按媒体检查点推导阶段事实，界面只负责显示：后续翻译失败或取消时，已经完成的音频提取和转写保持完成；尚未开始的翻译保持等待。
 
@@ -210,9 +210,9 @@ AVFoundation Core Image 滤镜按 compositionTime 选择开始包含、结束不
 
 IOSTaskLibrary 为共享 TaskLibrary 提供设备副本入口，导入成果保存为 Documents/<Task ID>.voxline；相同 ID 覆盖前明确确认，正在处理的任务拒绝重新导入覆盖。任务与检查点只由共享任务库发布，不维护第二份结果数组。编辑在草稿中进行，写入前验证文档、媒体快照和字幕原文／译文版本，原子保存成功后才更新任务库。失败保留草稿并显示原因；取消不修改成果。设备副本可通过 Files 取得，导入源文件不写回。
 
-任务详情按概览指标、当前参数、媒体列表和处理控制组织；执行中禁止提交参数修改。媒体条目展示真实音轨、转写／翻译阶段状态与诊断原因；后续翻译暂停不破坏已完成的转写成果。
+iOS 使用进程内唯一设备任务库和队列；显式开始／继续处理，长按媒体重试或取消，任务控制显示实际进度、重试倒计时、队列停止原因与任务取消。进入后台请求取消实际操作并停止后续调度，返回后显式继续；进程结束后读取检查点中断状态，不能宣称后台完成。任务详情按概览指标、当前参数、媒体列表和处理控制组织；执行中禁止提交参数修改。媒体条目展示真实音轨、转写／翻译阶段状态与诊断原因；后续翻译暂停不破坏已完成的转写成果。
 
-iOS 媒体详情的继续翻译要求任务启用翻译，且媒体拥有非空、全部完成的转写检查点；纯原文任务不显示继续翻译，提供显式配置翻译服务入口。重译单句及选中字幕复用 RetranslateConfirmationSheet 与 TaskProcessingQueue.startRetranslation，默认保留人工译文，覆盖须明确选择。尚未配置的任务服务可按冻结 ID、地址、模型和参数在本设备建立配置，密钥另行输入；也可明确确认绑定已有服务，更新任务的服务 ID、地址和模型，保留目标语言、数量、提示词及已有译文。密钥仍按本设备所选服务 ID 读取，不复制到任务。修改默认值不改变任务快照。
+iOS 媒体详情的继续翻译要求任务启用翻译，且媒体拥有非空、全部完成的转写检查点；纯原文任务不显示继续翻译，提供显式配置翻译服务入口。当前单句／全部重译复用 RetranslateConfirmationSheet 与 TaskProcessingQueue.startRetranslation，默认保留人工译文，覆盖须明确选择。尚未配置的任务服务可按冻结 ID、地址、模型和参数在本设备建立配置，密钥另行输入；也可明确确认绑定已有服务，更新任务的服务 ID、地址和模型，保留目标语言、数量、提示词及已有译文。密钥仍按本设备所选服务 ID 读取，不复制到任务。修改默认值不改变任务快照。
 
 OpenAI 兼容接口支持显式配置的 HTTPS 与 HTTP 地址，包括本地服务。iOS 声明对应网络传输配置及本地网络用途；访问本地服务时由系统管理网络许可，拒绝或请求失败显示实际错误。
 

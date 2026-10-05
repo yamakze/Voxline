@@ -6,7 +6,7 @@ import VoxlineWhisperKit
 /// The two external operations of a media run; checkpoints remain owned by the queue.
 public protocol MediaTranscriptionPipeline: Sendable {
     func extract(item: TaskMediaItem, progress: @escaping @Sendable (AudioExtractionProgress) -> Void) async throws -> [TranscriptionAudio]
-    func transcribe(audio: TranscriptionAudio, settings: TranscriptionSettings,
+    func transcribe(mediaID: UUID, audio: TranscriptionAudio, settings: TranscriptionSettings,
                     progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> TranscriptionEvidence
 }
 
@@ -14,12 +14,14 @@ public struct LocalMediaTranscriptionPipeline: MediaTranscriptionPipeline {
     let mediaStore: LocalMediaStore
     let extractor: AudioExtractor
     let modelStore: WhisperModelStore
+    let evidenceDirectory: URL?
 
     public init(mediaStore: LocalMediaStore = .shared, extractor: AudioExtractor = .shared,
-         modelStore: WhisperModelStore = .shared) {
+         modelStore: WhisperModelStore = .shared, evidenceDirectory: URL? = nil) {
         self.mediaStore = mediaStore
         self.extractor = extractor
         self.modelStore = modelStore
+        self.evidenceDirectory = evidenceDirectory
     }
 
     public func extract(item: TaskMediaItem, progress: @escaping @Sendable (AudioExtractionProgress) -> Void) async throws -> [TranscriptionAudio] {
@@ -33,9 +35,9 @@ public struct LocalMediaTranscriptionPipeline: MediaTranscriptionPipeline {
         return result.chunks
     }
 
-    public func transcribe(audio: TranscriptionAudio, settings: TranscriptionSettings,
+    public func transcribe(mediaID: UUID, audio: TranscriptionAudio, settings: TranscriptionSettings,
                     progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> TranscriptionEvidence {
-        let provider = try WhisperKitTranscriptionProvider(settings: settings, store: modelStore, onProgress: progress)
+        let provider = try WhisperKitTranscriptionProvider(settings: settings, store: modelStore, evidenceDirectory: evidenceDirectory, mediaID: mediaID, onProgress: progress)
         return try await provider.transcribeEvidence(audio: audio)
     }
 }

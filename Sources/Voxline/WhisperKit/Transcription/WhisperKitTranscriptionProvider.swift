@@ -6,9 +6,10 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
     public let settings: TranscriptionSettings
     private let store: WhisperModelStore
     private let evidenceDirectory: URL?
+    private let mediaID: UUID?
     private let onProgress: @Sendable (VoxlineCore.TranscriptionProgress) -> Void
 
-    public init(settings: TranscriptionSettings, store: WhisperModelStore = .shared, evidenceDirectory: URL? = nil,
+    public init(settings: TranscriptionSettings, store: WhisperModelStore = .shared, evidenceDirectory: URL? = nil, mediaID: UUID? = nil,
                 onProgress: @escaping @Sendable (VoxlineCore.TranscriptionProgress) -> Void = { _ in }) throws {
         try settings.validate()
         guard settings.modelID == TranscriptionSettings.whisperKitBaseline.modelID else { throw WhisperModelError.unknownModel }
@@ -18,6 +19,7 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
         self.settings = settings
         self.store = store
         self.evidenceDirectory = evidenceDirectory
+        self.mediaID = mediaID
         self.onProgress = onProgress
     }
 
@@ -65,8 +67,10 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
             root = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appendingPathComponent("Voxline/Transcription", isDirectory: true)
         }
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        let url = root.appendingPathComponent("\(UUID().uuidString).json")
+        // Device-local evidence belongs to the explicit queue media ID, never a guessed input path.
+        let directory = mediaID.map { root.appendingPathComponent($0.uuidString, isDirectory: true) } ?? root
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("\(UUID().uuidString).json")
         let encoder = JSONEncoder()
         encoder.nonConformingFloatEncodingStrategy = .convertToString(positiveInfinity: "+Infinity", negativeInfinity: "-Infinity", nan: "NaN")
         try encoder.encode(evidence).write(to: url, options: .atomic)

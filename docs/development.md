@@ -108,6 +108,8 @@ swift test --filter nativeMediaAndWhisperPipelinePersistsRealBatchResults
 
 使用已安装模型和同源 S001 的 30 秒视频与音频，建立缺少书签的视频、正常视频和正常音频三个条目。缺失项明确失败后继续处理其余两项，经本机书签解析、身份检查、PCM 提取、真实推理、字幕切分与 Task 保存后重开，核对两份媒体的六句原文和起点差；随后重新关联缺失项并重试，保持其他媒体及人工原文编辑，导出原文 SRT。产物位于忽略目录 tmp/queue-validation；默认测试跳过此入口。此验证不代替长视频、网络翻译或人工字幕质量验收。普通队列测试在外部调用边界控制返回顺序与取消时机，验证失败隔离、取消等待、恢复跳过成功块、校对冲突和写入失败；产品始终使用原生处理链路。
 
+iOS 原生集成测试同时覆盖真实有界 PCM 提取、未安装模型的明确失败、按媒体归属保存证据、重启读取及同一资源删除流程。私有 S001 入口 `IOSRealSampleTests` 使用同样的 `VOXLINE_QUEUE_MEDIA`、`VOXLINE_QUEUE_AUDIO`、`VOXLINE_MODEL_DIRECTORY`，通过测试运行配置的 EnvironmentVariables 传入；三个路径须对 iOS 测试进程可访问。先 build-for-testing，再以配置过环境变量的 .xctestrun 执行 test-without-building，结果和测试配置放在忽略的 tmp。该入口使用真实模型核验同源视频／音频的六句、失败隔离和重启后的修复重试，保留设备测试沙盒内的任务与证据。模拟器执行 iOS 框架与推理仍不代替 iPhone 的资源和界面验收。
+
 ## 翻译协议与本地凭据验证
 
 ```sh

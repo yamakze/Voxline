@@ -178,8 +178,7 @@ public struct TaskDetailView: View {
                                             .disabled(queue.taskID != nil || task.items.isEmpty)
                                     }
 
-                                    if queue.taskID == task.id,
-                                       item.status == .pending || queue.mediaID == item.id {
+                                    if queue.taskID == task.id, queue.isScheduled(mediaID: item.id) {
                                         Button("取消") {
                                             do { try queue.cancel(mediaID: item.id) }
                                             catch { errorMessage = error.localizedDescription }
