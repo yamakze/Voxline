@@ -2,7 +2,7 @@
 
 Mac 采用 SwiftPM，iOS 采用 Xcode 工程。依赖提交由 Package.swift / Package.resolved 锁定，Mac 只链接 WhisperKit 产品。工具链、构建与产物统一见 [开发工作流](../development.md)。
 
-两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态、模型与翻译设置、原生材质组件在 Views 内共用。Apple 系统翻译接线在 Pipeline 内共用。iOS 通过原生导航进入模型管理、服务配置与语言准备，并能继续导入成果中已完成转写的媒体翻译；本机 Task 创建和转写入口仍待接入。
+两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态、模型与翻译设置、参数编辑、原生材质组件在 Views 内共用。Apple 系统翻译接线在 Pipeline 内共用。iOS 通过原生导航进入模型管理、服务配置与语言准备，并能继续导入成果中已完成转写的媒体翻译；本机 Task 创建、完整转写与批量执行、导出分享和字幕重译入口仍待接入。主要页面接入时复用领域操作及状态，平台分支承担导航、触摸布局和原生文件 API。
 
 iOS 的 Core、Media、WhisperKit、Translation 与 Workflow 框架直接编译同一份源码，WhisperKit 集成框架只链接固定版本的 WhisperKit 软件包产品。导入 .voxline / JSON 后验证、迁移并保存独立副本到本地 Documents。同任务 ID 再次导入须确认覆盖本地校对，原文件不写回，Mac 书签不传入 iOS。
 
@@ -98,7 +98,7 @@ Task 冻结服务 ID、地址、模型和目标语言；执行时按服务 ID �
 
 ## 本地服务与凭据
 
-TranslationServices.json 保存服务 ID、名称、地址、默认模型及下文“翻译数量与提示词”的参数。密钥由异步 KeychainTranslationCredentialVault 按服务 ID 存入 macOS 本机 generic password；阻塞的系统调用在独立 actor 上执行，不在主线程读取。加载配置只查询凭据条目是否存在，编辑或实际请求时才读取密钥；开发重签名后系统可能要求重新允许读取。不更改钥匙串访问控制。不同步到 iCloud，不进入 Task、导出物或日志。任务调用冻结模型，不因服务默认模型修改而改变；地址与快照不同明确拒绝。
+TranslationServices.json 保存服务 ID、名称、地址、默认模型及下文“翻译数量与提示词”的参数。密钥由异步 KeychainTranslationCredentialVault 按服务 ID 存入设备本机 generic password；阻塞的系统调用在独立 actor 上执行，不在主线程读取。加载配置只查询凭据条目是否存在，编辑或实际请求时才读取密钥；开发重签名后系统可能要求重新允许读取。不更改钥匙串访问控制。不同步到 iCloud，不进入 Task、导出物或日志。任务调用冻结模型，不因服务默认模型修改而改变；地址与快照不同明确拒绝。
 
 旧明文配置按原 ID 写入 Keychain，全部写入成功后才原子删除 JSON 中的密钥字段；中途失败保持旧文件，重试迁移不产生新 ID。缺失文件表示未配置，损坏文件、钥匙串拒绝及写入失败明确显示，不创建默认服务替代错误配置。读取失败保留最近已读的内存配置，但禁止发起任务请求，直到成功重读或保存有效配置。
 
@@ -227,7 +227,6 @@ iOS 26 的原生导航及字幕浮层采用 Liquid Glass，旧系统采用 Mater
 可编辑提示词作为 system 消息的翻译要求，随后附加固定的字幕 ID、上下文用途和 JSON 输出协议。自定义提示词不放宽响应校验，未返回全部 ID 或输出无效时批次明确失败。服务默认值修改仅影响随后选择或保存参数的任务；现有任务的翻译、恢复和重译保持文档中的数量与提示词，只有任务参数编辑明确保存后才更新，密钥仍由 Keychain 提供。
 
 缺少新增字段的历史服务和翻译快照迁移为默认 30 句及原翻译提示词；显式空值、错误类型和非法参数拒绝。版本 5 保存带类型的翻译引擎和冻结参数，版本 1／2／3／4 可读取迁移，较旧应用拒绝版本 5，避免以旧默认设置执行新任务。读取不会主动改写历史文件。
-
 
 ## Apple 本地翻译
 
