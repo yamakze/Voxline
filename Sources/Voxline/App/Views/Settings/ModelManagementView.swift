@@ -28,8 +28,8 @@ public struct ModelManagementView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                // macOS System Settings: Storage Breakdown Bar
-                VStack(alignment: .leading, spacing: 14) {
+                // Storage Breakdown Card
+                VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Label("模型储存空间", systemImage: "internaldrive")
                             .font(.headline)
@@ -45,29 +45,28 @@ public struct ModelManagementView: View {
                         totalDiskBytes: max(modelManager.totalDiskUsage(), 1),
                         segments: storageSegments
                     )
-                    Text("模型、分词器与下载缓存的本地文件占用")
-                        .font(.caption).foregroundStyle(.secondary)
+
                     if let error = modelManager.storageError {
                         Text(error).foregroundStyle(.red).font(.caption)
                     }
                 }
-                .padding(18)
-                .liquidGlassSurface()
+                .padding(16)
+                .liquidGlassSurface(cornerRadius: 12)
 
-                // Models List in Inset Grouped Cards
+                // Models List
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("可用模型库")
+                    Text("可用模型")
                         .font(.headline)
                         .foregroundStyle(.secondary)
 
-                    VStack(spacing: 12) {
+                    VStack(spacing: 10) {
                         ForEach(ModelManager.availableModels) { model in
                             modelCard(model: model)
                         }
                     }
                 }
             }
-            .padding(28)
+            .padding(24)
         }
         .toolbar {
             #if os(macOS)
@@ -90,8 +89,8 @@ public struct ModelManagementView: View {
                     Image(systemName: "folder")
                 }
                 .help("在访达中打开模型存储目录")
-
                 #endif
+
                 Button {
                     Task { await modelManager.refreshAll() }
                 } label: {
@@ -109,131 +108,169 @@ public struct ModelManagementView: View {
     @ViewBuilder
     private func modelCard(model: WhisperModelDescriptor) -> some View {
         let status = modelManager.status(for: model.id)
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 14) {
+        let usage = modelManager.diskUsage[model.id] ?? 0
+
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 14) {
                 // Model Icon
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(model.isBaseline ? Color.blue.opacity(0.15) : Color.secondary.opacity(0.12))
-                        .frame(width: 48, height: 48)
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(model.isBaseline ? Color.blue.opacity(0.12) : Color.secondary.opacity(0.1))
+                        .frame(width: 40, height: 40)
                     Image(systemName: "cpu")
-                        .font(.title2)
+                        .font(.system(size: 18))
                         .foregroundStyle(model.isBaseline ? .blue : .primary)
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(model.name)
-                        .font(.headline)
-                    HStack(spacing: 8) {
+                // Info
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(model.name)
+                            .font(.headline)
+
                         if model.isBaseline {
-                            Text("S001 基准")
+                            Text("默认推荐")
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.15), in: .capsule)
+                                .background(Color.blue.opacity(0.12), in: .capsule)
                                 .foregroundStyle(.blue)
                         }
-
-                        Spacer()
-
-                        statusBadge(status: status)
                     }
 
-                    Text(model.description)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Text(model.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(String(format: "预估大小：%.0f MB", model.expectedSizeMB))
-                        Text("标识符：\(model.id)").textSelection(.enabled)
-                    }
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.secondary)
-                }
-            }
+                        Text("•")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
 
-            // Downloading progress bar
-            if case .downloading(let component, let progress) = status {
-                VStack(alignment: .leading, spacing: 4) {
-                    ProgressView(value: progress, total: 1.0)
-                    Text(String(format: "%@文件下载进度 %.0f%%", component, progress * 100))
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-            }
-
-            if let revision = modelManager.modelRevisions[model.id] {
-                Text("固定版本：\(revision)").font(.caption2.monospaced()).textSelection(.enabled)
-            }
-            #if os(iOS)
-            Text("加载占用设备内存。可用型号与处理速度以真机验证为准；下载完成不代表已加载。")
-                .font(.caption).foregroundStyle(.secondary)
-            #endif
-            Divider()
-
-            // Action row
-            HStack {
-                Spacer()
-                switch status {
-                case .notDownloaded, .cancelled:
-                    Button("下载此模型", systemImage: "arrow.down.circle.fill") {
-                        modelManager.download(modelID: model.id)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-
-                case .downloading, .checking:
-                    Button("取消下载", systemImage: "xmark.circle") {
-                        modelManager.cancelDownload(modelID: model.id)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-
-                case .downloaded:
-                    Button("验证并加载", systemImage: "checkmark.circle") {
-                        modelManager.load(modelID: model.id)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                case .ready:
-                    Button("卸载模型", systemImage: "eject") {
-                        Task { await modelManager.unload(modelID: model.id) }
-                    }
-                    .buttonStyle(.bordered).controlSize(.small)
-
-                case .failed(let reason), .corrupted(let reason):
-                    Text(reason).font(.caption).foregroundStyle(.red)
-                    Spacer()
-                    Button("重新下载", systemImage: "arrow.clockwise") {
-                        modelManager.download(modelID: model.id)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-
-                case .loading, .cancelling:
-                    ProgressView().controlSize(.mini)
-                    Text(status.label).font(.caption).foregroundStyle(.secondary)
-                }
-                switch status {
-                case .downloaded, .cancelled, .failed, .corrupted:
-                    if (modelManager.diskUsage[model.id] ?? 0) > 0 {
-                        Button("从本地移除", systemImage: "trash") {
-                            Task { await modelManager.delete(modelID: model.id) }
+                        if usage > 0 {
+                            let mb = Double(usage) / 1_000_000.0
+                            Text(String(format: "已占 %.0f MB", mb))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text(String(format: "约 %.0f MB", model.expectedSizeMB))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.bordered).controlSize(.small).foregroundStyle(.red)
                     }
-                default: EmptyView()
                 }
-                #if os(macOS)
-                if let directory = modelManager.modelDirectories[model.id],
-                   (modelManager.diskUsage[model.id] ?? 0) > 0 {
-                    Button("打开目录", systemImage: "folder") { NSWorkspace.shared.open(directory) }
-                        .buttonStyle(.bordered).controlSize(.small)
+
+                Spacer()
+
+                // Actions & Status
+                HStack(spacing: 10) {
+                    statusBadge(status: status)
+
+                    switch status {
+                    case .notDownloaded, .cancelled:
+                        Button("下载") {
+                            modelManager.download(modelID: model.id)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+
+                    case .downloading, .checking:
+                        Button("取消") {
+                            modelManager.cancelDownload(modelID: model.id)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                    case .downloaded:
+                        Button("预载") {
+                            modelManager.load(modelID: model.id)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("预先加载到内存中以加速推理响应")
+
+                        modelOptionsMenu(model: model, status: status, usage: usage)
+
+                    case .ready:
+                        modelOptionsMenu(model: model, status: status, usage: usage)
+
+                    case .failed(let reason), .corrupted(let reason):
+                        Button("重试") {
+                            modelManager.download(modelID: model.id)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .help(reason)
+
+                        if usage > 0 {
+                            modelOptionsMenu(model: model, status: status, usage: usage)
+                        }
+
+                    case .loading, .cancelling:
+                        ProgressView().controlSize(.small)
+                    }
                 }
-                #endif
+            }
+            .padding(14)
+
+            // Progress bar if downloading
+            if case .downloading(let component, let progress) = status {
+                VStack(spacing: 4) {
+                    ProgressView(value: progress, total: 1.0)
+                        .progressViewStyle(.linear)
+                    HStack {
+                        Text(component)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(String(format: "%.0f%%", progress * 100))
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
             }
         }
-        .padding(16)
-        .liquidGlassSurface()
+        .liquidGlassSurface(cornerRadius: 12)
+    }
+
+    @ViewBuilder
+    private func modelOptionsMenu(model: WhisperModelDescriptor, status: ModelStatus, usage: Int64) -> some View {
+        Menu {
+            if case .ready = status {
+                Button {
+                    Task { await modelManager.unload(modelID: model.id) }
+                } label: {
+                    Label("释放内存", systemImage: "eject")
+                }
+            }
+
+            #if os(macOS)
+            if let directory = modelManager.modelDirectories[model.id], usage > 0 {
+                Button {
+                    NSWorkspace.shared.open(directory)
+                } label: {
+                    Label("在访达中显示", systemImage: "folder")
+                }
+            }
+            #endif
+
+            if usage > 0 {
+                Divider()
+                Button(role: .destructive) {
+                    Task { await modelManager.delete(modelID: model.id) }
+                } label: {
+                    Label("删除模型文件", systemImage: "trash")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.body)
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 24, height: 24)
     }
 
     @ViewBuilder
@@ -241,30 +278,36 @@ public struct ModelManagementView: View {
         HStack(spacing: 4) {
             switch status {
             case .ready:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                Text(status.label).foregroundStyle(.green)
+                Circle().fill(Color.green).frame(width: 7, height: 7)
+                Text("已就绪").foregroundStyle(.green)
             case .downloaded:
-                Image(systemName: "internaldrive").foregroundStyle(.secondary)
-                Text(status.label).foregroundStyle(.secondary)
+                Circle().fill(Color.secondary).frame(width: 7, height: 7)
+                Text("已下载").foregroundStyle(.secondary)
             case .downloading, .checking:
                 ProgressView().controlSize(.mini)
-                Text(status.label).foregroundStyle(.blue)
+                Text("下载中").foregroundStyle(.blue)
             case .notDownloaded:
-                Image(systemName: "cloud").foregroundStyle(.secondary)
-                Text("未下载").foregroundStyle(.secondary)
-            case .loading, .cancelling:
+                EmptyView()
+            case .loading:
                 ProgressView().controlSize(.mini)
-                Text(status.label).foregroundStyle(.blue)
+                Text("加载中").foregroundStyle(.secondary)
+            case .cancelling:
+                ProgressView().controlSize(.mini)
+                Text("正在取消").foregroundStyle(.secondary)
             case .cancelled:
-                Text(status.label).foregroundStyle(.secondary)
+                Circle().fill(Color.orange).frame(width: 7, height: 7)
+                Text("已取消").foregroundStyle(.orange)
             case .failed, .corrupted:
-                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+                Circle().fill(Color.red).frame(width: 7, height: 7)
                 Text("异常").foregroundStyle(.red)
             }
         }
         .font(.caption2.weight(.medium))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Color.secondary.opacity(0.1), in: .capsule)
+        .padding(.horizontal, status == .notDownloaded ? 0 : 7)
+        .padding(.vertical, status == .notDownloaded ? 0 : 3)
+        .background(
+            status == .notDownloaded ? Color.clear : Color.secondary.opacity(0.08),
+            in: .capsule
+        )
     }
 }
