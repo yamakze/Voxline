@@ -57,7 +57,7 @@ public struct TranslationServicesSettingsView: View {
                     ContentUnavailableView(
                         "尚未配置翻译服务",
                         systemImage: "character.bubble",
-                        description: Text("点击右上角“+”按钮配置 OpenAI 或本地 Ollama 接口以开启字幕翻译。")
+                        description: Text("配置 OpenAI 兼容接口或本地模型服务以启用字幕翻译。")
                     )
                     .padding(.vertical, 60)
                     .frame(maxWidth: .infinity)
@@ -287,40 +287,47 @@ private struct ServiceEditorModal: View {
                     TextField("接口地址", text: $baseURLString, prompt: Text("https://api.openai.com/v1"))
                     TextField("模型", text: $modelID, prompt: Text("gpt-4o-mini"))
                     PasswordVisibilityField("API 密钥（选填）", text: $apiKey)
-                }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            isAdvancedExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: isAdvancedExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption2.bold())
+                            Text("高级选项")
+                                .font(.subheadline)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 2)
 
-                Section {
-                    DisclosureGroup("高级选项", isExpanded: $isAdvancedExpanded) {
-                        VStack(alignment: .leading, spacing: 14) {
-                            HStack {
-                                Text("每批字幕数")
-                                Spacer()
-                                TextField("数量", text: $batchSizeText)
-                                    .multilineTextAlignment(.trailing)
-                                    .frame(width: 80)
-                            }
+                    if isAdvancedExpanded {
+                        TextField("每批字幕数", text: $batchSizeText)
 
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text("系统提示词")
-                                    Spacer()
-                                    Button("恢复默认") {
-                                        systemPrompt = TranslationSettings.defaultSystemPrompt
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .font(.caption)
-                                    .foregroundStyle(.tint)
-                                }
+                        LabeledContent {
+                            VStack(alignment: .trailing, spacing: 4) {
                                 TextEditor(text: $systemPrompt)
                                     .font(.callout)
-                                    .frame(minHeight: 90)
+                                    .frame(minHeight: 75)
+                                    .padding(4)
+                                    .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                                            .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
                                     )
+
+                                Button("恢复默认") {
+                                    systemPrompt = TranslationSettings.defaultSystemPrompt
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.caption)
+                                .foregroundStyle(.tint)
                             }
+                        } label: {
+                            Text("系统提示词")
                         }
-                        .padding(.top, 6)
                     }
                 }
             }

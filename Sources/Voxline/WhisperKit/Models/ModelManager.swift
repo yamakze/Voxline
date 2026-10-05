@@ -161,6 +161,7 @@ public final class ModelManager {
     public func delete(modelID: String) async {
         guard operations[modelID] == nil else { return }
         do {
+            try await store.unload(modelID: modelID)
             try await store.delete(modelID: modelID)
             await refresh(modelID: modelID)
         } catch {

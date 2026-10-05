@@ -58,7 +58,7 @@ public actor WhisperModelStore {
         let manifest = try ModelFileManifest.baseline()
         guard modelID == manifest.modelID else { throw WhisperModelError.unknownModel }
         guard !operating else { throw WhisperTranscriptionError.busy }
-        guard loadedModelID != modelID else { throw WhisperModelError.loadedModel }
+        try unload(modelID: modelID)
         operating = true
         defer { operating = false }
         try Task.checkCancellation()
@@ -123,7 +123,7 @@ public actor WhisperModelStore {
     public func delete(modelID: String) throws {
         guard modelID == TranscriptionSettings.whisperKitBaseline.modelID else { throw WhisperModelError.unknownModel }
         guard !operating else { throw WhisperTranscriptionError.busy }
-        guard loadedModelID != modelID else { throw WhisperModelError.loadedModel }
+        try unload(modelID: modelID)
         try FileManager.default.removeItem(at: installationDirectory(modelID: modelID))
     }
 

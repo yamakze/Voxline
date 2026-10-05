@@ -9,7 +9,7 @@ iOS 的 Core、Media、WhisperKit、Translation 与 Workflow 框架直接编译�
 ## 模块职责
 
 - VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证、转写协议、原始证据、字幕切分与检查点。阶段状态和文本、SRT 生成与导出也在此模块；SRT 文件写入使用调用方传入的 URL，不管理设备目录。只依赖 Foundation，不保存设备路径、书签或密钥。
-- VoxlineWhisperKit：固定模型清单、下载与安装校验、本地占用、实例生命周期、有界输入 Provider 和 ModelManager 的可观察状态。SDK 类型只存在于该模块；应用接收真实下载、加载和推理状态。同一进程复用唯一已加载实例。
+- VoxlineWhisperKit：固定模型清单、下载与安装校验、本地占用、实例生命周期、有界输入 Provider 和 ModelManager 的可观察状态。SDK 类型只存在于该模块；应用接收真实下载、加载和推理状态。同一进程复用唯一已加载实例；删除或重新下载已加载模型时自动卸载内存挂载，收敛交互状态。
 - VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地书签、有界 PCM 提取和共用播放器。Mac 字幕烧录的快照、合成、预览与导出在此模块，使用 macOS 条件编译；iOS 尚未接入烧录。AVFoundation 类型不进入 Core 或 Task 文件。
 - VoxlineTranslation：聊天客户端、上下文批次、结果校验、HTTP 错误、设备服务元数据和异步 Keychain 凭据。依赖 Foundation、Observation、Security 与 Core，不依赖应用或 SwiftUI。
 - VoxlineWorkflow：TaskLibrary、单执行者 TaskProcessingQueue 与媒体／翻译外部调用边界。依赖 Core、Media、WhisperKit、Translation；组织实际操作、恢复与原子成果提交，不导入 AppKit、SwiftUI 或应用模块。翻译执行实例由应用接线传入。

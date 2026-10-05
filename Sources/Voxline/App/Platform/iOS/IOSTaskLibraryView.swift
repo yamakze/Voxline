@@ -139,7 +139,7 @@ struct IOSTaskLibraryView: View {
                     } catch { library.errorMessage = error.localizedDescription }
                 }
                 Button("取消", role: .cancel) { deletingTask = nil }
-            } message: { Text("删除设备任务副本、字幕成果和不再被其他任务使用的媒体关联、音频缓存及转写证据。导入源文件和音视频保留；清理失败时任务保留，可重试删除。") }
+            } message: { Text("删除设备上的任务副本及其字幕成果，音视频源文件保留。") }
             .alert("替换本地任务？", isPresented: Binding(
                 get: { replacement != nil }, set: { if !$0 { replacement = nil } })) {
                 Button("取消", role: .cancel) { replacement = nil }
@@ -258,12 +258,15 @@ private struct IOSTaskDetailView: View {
                             catch { errorMessage = error.localizedDescription }
                         }
                         .disabled(library.queue.taskID != nil || !task.items.contains(where: \.canResumeProcessing))
-                        Text("请保持应用在前台；离开后若系统中断，重新打开可继续已保存的检查点。")
-                            .font(.caption).foregroundStyle(.secondary)
+
+                        if let error = library.queue.errorMessage {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.circle").foregroundStyle(.red)
+                                Text(error).font(.caption).foregroundStyle(.red)
+                            }
+                            .padding(.vertical, 2)
+                        }
                     }
-                }
-                if let error = library.queue.errorMessage {
-                    Section("处理未完成") { Text(error).font(.caption).foregroundStyle(.red) }
                 }
 
                 // MARK: 3. 当前参数
@@ -356,22 +359,42 @@ private struct IOSTaskDetailView: View {
                                     }
 
                                     if case .translationPaused(let reason) = item.status {
-                                        HStack(alignment: .top, spacing: 6) {
+                                        HStack(alignment: .center, spacing: 6) {
                                             Image(systemName: "pause.circle.fill").foregroundStyle(.orange)
-                                            Text("翻译暂停，成果已保存。\(reason) 可进入校对导出原文或继续翻译。")
+                                            Text("翻译暂停：\(reason)")
                                                 .font(.caption2)
                                                 .foregroundStyle(.orange)
+                                            Spacer()
+                                            if item.status.isRetryable && item.canResumeProcessing {
+                                                Button("继续翻译") {
+                                                    do { try library.queue.start(taskID: task.id, mediaID: item.id) }
+                                                    catch { errorMessage = error.localizedDescription }
+                                                }
+                                                .buttonStyle(.bordered)
+                                                .controlSize(.mini)
+                                                .disabled(library.queue.taskID != nil)
+                                            }
                                         }
                                         .padding(6)
                                         .background(Color.orange.opacity(0.08), in: .rect(cornerRadius: 6))
                                     }
 
                                     if case .failed(let reason) = item.status {
-                                        HStack(alignment: .top, spacing: 6) {
+                                        HStack(alignment: .center, spacing: 6) {
                                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
                                             Text("失败原因：\(reason)")
                                                 .font(.caption2)
                                                 .foregroundStyle(.red)
+                                            Spacer()
+                                            if item.status.isRetryable && item.canResumeProcessing {
+                                                Button("重试") {
+                                                    do { try library.queue.start(taskID: task.id, mediaID: item.id) }
+                                                    catch { errorMessage = error.localizedDescription }
+                                                }
+                                                .buttonStyle(.bordered)
+                                                .controlSize(.mini)
+                                                .disabled(library.queue.taskID != nil)
+                                            }
                                         }
                                         .padding(6)
                                         .background(Color.red.opacity(0.08), in: .rect(cornerRadius: 6))
