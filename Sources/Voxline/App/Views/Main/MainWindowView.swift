@@ -58,7 +58,7 @@ public struct MainWindowView: View {
                 get: {
                     return library.task(for: original.id) ?? original
                 },
-                set: { library.register($0, at: library.url(for: original.id)) }
+                set: { configurationTask = $0 }
             )) { prepared in
                 try library.save(prepared)
             }
@@ -149,8 +149,8 @@ public struct MainWindowView: View {
             )
 
         case .task(let taskID):
-            if let taskBinding = taskBinding(for: taskID) {
-                taskWorkspaceView(task: taskBinding)
+            if let task = library.task(for: taskID) {
+                taskWorkspaceView(task: task)
             } else {
                 ContentUnavailableView("任务未找到", systemImage: "exclamationmark.triangle")
             }
@@ -165,19 +165,17 @@ public struct MainWindowView: View {
 
     // MARK: - Task In-Window Workspace
     @ViewBuilder
-    private func taskWorkspaceView(task: Binding<ProcessingTask>) -> some View {
+    private func taskWorkspaceView(task: ProcessingTask) -> some View {
         Group {
             if let mediaID = selectedMediaID,
-               let mediaIndex = task.wrappedValue.items.firstIndex(where: { $0.id == mediaID }) {
+               let mediaIndex = task.items.firstIndex(where: { $0.id == mediaID }) {
                 MediaDetailProofreadingView(
-                    taskID: task.wrappedValue.id,
-                    initialOutputKind: task.wrappedValue.parameters.srtOutputs[0],
-                    item: Binding(
-                        get: { task.wrappedValue.items[mediaIndex] },
-                        set: { updatedItem in
-                            task.wrappedValue.items[mediaIndex] = updatedItem
-                        }
-                    ),
+                    taskID: task.id,
+                    initialOutputKind: task.parameters.srtOutputs[0],
+                    item: task.items[mediaIndex],
+                    onCommit: { updated, original in
+                        try library.updateItem(updated, taskID: task.id, comparedTo: original)
+                    },
                     onBack: {
                         selectedMediaID = nil
                     }
@@ -187,7 +185,7 @@ public struct MainWindowView: View {
                     task: task,
                     isConfiguring: Binding(
                         get: { configurationTask != nil },
-                        set: { configurationTask = $0 ? task.wrappedValue : nil }
+                        set: { configurationTask = $0 ? task : nil }
                     ),
                     selectedMediaID: $selectedMediaID
                 )
@@ -204,58 +202,36 @@ public struct MainWindowView: View {
                     }
 
                     ToolbarItem(placement: .principal) {
-                        Text(task.wrappedValue.title)
+                        Text(task.title)
                             .font(.headline)
                             .lineLimit(1)
                     }
 
                     ToolbarItemGroup(placement: .primaryAction) {
-                        if task.wrappedValue.startedAt == nil {
+                        if task.startedAt == nil {
                             Button("调整参数", systemImage: "slider.horizontal.3") {
-                                configurationTask = task.wrappedValue
+                                configurationTask = task
                             }
                         }
 
-                        if TaskProcessingQueue.shared.taskID == task.wrappedValue.id {
+                        if TaskProcessingQueue.shared.taskID == task.id {
                             Button(TaskProcessingQueue.shared.isCancelling ? "正在取消…" : "取消任务", systemImage: "stop.fill") {
                                 do { try TaskProcessingQueue.shared.cancel() }
                                 catch { errorMessage = error.localizedDescription }
                             }
                             .disabled(TaskProcessingQueue.shared.isCancelling)
                         } else {
-                            Button(task.wrappedValue.startedAt == nil ? "开始处理" : "继续处理", systemImage: "play.fill") {
-                                do { try TaskProcessingQueue.shared.start(taskID: task.wrappedValue.id) }
+                            Button(task.startedAt == nil ? "开始处理" : "继续处理", systemImage: "play.fill") {
+                                do { try TaskProcessingQueue.shared.start(taskID: task.id) }
                                 catch { errorMessage = error.localizedDescription }
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(TaskProcessingQueue.shared.taskID != nil || task.wrappedValue.items.isEmpty || task.wrappedValue.status == .completed)
+                            .disabled(TaskProcessingQueue.shared.taskID != nil || task.items.isEmpty || task.status == .completed)
                         }
                     }
                 }
             }
         }
-    }
-
-    private func taskBinding(for taskID: UUID) -> Binding<ProcessingTask>? {
-        guard let loaded = library.task(for: taskID) else { return nil }
-        return Binding(
-            get: {
-                library.task(for: taskID) ?? loaded
-            },
-            set: { value in
-                var updated = value
-                for index in updated.items.indices {
-                    if updated.items[index].status == .completed,
-                       updated.parameters.translation != nil,
-                       !updated.items[index].cues.allSatisfy(\.hasCurrentTranslation) {
-                        updated.items[index].status = .needsReview
-                    }
-                }
-                library.register(updated, at: library.url(for: taskID))
-                do { try library.save(updated) }
-                catch { errorMessage = error.localizedDescription }
-            }
-        )
     }
 
     private func openTaskFile(at url: URL) {

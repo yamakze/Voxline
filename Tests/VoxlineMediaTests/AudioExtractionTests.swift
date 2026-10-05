@@ -1,4 +1,5 @@
 import AVFoundation
+import AudioToolbox
 import Foundation
 import Synchronization
 import Testing
@@ -142,6 +143,49 @@ struct AudioExtractionTests {
         }
         #expect(refreshed.chunks.first?.durationMilliseconds == 2000)
         #expect(invalidations.withLock { $0.count } == 2)
+    }
+
+    @Test func corruptWAVIsRebuiltButPermissionFailureKeepsCache() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("input.wav")
+        try AudioFixture.write(to: url)
+        let identity = try await MediaInspector.shared.inspect(url).identity(audioTrackID: 1)
+        let extractor = AudioExtractor(directory: directory.appendingPathComponent("cache"))
+        let id = UUID()
+        let audio = try await extractor.extract(mediaURL: url, mediaID: id, identity: identity)
+        let chunk = try #require(audio.chunks.first).localURL
+        let originalBytes = try Data(contentsOf: chunk)
+        try Data(repeating: 0x41, count: 100).write(to: chunk)
+        let invalidations = Mutex<[String]>([])
+        let regenerated = try await extractor.extract(mediaURL: url, mediaID: id, identity: identity) { event in
+            if case .cacheInvalidated(let reason) = event { invalidations.withLock { $0.append(reason) } }
+        }
+        #expect(!regenerated.reusedCache && invalidations.withLock { $0.count } == 1)
+        #expect(try AVAudioFile(forReading: chunk).length == 16_000)
+        #expect(try Data(contentsOf: chunk) == originalBytes)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: chunk.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: chunk.path) }
+        await #expect(throws: (any Error).self) {
+            try await extractor.extract(mediaURL: url, mediaID: id, identity: identity) { event in
+                if case .cacheInvalidated(let reason) = event { invalidations.withLock { $0.append(reason) } }
+            }
+        }
+        #expect(invalidations.withLock { $0.count } == 1)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: chunk.path)
+        #expect(try Data(contentsOf: chunk) == originalBytes)
+    }
+
+    @Test func cacheFormatClassificationPreservesPermissionCancellationAndUnknownErrors() {
+        #expect(AudioExtractor.isCorruptCacheAudioError(NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioFileInvalidFileError))))
+        for error in [NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioFilePermissionsError)),
+                      NSError(domain: NSOSStatusErrorDomain, code: Int(kAudioFileUnspecifiedError)),
+                      NSError(domain: NSCocoaErrorDomain, code: CocoaError.fileReadNoPermission.rawValue),
+                      CancellationError() as NSError] {
+            #expect(!AudioExtractor.isCorruptCacheAudioError(error))
+        }
     }
 
     @Test func cancelledExtractionCannotCommitCacheAndStorageErrorsThrow() async throws {

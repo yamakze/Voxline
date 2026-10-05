@@ -40,14 +40,6 @@ final class IOSTaskLibrary {
         try storage.save(task, at: storage.defaultURL(for: task.id))
     }
 
-    func updateItem(_ item: TaskMediaItem, taskID: UUID, comparedTo original: TaskMediaItem) throws {
-        guard var task = storage.task(for: taskID),
-              let index = task.items.firstIndex(where: { $0.id == original.id }),
-              task.items[index] == original, item.id == original.id else { throw TaskValidationError.taskChanged }
-        task.items[index] = item
-        try storage.save(task)
-    }
-
     func startTranslation(taskID: UUID, mediaID: UUID) throws {
         guard let task = storage.task(for: taskID), task.parameters.translation != nil,
               let item = task.items.first(where: { $0.id == mediaID }),

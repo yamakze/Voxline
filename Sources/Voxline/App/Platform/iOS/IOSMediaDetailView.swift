@@ -21,13 +21,14 @@ struct IOSMediaDetailView: View {
 
     var body: some View {
         if let item {
+            let activeCue = playback.activeCue(in: item.cues)
             GeometryReader { geometry in
                 let landscape = geometry.size.width > geometry.size.height
                 let layout = landscape ? AnyLayout(HStackLayout(alignment: .top, spacing: 0))
                     : AnyLayout(VStackLayout(spacing: 0))
                 layout {
                     VStack(spacing: 0) {
-                        player(item, height: landscape ? max(80, geometry.size.height - 96)
+                        player(item, activeCue: activeCue, height: landscape ? max(80, geometry.size.height - 96)
                             : min(240, geometry.size.height * 0.45))
                         Picker("字幕预览", selection: $previewKind) {
                             Text("原文").tag(SRTOutputKind.source)
@@ -93,13 +94,13 @@ struct IOSMediaDetailView: View {
                                         do {
                                             var updated = item
                                             try updated.confirmTimingReview(cueID: cue.id)
-                                            try library.updateItem(updated, taskID: taskID, comparedTo: item)
+                                            try library.storage.updateItem(updated, taskID: taskID, comparedTo: item)
                                         } catch { errorMessage = error.localizedDescription }
                                     }
                                 }
                             }
                             .padding(.vertical, 6)
-                            .listRowBackground(playback.activeCue(in: item.cues)?.id == cue.id ? Color.primary.opacity(0.08) : nil)
+                            .listRowBackground(activeCue?.id == cue.id ? Color.primary.opacity(0.08) : nil)
                             .buttonStyle(.borderless)
                         }
                     }
@@ -125,29 +126,15 @@ struct IOSMediaDetailView: View {
             }
             .sheet(item: $association, onDismiss: { Task { if let item = self.item { await playback.loadMedia(for: item) } } }) { candidate in
                 IOSMediaAssociationSheet(candidate: candidate) { updated in
-                    try library.updateItem(updated, taskID: taskID, comparedTo: candidate.item)
+                    try library.storage.updateItem(updated, taskID: taskID, comparedTo: candidate.item)
                 }
             }
             .sheet(item: $editingCue) { cue in
                 IOSSubtitleEditor(cue: cue) { source, translation in
-                    guard var updated = self.item, let index = updated.cues.firstIndex(where: { $0.id == cue.id }),
-                          updated.cues[index].sourceText == cue.sourceText,
-                          updated.cues[index].sourceRevision == cue.sourceRevision,
-                          updated.cues[index].translation == cue.translation else { throw CheckpointError.editedCue }
+                    guard var updated = self.item else { throw TaskValidationError.taskChanged }
                     let original = updated
-                    try updated.cues[index].replaceSourceText(with: source)
-                    let previous: String
-                    if case .succeeded(let text, _) = cue.translation { previous = text } else { previous = "" }
-                    if translation != previous {
-                        updated.cues[index].translation = translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? .pending : .succeeded(text: translation, sourceRevision: updated.cues[index].sourceRevision)
-                    }
-                    if updated.status == .completed || updated.status == .needsReview,
-                       let checkpoint = updated.checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted) {
-                        updated.status = checkpoint.parameters.translation == nil || updated.cues.allSatisfy(\.hasCurrentTranslation)
-                            ? updated.completedProcessingStatus : .needsReview
-                    }
-                    try library.updateItem(updated, taskID: taskID, comparedTo: original)
+                    try updated.editSubtitle(comparedTo: cue, sourceText: source, translationText: translation)
+                    try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
                 }
             }
             .sheet(isPresented: $showingOffset) {
@@ -156,7 +143,7 @@ struct IOSMediaDetailView: View {
                     let original = updated
                     updated.cues = try SubtitleTimeOffset.shifted(updated.cues, by: milliseconds,
                                                                  withinDuration: updated.media?.durationMilliseconds)
-                    try library.updateItem(updated, taskID: taskID, comparedTo: original)
+                    try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
                 }
             }
             .alert("操作未完成", isPresented: Binding(
@@ -168,11 +155,11 @@ struct IOSMediaDetailView: View {
         } else { ContentUnavailableView("媒体不存在", systemImage: "film") }
     }
 
-    @ViewBuilder private func player(_ item: TaskMediaItem, height: CGFloat) -> some View {
+    @ViewBuilder private func player(_ item: TaskMediaItem, activeCue: SubtitleCue?, height: CGFloat) -> some View {
         if let player = playback.player {
             ZStack(alignment: .bottom) {
                 VideoPlayer(player: player).frame(height: item.kind == .video ? height : min(130, height))
-                if let cue = playback.activeCue(in: item.cues) {
+                if let cue = activeCue {
                     VStack(spacing: 4) {
                         if previewKind != .translation { Text(cue.sourceText) }
                         if previewKind != .source {

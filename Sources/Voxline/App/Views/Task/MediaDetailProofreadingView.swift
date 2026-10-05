@@ -9,7 +9,8 @@ import VoxlineMedia
 public struct MediaDetailProofreadingView: View {
     let taskID: UUID
     let initialOutputKind: SRTOutputKind
-    @Binding var item: TaskMediaItem
+    let item: TaskMediaItem
+    let onCommit: (TaskMediaItem, TaskMediaItem) throws -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var playbackController = MediaPlaybackController()
     @State private var previewMode: SRTOutputKind = .bilingual
@@ -31,20 +32,17 @@ public struct MediaDetailProofreadingView: View {
 
     public var onBack: (() -> Void)?
 
-    public init(taskID: UUID, initialOutputKind: SRTOutputKind, item: Binding<TaskMediaItem>, onBack: (() -> Void)? = nil) {
+    public init(taskID: UUID, initialOutputKind: SRTOutputKind, item: TaskMediaItem, onCommit: @escaping (TaskMediaItem, TaskMediaItem) throws -> Void, onBack: (() -> Void)? = nil) {
         self.taskID = taskID
         self.initialOutputKind = initialOutputKind
-        _item = item
+        self.item = item
+        self.onCommit = onCommit
         self.onBack = onBack
-        let hasTranslation = item.wrappedValue.cues.contains { cue in
+        let hasTranslation = item.cues.contains { cue in
             if case .succeeded = cue.translation { return true }
             return false
         }
         _previewMode = State(initialValue: hasTranslation ? .bilingual : .source)
-    }
-
-    private var activeCueID: UUID? {
-        playbackController.activeCue(in: item.cues)?.id
     }
 
     private var filteredCues: [SubtitleCue] {
@@ -58,14 +56,14 @@ public struct MediaDetailProofreadingView: View {
     }
 
     public var body: some View {
-        // Main Split: QuickTime Video Player on Left + Apple Podcasts Lyrics/Transcript on Right
+        let activeCue = playbackController.activeCue(in: item.cues)
         HSplitView {
             // Left Column: QuickTime Player with Floating Glass Capsule Controls
-            quickTimePlayerPane
+            quickTimePlayerPane(activeCue: activeCue)
                 .frame(minWidth: 440, idealWidth: 540)
 
             // Right Column: Apple Podcasts Lyrics/Transcript Stream
-            podcastsTranscriptPane
+            podcastsTranscriptPane(activeCueID: activeCue?.id)
                 .frame(minWidth: 460, idealWidth: 580)
         }
         .toolbar {
@@ -134,9 +132,14 @@ public struct MediaDetailProofreadingView: View {
         }
         .sheet(isPresented: $showTimeOffsetSheet) {
             TimeOffsetSheet(
-                cues: $item.cues,
+                cues: item.cues,
                 mediaDurationMilliseconds: item.media?.durationMilliseconds
-            )
+            ) { shifted, originalCues in
+                guard item.cues == originalCues else { throw CheckpointError.editedCue }
+                var updated = item
+                updated.cues = shifted
+                try onCommit(updated, item)
+            }
         }
         .sheet(isPresented: $showSRTExportSheet) {
             SRTExportSheet(
@@ -148,7 +151,7 @@ public struct MediaDetailProofreadingView: View {
         .sheet(isPresented: $showRelinkSheet, onDismiss: {
             Task { await playbackController.loadMedia(for: item) }
         }) {
-            MediaRelinkSheet(item: $item)
+            MediaRelinkSheet(item: item, onCommit: onCommit)
         }
         .sheet(isPresented: Binding(get: { retranslationCues != nil }, set: { if !$0 { retranslationCues = nil } })) {
             if let selected = retranslationCues {
@@ -173,7 +176,7 @@ public struct MediaDetailProofreadingView: View {
     }
 
     // MARK: - QuickTime Player Pane (with Floating Glass Capsule)
-    private var quickTimePlayerPane: some View {
+    private func quickTimePlayerPane(activeCue: SubtitleCue?) -> some View {
         ZStack(alignment: .bottom) {
             // Video or Audio Canvas
             Group {
@@ -262,7 +265,7 @@ public struct MediaDetailProofreadingView: View {
             }
 
             // Active Subtitle HUD Overlay (QuickTime cinema subtitle overlay)
-            if playbackController.isReady, let activeCue = playbackController.activeCue(in: item.cues) {
+            if playbackController.isReady, let activeCue = activeCue {
                 VStack(spacing: 4) {
                     switch previewMode {
                     case .source:
@@ -388,7 +391,7 @@ public struct MediaDetailProofreadingView: View {
     }
 
     // MARK: - Apple Podcasts Lyrics/Transcript Pane
-    private var podcastsTranscriptPane: some View {
+    private func podcastsTranscriptPane(activeCueID: UUID?) -> some View {
         VStack(spacing: 0) {
             // Transcript Controls Toolbar (Podcasts style)
             HStack(spacing: 12) {
@@ -488,181 +491,169 @@ public struct MediaDetailProofreadingView: View {
         isEditing: Bool,
         isPast: Bool
     ) -> some View {
-        if let cueIndex = item.cues.firstIndex(where: { $0.id == cue.id }) {
-            VStack(alignment: .leading, spacing: 6) {
-                // Timestamp and Hover Actions Bar
-                HStack(spacing: 8) {
-                    // Timestamp button
-                    Button {
-                        playbackController.seek(toMilliseconds: cue.startMilliseconds)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: isActive ? "speaker.wave.2.fill" : "play.fill")
-                                .font(.system(size: 9))
-                            Text(String(format: "%02d:%02d.%03d",
-                                        cue.startMilliseconds / 60000,
-                                        (cue.startMilliseconds % 60000) / 1000,
-                                        cue.startMilliseconds % 1000))
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        VStack(alignment: .leading, spacing: 6) {
+            // Timestamp and Hover Actions Bar
+            HStack(spacing: 8) {
+                // Timestamp button
+                Button {
+                    playbackController.seek(toMilliseconds: cue.startMilliseconds)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isActive ? "speaker.wave.2.fill" : "play.fill")
+                            .font(.system(size: 9))
+                        Text(String(format: "%02d:%02d.%03d",
+                                    cue.startMilliseconds / 60000,
+                                    (cue.startMilliseconds % 60000) / 1000,
+                                    cue.startMilliseconds % 1000))
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        isActive ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.12),
+                        in: .capsule
+                    )
+                    .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+                }
+                .buttonStyle(.plain)
+
+                // Status chip
+                if cue.requiresTimingReview == true {
+                    Text("待校对")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.orange)
+                        .help("词对齐不可用，使用原始段时间。请播放核对文字与时间。")
+                    Button("确认校对") {
+                        do {
+                            var updated = item
+                            try updated.confirmTimingReview(cueID: cue.id)
+                            try onCommit(updated, item)
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(
-                            isActive ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.12),
-                            in: .capsule
-                        )
-                        .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+                        catch { errorMessage = error.localizedDescription }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                }
+                if case .succeeded = cue.translation, !cue.hasCurrentTranslation {
+                    Text("待重译")
+                        .font(.system(size: 9, weight: .bold))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.2), in: .capsule)
+                        .foregroundStyle(.orange)
+                }
 
-                    // Status chip
-                    if cue.requiresTimingReview == true {
-                        Text("待校对")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.orange)
-                            .help("词对齐不可用，使用原始段时间。请播放核对文字与时间。")
-                        Button("确认校对") {
-                            do { try item.confirmTimingReview(cueID: cue.id) }
-                            catch { errorMessage = error.localizedDescription }
-                        }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                    }
-                    if case .succeeded = cue.translation, !cue.hasCurrentTranslation {
-                        Text("待重译")
-                            .font(.system(size: 9, weight: .bold))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.2), in: .capsule)
-                            .foregroundStyle(.orange)
-                    }
+                Spacer()
 
-                    Spacer()
-
+                if isEditing {
+                    Button("取消编辑") { editingCueID = nil; editingSnapshot = nil }
+                        .buttonStyle(.plain)
+                }
+                Button {
                     if isEditing {
-                        Button("取消编辑") { editingCueID = nil; editingSnapshot = nil }
-                            .buttonStyle(.plain)
+                        do {
+                            guard let snapshot = editingSnapshot else { throw CheckpointError.editedCue }
+                            var updated = item
+                            try updated.editSubtitle(comparedTo: snapshot, sourceText: sourceDraft, translationText: translationDraft)
+                            try onCommit(updated, item)
+                            editingCueID = nil
+                            editingSnapshot = nil
+                        } catch { errorMessage = error.localizedDescription }
+                    } else {
+                        editingCueID = cue.id
+                        editingSnapshot = cue
+                        sourceDraft = cue.sourceText
+                        if case .succeeded(let text, _) = cue.translation { translationDraft = text }
+                        else { translationDraft = "" }
                     }
+                } label: {
+                    Image(systemName: isEditing ? "checkmark.circle.fill" : "pencil")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(isEditing ? "保存编辑" : "编辑字幕")
+                .help(isEditing ? "保存编辑" : "编辑本句")
+                .disabled(editingCueID != nil && !isEditing)
+
+                Button("重译本句") { retranslationCues = [cue] }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .disabled(editingCueID != nil || queue.taskID != nil)
+
+                if isHovered {
                     Button {
-                        if isEditing {
-                            guard let snapshot = editingSnapshot,
-                                  item.cues[cueIndex].sourceText == snapshot.sourceText,
-                                  item.cues[cueIndex].sourceRevision == snapshot.sourceRevision,
-                                  item.cues[cueIndex].translation == snapshot.translation else {
-                                errorMessage = "字幕在编辑期间已更新。草稿已保留，请取消编辑后重新打开当前内容。"
-                                return
-                            }
-                            var edited = item.cues[cueIndex]
-                            do {
-                                try edited.replaceSourceText(with: sourceDraft)
-                                let previous: String
-                                if case .succeeded(let text, _) = snapshot.translation { previous = text }
-                                else { previous = "" }
-                                if translationDraft != previous {
-                                    edited.translation = translationDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                        ? .pending : .succeeded(text: translationDraft, sourceRevision: edited.sourceRevision)
-                                }
-                                try edited.validate()
-                                item.cues[cueIndex] = edited
-                                editingCueID = nil
-                                editingSnapshot = nil
-                            } catch { errorMessage = error.localizedDescription }
-                        } else {
-                            editingCueID = cue.id
-                            editingSnapshot = cue
-                            sourceDraft = cue.sourceText
-                            if case .succeeded(let text, _) = cue.translation { translationDraft = text }
-                            else { translationDraft = "" }
-                        }
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(cue.sourceText, forType: .string)
                     } label: {
-                        Image(systemName: isEditing ? "checkmark.circle.fill" : "pencil")
-                            .font(.caption)
+                        Image(systemName: "doc.on.doc").font(.caption)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel(isEditing ? "保存编辑" : "编辑字幕")
-                    .help(isEditing ? "保存编辑" : "编辑本句")
-                    .disabled(editingCueID != nil && !isEditing)
+                    .help("复制原文")
+                }
+            }
 
-                    Button("重译本句") { retranslationCues = [cue] }
-                        .buttonStyle(.plain)
-                        .font(.caption)
-                        .disabled(editingCueID != nil || queue.taskID != nil)
-
-                    if isHovered {
-                        Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(cue.sourceText, forType: .string)
-                        } label: {
-                            Image(systemName: "doc.on.doc").font(.caption)
+            // Subtitle text lines with Apple Podcasts lyrics focus hierarchy
+            VStack(alignment: .leading, spacing: 4) {
+                // Source Text
+                if isEditing {
+                    TextField("原文内容", text: $sourceDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 16, weight: .medium))
+                } else if previewMode != .translation {
+                    Text(cue.sourceText)
+                        .font(.system(size: isActive ? 18 : 16, weight: isActive ? .bold : .medium, design: .default))
+                        .lineSpacing(3)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            playbackController.seek(toMilliseconds: cue.startMilliseconds)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help("复制原文")
-                    }
                 }
 
-                // Subtitle text lines with Apple Podcasts lyrics focus hierarchy
-                VStack(alignment: .leading, spacing: 4) {
-                    // Source Text
+                // Translation Text
+                if isEditing || previewMode == .translation || previewMode == .bilingual {
                     if isEditing {
-                        TextField("原文内容", text: $sourceDraft)
+                        TextField("译文内容", text: $translationDraft)
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 16, weight: .medium))
-                    } else if previewMode != .translation {
-                        Text(cue.sourceText)
-                            .font(.system(size: isActive ? 18 : 16, weight: isActive ? .bold : .medium, design: .default))
-                            .lineSpacing(3)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                playbackController.seek(toMilliseconds: cue.startMilliseconds)
-                            }
-                    }
-
-                    // Translation Text
-                    if isEditing || previewMode == .translation || previewMode == .bilingual {
-                        if isEditing {
-                            TextField("译文内容", text: $translationDraft)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 15))
+                        .font(.system(size: 15))
+                    } else {
+                        if case .succeeded(let trans, _) = cue.translation {
+                            Text(trans)
+                                .font(.system(size: isActive ? 16 : 14, weight: isActive ? .semibold : .regular))
+                                .foregroundStyle(.primary)
+                                .lineSpacing(2)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    playbackController.seek(toMilliseconds: cue.startMilliseconds)
+                                }
+                        } else if case .failed(let reason) = cue.translation {
+                            Text("翻译失败：\(reason)").font(.caption).foregroundStyle(.red)
                         } else {
-                            if case .succeeded(let trans, _) = cue.translation {
-                                Text(trans)
-                                    .font(.system(size: isActive ? 16 : 14, weight: isActive ? .semibold : .regular))
-                                    .foregroundStyle(.primary)
-                                    .lineSpacing(2)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        playbackController.seek(toMilliseconds: cue.startMilliseconds)
-                                    }
-                            } else if case .failed(let reason) = cue.translation {
-                                Text("翻译失败：\(reason)").font(.caption).foregroundStyle(.red)
-                            } else {
-                                Text("未翻译")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                            Text("未翻译")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(
-                isActive
-                    ? Color.voxlineActiveCueBackground
-                    : (isHovered ? Color.secondary.opacity(0.06) : Color.clear),
-                in: .rect(cornerRadius: 10)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(isActive ? Color.voxlineActiveCueBorder : Color.clear, lineWidth: 1)
-            )
-            // Hierarchy Opacity fading: Active line = 1.0, Hovered = 0.95, Future = 0.68, Past = 0.38
-            .opacity(isActive ? 1.0 : (isHovered ? 0.95 : (isPast ? 0.40 : 0.70)))
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isActive)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovered)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            isActive
+                ? Color.voxlineActiveCueBackground
+                : (isHovered ? Color.secondary.opacity(0.06) : Color.clear),
+            in: .rect(cornerRadius: 10)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(isActive ? Color.voxlineActiveCueBorder : Color.clear, lineWidth: 1)
+        )
+        // Hierarchy Opacity fading: Active line = 1.0, Hovered = 0.95, Future = 0.68, Past = 0.38
+        .opacity(isActive ? 1.0 : (isHovered ? 0.95 : (isPast ? 0.40 : 0.70)))
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isActive)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovered)
     }
 
 }

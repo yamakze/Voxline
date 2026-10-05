@@ -184,15 +184,37 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
         cues.contains { $0.requiresTimingReview == true } ? .needsReview : .completed
     }
 
+    public mutating func editSubtitle(comparedTo original: SubtitleCue, sourceText: String, translationText: String) throws {
+        guard let index = cues.firstIndex(where: { $0.id == original.id }),
+              cues[index].sourceText == original.sourceText,
+              cues[index].sourceRevision == original.sourceRevision,
+              cues[index].translation == original.translation else { throw CheckpointError.editedCue }
+        var edited = cues[index]
+        try edited.replaceSourceText(with: sourceText)
+        let previousTranslation: String
+        if case .succeeded(let text, _) = original.translation { previousTranslation = text }
+        else { previousTranslation = "" }
+        if translationText != previousTranslation {
+            edited.translation = translationText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? .pending : .succeeded(text: translationText, sourceRevision: edited.sourceRevision)
+        }
+        try edited.validate()
+        cues[index] = edited
+        updateProofreadingStatus()
+    }
+
+    private mutating func updateProofreadingStatus() {
+        guard status == .completed || status == .needsReview,
+              let checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted) else { return }
+        status = checkpoint.parameters.translation == nil || cues.allSatisfy(\.hasCurrentTranslation)
+            ? completedProcessingStatus : .needsReview
+    }
+
     public mutating func confirmTimingReview(cueID: UUID) throws {
         guard let index = cues.firstIndex(where: { $0.id == cueID }) else { throw CheckpointError.unknownWork }
         var updated = self
         updated.cues[index].requiresTimingReview = nil
-        if updated.status == .needsReview,
-           let checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted),
-           checkpoint.parameters.translation == nil || updated.cues.allSatisfy(\.hasCurrentTranslation) {
-            updated.status = updated.completedProcessingStatus
-        }
+        updated.updateProofreadingStatus()
         try updated.validate()
         self = updated
     }

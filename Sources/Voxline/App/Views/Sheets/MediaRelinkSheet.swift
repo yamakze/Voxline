@@ -5,7 +5,8 @@ import VoxlineCore
 import VoxlineMedia
 
 public struct MediaRelinkSheet: View {
-    @Binding var item: TaskMediaItem
+    let item: TaskMediaItem
+    let onCommit: (TaskMediaItem, TaskMediaItem) throws -> Void
     @Environment(\.dismiss) private var dismiss
 
     @State private var showMediaImporter = false
@@ -17,8 +18,9 @@ public struct MediaRelinkSheet: View {
 
     private let inspector = MediaInspector.shared
 
-    public init(item: Binding<TaskMediaItem>) {
-        _item = item
+    public init(item: TaskMediaItem, onCommit: @escaping (TaskMediaItem, TaskMediaItem) throws -> Void) {
+        self.item = item
+        self.onCommit = onCommit
     }
 
     public var body: some View {
@@ -155,8 +157,7 @@ public struct MediaRelinkSheet: View {
                     updated.status = .pending
                 }
                 try await LocalMediaStore.shared.save(projectID: original.id, identity: candidate, url: inspection.url)
-                guard item == original else { throw MediaAccessError.itemChanged }
-                item = updated
+                try onCommit(updated, original)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

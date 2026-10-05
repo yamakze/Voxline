@@ -3,17 +3,21 @@ import SwiftUI
 import VoxlineCore
 
 public struct TimeOffsetSheet: View {
-    @Binding var cues: [SubtitleCue]
+    let cues: [SubtitleCue]
     let mediaDurationMilliseconds: Int64?
+    let onCommit: ([SubtitleCue], [SubtitleCue]) throws -> Void
     @Environment(\.dismiss) private var dismiss
 
     @State private var offsetText = "0.000"
     @State private var validationError: String?
+    @State private var saveError: String?
     @State private var shiftedCues: [SubtitleCue] = []
 
-    public init(cues: Binding<[SubtitleCue]>, mediaDurationMilliseconds: Int64? = nil) {
-        _cues = cues
+    public init(cues: [SubtitleCue], mediaDurationMilliseconds: Int64? = nil,
+                onCommit: @escaping ([SubtitleCue], [SubtitleCue]) throws -> Void) {
+        self.cues = cues
         self.mediaDurationMilliseconds = mediaDurationMilliseconds
+        self.onCommit = onCommit
     }
 
     public var body: some View {
@@ -41,6 +45,9 @@ public struct TimeOffsetSheet: View {
                     Button("-0.2s") { adjustOffset(by: -0.2) }
                     Button("+0.2s") { adjustOffset(by: 0.2) }
                     Button("+1.0s") { adjustOffset(by: 1.0) }
+                }
+                if let saveError {
+                    Text(saveError).font(.callout).foregroundStyle(.red)
                 }
 
                 if let validationError {
@@ -102,8 +109,10 @@ public struct TimeOffsetSheet: View {
     private func applyOffset() {
         validateOffset()
         guard validationError == nil else { return }
-        cues = shiftedCues
-        dismiss()
+        do {
+            try onCommit(shiftedCues, cues)
+            dismiss()
+        } catch { saveError = error.localizedDescription }
     }
 }
 

@@ -79,7 +79,39 @@ struct TaskLibraryTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: blocked.path).isEmpty)
     }
 
-    @Test func checkpointCommitUsesLatestUnsavedEditsAndWriteFailureDoesNotPublishResults() throws {
+    @Test func itemCommitPublishesOnlyAfterSavingAndRetainsRetryableDraft() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = ProcessingTask(items: [.init(title: "Legacy", kind: .audio, source: .unassociated)])
+        task.items[0].cues = [try SubtitleCue(id: UUID(), startMilliseconds: 0, endMilliseconds: 500, sourceText: "Original")]
+        let library = TaskLibrary(tasksDirectory: directory)
+        try library.save(task)
+        let url = try #require(library.url(for: task.id))
+        let saved = try Data(contentsOf: url)
+        let original = task.items[0]
+        var draft = original
+        try draft.editSubtitle(comparedTo: original.cues[0], sourceText: "Draft", translationText: "译文")
+        try FileManager.default.removeItem(at: url)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+        #expect(throws: (any Error).self) { try library.updateItem(draft, taskID: task.id, comparedTo: original) }
+        #expect(library.task(for: task.id) == task)
+        #expect(draft.cues[0].sourceText == "Draft")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: url.path).isEmpty)
+        try FileManager.default.removeItem(at: url)
+        try saved.write(to: url)
+        try library.updateItem(draft, taskID: task.id, comparedTo: original)
+        #expect(library.task(for: task.id)?.items[0] == draft)
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)).items[0] == draft)
+        let committed = try Data(contentsOf: url)
+        #expect(throws: TaskValidationError.taskChanged) {
+            try library.updateItem(original, taskID: task.id, comparedTo: original)
+        }
+        #expect(try Data(contentsOf: url) == committed)
+        #expect(library.task(for: task.id)?.items[0] == draft)
+    }
+
+    @Test func checkpointCommitUsesLatestPublishedEditsAndWriteFailureDoesNotPublishResults() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -113,7 +145,9 @@ struct TaskLibraryTests {
             try $0.items[0].beginTranscriptionChunk(chunks[1].id)
         }
         var edited = try #require(library.task(for: task.id))
-        try edited.items[0].cues[0].replaceSourceText(with: "Unsaved manual correction")
+        let originalItem = edited.items[0]
+        try edited.items[0].editSubtitle(comparedTo: originalItem.cues[0], sourceText: "Saved manual correction", translationText: "")
+        try library.updateItem(edited.items[0], taskID: task.id, comparedTo: originalItem)
         let previousFile = try Data(contentsOf: url)
         let blocked = directory.appendingPathComponent("occupied.voxline")
         try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: false)
@@ -130,7 +164,7 @@ struct TaskLibraryTests {
         let reopened = try TaskDocumentCodec.decode(Data(contentsOf: url))
         #expect(reopened.items[0].status == .completed)
         #expect(reopened.items[0].cues.count == 2)
-        #expect(reopened.items[0].cues[0].sourceText == "Unsaved manual correction")
+        #expect(reopened.items[0].cues[0].sourceText == "Saved manual correction")
         #expect(reopened.items[0].cues[0].sourceRevision == 2)
         if case .completed(let original) = reopened.items[0].checkpoint?.chunks[0].state {
             #expect(original == first)

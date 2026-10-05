@@ -130,6 +130,58 @@ struct ProcessingCheckpointTests {
         return result
     }
 
+    @Test func proofreadingTracksCurrentTranslationAndPreservesConcurrentTiming() throws {
+        var task = try task(translates: true)
+        _ = try complete(&task, index: 0)
+        _ = try complete(&task, index: 1)
+        let batch = try task.items[0].prepareTranslationBatch(cueIDs: task.items[0].cues.map(\.id))
+        try task.items[0].beginTranslationBatch(batch)
+        try task.items[0].commitTranslationBatch(batch, outputs: task.items[0].cues.map {
+            .init(cueID: $0.id, text: "Original translation")
+        })
+        let original = task.items[0].cues[0]
+        let evidence = task.items[0].checkpoint
+        task.items[0].cues[0].startMilliseconds += 50
+        task.items[0].cues[0].endMilliseconds += 50
+        try task.items[0].editSubtitle(comparedTo: original, sourceText: "Corrected", translationText: "Original translation")
+        #expect(task.items[0].status == .needsReview)
+        #expect(task.items[0].cues[0].sourceRevision == 2)
+        #expect(task.items[0].cues[0].translation == .succeeded(text: "Original translation", sourceRevision: 1))
+        #expect(task.items[0].cues[0].startMilliseconds == original.startMilliseconds + 50)
+        let corrected = task.items[0].cues[0]
+        let beforeConflict = task
+        #expect(throws: CheckpointError.editedCue) {
+            try task.items[0].editSubtitle(comparedTo: original, sourceText: "Stale draft", translationText: "Stale")
+        }
+        #expect(task == beforeConflict)
+        try task.items[0].editSubtitle(comparedTo: corrected, sourceText: corrected.sourceText, translationText: "Current translation")
+        #expect(task.items[0].status == .completed)
+        #expect(task.items[0].cues[0].translation == .succeeded(text: "Current translation", sourceRevision: 2))
+        #expect(task.items[0].checkpoint == evidence)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)) == task)
+    }
+
+    @Test func proofreadingKeepsTimingReviewLegacyAndFailureStates() throws {
+        var task = try task()
+        _ = try complete(&task, index: 0)
+        _ = try complete(&task, index: 1)
+        task.items[0].cues[0].requiresTimingReview = true
+        task.items[0].status = .needsReview
+        let original = task.items[0].cues[0]
+        try task.items[0].editSubtitle(comparedTo: original, sourceText: "Reviewed text", translationText: "")
+        #expect(task.items[0].status == .needsReview)
+        try task.items[0].confirmTimingReview(cueID: original.id)
+        #expect(task.items[0].status == .completed)
+        var legacy = task.items[0]
+        legacy.checkpoint = nil
+        legacy.status = .needsReview
+        try legacy.editSubtitle(comparedTo: legacy.cues[0], sourceText: "Legacy edit", translationText: "")
+        #expect(legacy.status == .needsReview)
+        task.items[0].status = .failed(reason: "Unresolved service failure")
+        try task.items[0].editSubtitle(comparedTo: task.items[0].cues[0], sourceText: "Another edit", translationText: "")
+        #expect(task.items[0].status == .failed(reason: "Unresolved service failure"))
+    }
+
     @Test func recoveredTimingsRequireExplicitReviewAfterTranslationAndSurviveRestart() throws {
         var original = try task(translates: true)
         _ = try complete(&original, index: 0)

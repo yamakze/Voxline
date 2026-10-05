@@ -1,4 +1,5 @@
 import AVFoundation
+import AudioToolbox
 import Foundation
 import VoxlineCore
 
@@ -71,7 +72,12 @@ public actor AudioExtractor {
                     guard values.isRegularFile == true, let size = values.fileSize, size > 44 else {
                         throw AudioExtractionError.invalidCache
                     }
-                    let file = try AVAudioFile(forReading: url)
+                    let file: AVAudioFile
+                    do { file = try AVAudioFile(forReading: url) }
+                    catch {
+                        guard Self.isCorruptCacheAudioError(error) else { throw error }
+                        throw AudioExtractionError.invalidCache
+                    }
                     guard file.length == chunk.frameCount, file.processingFormat.sampleRate == 16_000,
                           file.processingFormat.channelCount == 1, file.fileFormat.commonFormat == .pcmFormatFloat32 else {
                         throw AudioExtractionError.invalidCache
@@ -190,6 +196,15 @@ public actor AudioExtractor {
 
     fileprivate static func chunkURL(in directory: URL, index: Int) -> URL {
         directory.appendingPathComponent(String(format: "%06d.wav", index))
+    }
+
+    /// Only file-format failures invalidate derived PCM; permissions, cancellation and unknown I/O errors propagate.
+    static func isCorruptCacheAudioError(_ error: any Error) -> Bool {
+        let error = error as NSError
+        return (error.domain == NSOSStatusErrorDomain || error.domain == "com.apple.coreaudio.avfaudio") && [
+            kAudioFileUnsupportedFileTypeError, kAudioFileUnsupportedDataFormatError,
+            kAudioFileInvalidFileError, kAudioFileInvalidChunkError, kAudioFileEndOfFileError
+        ].contains { Int($0) == error.code }
     }
 }
 

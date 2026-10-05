@@ -62,6 +62,15 @@ public final class TaskLibrary {
         register(task, at: targetURL)
     }
 
+    /// Editing views keep their draft until this validated, atomic save succeeds.
+    public func updateItem(_ item: TaskMediaItem, taskID: UUID, comparedTo original: TaskMediaItem) throws {
+        guard var task = task(for: taskID),
+              let index = task.items.firstIndex(where: { $0.id == original.id }),
+              task.items[index] == original, item.id == original.id else { throw TaskValidationError.taskChanged }
+        task.items[index] = item
+        try save(task)
+    }
+
     /// Apply worker results to the latest published edits; publish only after the whole document is saved.
     @discardableResult
     public func commitCheckpoint<Result>(taskID: UUID, mutation: (inout ProcessingTask) throws -> Result) throws -> Result {

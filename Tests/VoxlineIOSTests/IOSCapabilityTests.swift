@@ -62,7 +62,8 @@ struct IOSCapabilityTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let source = directory.appendingPathComponent("source.voxline")
-        let task = ProcessingTask(title: "Imported", items: [.init(title: "audio", kind: .audio, source: .localFile(fileName: "audio.wav"))])
+        var task = ProcessingTask(title: "Imported", items: [.init(title: "audio", kind: .audio, source: .localFile(fileName: "audio.wav"))])
+        task.items[0].cues = [try SubtitleCue(id: UUID(), startMilliseconds: 0, endMilliseconds: 500, sourceText: "Original")]
         let bytes = try TaskDocumentCodec.encode(task)
         try bytes.write(to: source)
         let copies = directory.appendingPathComponent("device")
@@ -71,6 +72,14 @@ struct IOSCapabilityTests {
         try library.save(imported)
         imported.title = "Device edit"
         try library.save(imported)
+        let original = imported.items[0]
+        var edited = original
+        try edited.editSubtitle(comparedTo: original.cues[0], sourceText: "Device correction", translationText: "校对")
+        try library.storage.updateItem(edited, taskID: task.id, comparedTo: original)
+        imported.items[0] = edited
+        #expect(throws: TaskValidationError.taskChanged) {
+            try library.storage.updateItem(original, taskID: task.id, comparedTo: original)
+        }
         #expect(try Data(contentsOf: source) == bytes)
         #expect(library.storage.url(for: task.id) == copies.appendingPathComponent(task.id.uuidString).appendingPathExtension("voxline"))
         #expect(IOSTaskLibrary(directory: copies).task(task.id) == imported)

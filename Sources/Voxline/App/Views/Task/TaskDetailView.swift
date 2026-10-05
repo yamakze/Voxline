@@ -4,15 +4,15 @@ import SwiftUI
 import VoxlineCore
 
 public struct TaskDetailView: View {
-    @Binding var task: ProcessingTask
+    let task: ProcessingTask
     @Binding var isConfiguring: Bool
     @Binding var selectedMediaID: UUID?
 
     @State private var queue = TaskProcessingQueue.shared
     @State private var errorMessage: String?
 
-    public init(task: Binding<ProcessingTask>, isConfiguring: Binding<Bool>, selectedMediaID: Binding<UUID?>) {
-        _task = task
+    public init(task: ProcessingTask, isConfiguring: Binding<Bool>, selectedMediaID: Binding<UUID?>) {
+        self.task = task
         _isConfiguring = isConfiguring
         _selectedMediaID = selectedMediaID
     }

@@ -1,5 +1,7 @@
 #if os(iOS)
+import AVFoundation
 import SwiftUI
+import UniformTypeIdentifiers
 import VoxlineCore
 import VoxlineMedia
 
@@ -18,12 +20,23 @@ struct IOSMediaAssociationSheet: View {
     @State private var errorMessage: String?
     @State private var isSaving = false
     @State private var accessStarted = false
+    @State private var selectedURL: URL
+    @State private var inspectionRequestID = UUID()
+    @State private var isInspecting = false
+    @State private var canRetryInspection = false
+    @State private var isSelectingMedia = false
+
+    init(candidate: IOSMediaAssociationCandidate, onCommit: @escaping (TaskMediaItem) throws -> Void) {
+        self.candidate = candidate
+        self.onCommit = onCommit
+        _selectedURL = State(initialValue: candidate.url)
+    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("所选媒体") {
-                    Text(candidate.url.lastPathComponent)
+                    Text(selectedURL.lastPathComponent)
                     if let inspection {
                         LabeledContent("时长", value: "\((Double(inspection.durationMilliseconds) / 1000).formatted(.number.precision(.fractionLength(1)))) 秒")
                         Picker("播放音轨", selection: $trackID) {
@@ -38,10 +51,18 @@ struct IOSMediaAssociationSheet: View {
                             Text("保持 Mac 任务的媒体内容和所选音轨，字幕与校对成果不变。")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                    } else if errorMessage == nil { ProgressView("检查媒体…") }
+                    } else if isInspecting { ProgressView("检查媒体…") }
+                    Button("重新选择…") { isSelectingMedia = true }
+                        .disabled(isInspecting || isSaving)
                 }
                 if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red) }
+                    Section {
+                        Text(errorMessage).foregroundStyle(.red)
+                        if inspection == nil, canRetryInspection {
+                            Button("重试检查") { inspectionRequestID = UUID() }
+                                .disabled(isInspecting || isSaving)
+                        }
+                    }
                 }
             }
             .navigationTitle("关联媒体")
@@ -58,7 +79,7 @@ struct IOSMediaAssociationSheet: View {
                                 let identity = try await MediaInspector.shared.confirm(inspection, audioTrackID: trackID)
                                 var item = candidate.item
                                 try item.associateMedia(identity)
-                                try await LocalMediaStore.shared.save(projectID: item.id, identity: identity, url: candidate.url)
+                                try await LocalMediaStore.shared.save(projectID: item.id, identity: identity, url: selectedURL)
                                 try onCommit(item)
                                 dismiss()
                             } catch { errorMessage = error.localizedDescription }
@@ -67,19 +88,56 @@ struct IOSMediaAssociationSheet: View {
                     .disabled(inspection == nil || trackID == nil || isSaving)
                 }
             }
-            .task {
-                accessStarted = candidate.url.startAccessingSecurityScopedResource()
+            .fileImporter(isPresented: $isSelectingMedia,
+                          allowedContentTypes: candidate.item.kind == .video ? [.movie] : [.audio]) { result in
                 do {
-                    let value = try await MediaInspector.shared.inspect(candidate.url)
+                    let url = try result.get()
+                    if accessStarted { selectedURL.stopAccessingSecurityScopedResource() }
+                    accessStarted = false
+                    selectedURL = url
+                    inspection = nil
+                    trackID = nil
+                    errorMessage = nil
+                    inspectionRequestID = UUID()
+                } catch { errorMessage = error.localizedDescription }
+            }
+            .task(id: inspectionRequestID) {
+                isInspecting = true
+                errorMessage = nil
+                canRetryInspection = false
+                defer { isInspecting = false }
+                if !accessStarted { accessStarted = selectedURL.startAccessingSecurityScopedResource() }
+                do {
+                    let value = try await MediaInspector.shared.inspect(selectedURL)
+                    try Task.checkCancellation()
                     guard value.kind == candidate.item.kind else { throw MediaAccessError.unsupportedFormat }
                     inspection = value
                     if let media = candidate.item.media { trackID = media.audioTrackID }
                     else if value.audioTracks.count == 1 { trackID = value.audioTracks[0].id }
-                } catch is CancellationError { errorMessage = "媒体检查已取消。" }
-                catch { errorMessage = error.localizedDescription }
+                } catch is CancellationError {
+                    errorMessage = "媒体检查已取消。"
+                    canRetryInspection = true
+                } catch {
+                    errorMessage = error.localizedDescription
+                    // Content and codec failures require a different file; only transient failures can retry.
+                    if let mediaError = error as? MediaAccessError {
+                        canRetryInspection = mediaError == .fileChanged
+                    } else if let mediaError = error as? AVError {
+                        switch mediaError.code {
+                        case .fileFormatNotRecognized, .fileFailedToParse, .invalidSourceMedia, .decodeFailed,
+                             .decoderNotFound, .undecodableMediaData, .formatUnsupported,
+                             .contentIsProtected, .operationNotSupportedForAsset:
+                            canRetryInspection = false
+                        default: canRetryInspection = true
+                        }
+                    } else { canRetryInspection = true }
+                }
             }
             .onDisappear {
-                if accessStarted { candidate.url.stopAccessingSecurityScopedResource() }
+                if accessStarted {
+                    selectedURL.stopAccessingSecurityScopedResource()
+                    accessStarted = false
+                }
             }
             .interactiveDismissDisabled(isSaving)
         }
