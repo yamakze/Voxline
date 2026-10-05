@@ -20,6 +20,48 @@ struct ProcessingCheckpointTests {
         return task
     }
 
+    @Test func explicitTranslationEditsPreserveASRAndManualEditsAndRequireApprovalForANewTarget() throws {
+        var original = try task(translates: true)
+        _ = try complete(&original, index: 0)
+        _ = try complete(&original, index: 1)
+        let cue = original.items[0].cues[0]
+        try original.items[0].editSubtitle(comparedTo: cue, sourceText: "Manual source", translationText: "手工校对")
+        let pending = try original.items[0].prepareTranslationBatch(cueIDs: [original.items[0].cues[1].id])
+        try original.items[0].beginTranslationBatch(pending)
+        try original.items[0].recordTranslationFailure(pending, reason: "Unknown service")
+        var conflictingParameters = original.parameters
+        conflictingParameters.transcription = .init(modelID: "different-model")
+        #expect(throws: TaskValidationError.parametersFrozen) { try original.updateParameters(conflictingParameters) }
+        let chunks = original.items[0].checkpoint!.chunks
+        let cues = original.items[0].cues
+        var parameters = original.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://new.example/v1")!,
+            modelID: "new-model", targetLanguage: "zh-Hans", serviceID: UUID(), batchSize: 2)
+        parameters.srtOutputs = [.source, .bilingual]
+        try original.updateParameters(parameters)
+        #expect(original.items[0].cues == cues)
+        #expect(original.items[0].checkpoint?.chunks == chunks)
+        #expect(original.items[0].checkpoint?.translationBatches.isEmpty == true)
+        #expect(original.items[0].checkpoint?.parameters == parameters)
+        var reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(original))
+        #expect(reopened == original)
+        let ids = reopened.items[0].cues.map(\.id)
+        let batch = try reopened.items[0].prepareTranslationBatch(cueIDs: [ids[1]])
+        try reopened.items[0].beginTranslationBatch(batch)
+        #expect(throws: CheckpointError.workRunning) { try reopened.updateParameters(parameters) }
+        try reopened.items[0].commitTranslationBatch(batch, outputs: [.init(cueID: ids[1], text: "继续")])
+        #expect(reopened.items[0].cues[0].translation == cues[0].translation)
+        parameters.translation = try TranslationSettings(appleSourceLanguage: "en", targetLanguage: "ja")
+        let before = reopened
+        #expect(throws: TaskValidationError.translationReplacementRequired) { try reopened.updateParameters(parameters) }
+        #expect(reopened == before)
+        try reopened.updateParameters(parameters, discardingTranslations: true)
+        #expect(reopened.items[0].cues.allSatisfy { $0.translation == .pending })
+        #expect(reopened.items[0].cues.map(\.sourceText) == cues.map(\.sourceText))
+        #expect(reopened.items[0].checkpoint?.chunks == chunks)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(reopened)) == reopened)
+    }
+
     @Test func nativeParametersAndCommittedBatchesSurviveMigrationAndRecovery() throws {
         var original = try task(apple: true)
         _ = try complete(&original, index: 0)

@@ -5,6 +5,8 @@ import VoxlineCore
 
 public struct TaskLibraryView: View {
     @State private var library = TaskLibrary.shared
+    @State private var deletingEntry: TaskLibrary.Entry?
+    @State private var errorMessage: String?
     var onSelectTask: ((ProcessingTask) -> Void)?
     var onNewTask: (() -> Void)?
     var onOpenFile: (() -> Void)?
@@ -93,6 +95,24 @@ public struct TaskLibraryView: View {
             }
         }
         .onAppear { library.refresh() }
+        .confirmationDialog("删除任务？", isPresented: Binding(
+            get: { deletingEntry != nil }, set: { if !$0 { deletingEntry = nil } }), titleVisibility: .visible) {
+            Button("删除任务文件", role: .destructive) {
+                guard let entry = deletingEntry else { return }
+                do {
+                    guard TaskProcessingQueue.shared.taskID != entry.taskID else { throw QueueError.busy }
+                    try library.delete(entryID: entry.id)
+                    deletingEntry = nil
+                } catch { errorMessage = error.localizedDescription }
+            }
+            Button("取消", role: .cancel) { deletingEntry = nil }
+        } message: {
+            Text("删除任务文件及其中的字幕成果，音视频源文件保留。\n\(deletingEntry?.url?.path ?? "")")
+        }
+        .alert("任务操作失败", isPresented: Binding(
+            get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("好", role: .cancel) { errorMessage = nil }
+        } message: { Text(errorMessage ?? "") }
     }
 
     @ViewBuilder
@@ -161,6 +181,16 @@ public struct TaskLibraryView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("删除", systemImage: "trash", role: .destructive) { deletingEntry = entry }
+                .disabled(TaskProcessingQueue.shared.taskID == entry.taskID)
+        }
+        .draggable(entry.id)
+        .dropDestination(for: String.self) { ids, _ in
+            guard let id = ids.first, library.entries.contains(where: { $0.id == id }) else { return false }
+            do { try library.move(entryID: id, to: entry.id); return true }
+            catch { errorMessage = error.localizedDescription; return false }
+        }
     }
 }
 

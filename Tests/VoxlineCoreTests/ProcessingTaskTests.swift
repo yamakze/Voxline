@@ -39,7 +39,7 @@ struct ProcessingTaskTests {
         #expect(reopened.status == .partiallyFailed)
     }
 
-    @Test func selectedParametersStayFrozenAfterReopenAndDefaultChanges() throws {
+    @Test func explicitEditsBeforeTranscriptionPreserveServiceSnapshotAndStartTime() throws {
         let serviceID = UUID()
         let translation = try TranslationSettings(baseURL: URL(string: "https://example.test/v1")!,
                                                    modelID: "selected-model", targetLanguage: "zh-Hans", serviceID: serviceID, batchSize: 7, systemPrompt: "Keep a conversational style.")
@@ -51,7 +51,8 @@ struct ProcessingTaskTests {
         try task.freezeParameters(at: startedAt)
         #expect(task.status == .queued)
         parameters.transcription = .whisperKitBaseline
-        #expect(throws: TaskValidationError.parametersFrozen) { try task.updateParameters(parameters) }
+        try task.updateParameters(parameters)
+        #expect(task.parameters.transcription == .whisperKitBaseline)
         var reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task))
         #expect(reopened.startedAt == startedAt)
         #expect(reopened.parameters == task.parameters)

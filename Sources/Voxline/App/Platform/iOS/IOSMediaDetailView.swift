@@ -44,7 +44,9 @@ struct IOSMediaDetailView: View {
                                 Text(item.status.label).font(.caption).foregroundStyle(.secondary)
                                 switch settings.engine {
                                 case .openAICompatible:
-                                    NavigationLink("本机翻译服务") { TranslationServicesSettingsView(referencedSettings: settings) }
+                                    NavigationLink("本机翻译服务") { TranslationServicesSettingsView(referencedSettings: settings, onBindService: { service in
+                                        try library.bindTranslationService(service, taskID: taskID)
+                                    }) }
                                 case .appleTranslation:
                                     NavigationLink("准备本机语言") { IOSAppleLanguagesView(settings: settings) }
                                 }

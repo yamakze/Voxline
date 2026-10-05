@@ -37,10 +37,46 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
-    public mutating func updateParameters(_ parameters: TaskParameters) throws {
-        guard startedAt == nil else { throw TaskValidationError.parametersFrozen }
+    public var canChangeTranscription: Bool {
+        items.allSatisfy { $0.checkpoint == nil && $0.cues.isEmpty }
+    }
+
+    /// Explicit edits retain ASR evidence; target changes require approval to replace translations.
+    public mutating func updateParameters(_ parameters: TaskParameters, discardingTranslations: Bool = false) throws {
+        guard !items.contains(where: { if case .running = $0.status { true } else { false } }) else {
+            throw CheckpointError.workRunning
+        }
+        guard parameters.transcription == self.parameters.transcription || canChangeTranscription else {
+            throw TaskValidationError.parametersFrozen
+        }
         try parameters.validate()
-        self.parameters = parameters
+        let translationChanged = parameters.translation != self.parameters.translation
+        let targetChanged = parameters.translation?.targetLanguage != self.parameters.translation?.targetLanguage
+        let replacesTranslations = targetChanged && parameters.translation != nil &&
+            items.contains { $0.cues.contains { if case .succeeded = $0.translation { true } else { false } } }
+        guard !replacesTranslations || discardingTranslations else {
+            throw TaskValidationError.translationReplacementRequired
+        }
+        var updated = self
+        updated.parameters = parameters
+        for index in updated.items.indices {
+            if replacesTranslations {
+                for cueIndex in updated.items[index].cues.indices {
+                    updated.items[index].cues[cueIndex].translation = .pending
+                }
+            }
+            guard var checkpoint = updated.items[index].checkpoint else { continue }
+            checkpoint.parameters = parameters
+            if translationChanged { checkpoint.translationBatches = [] }
+            updated.items[index].checkpoint = checkpoint
+            if translationChanged && checkpoint.chunks.allSatisfy(\.isCompleted) {
+                let item = updated.items[index]
+                updated.items[index].status = parameters.translation == nil || item.cues.allSatisfy(\.hasCurrentTranslation)
+                    ? item.completedProcessingStatus : .needsReview
+            }
+        }
+        try updated.validate()
+        self = updated
     }
 
     /// Freezes configuration only. The queue sets running states when actual work begins.
@@ -270,7 +306,7 @@ public enum ProcessingTaskStatus: Sendable {
 }
 
 public enum TaskValidationError: Error, LocalizedError, Equatable {
-    case emptyTitle, taskChanged, parametersFrozen, noMedia, noReadyMedia, invalidOutputs, translationRequired, unconfiguredTranslationService
+    case emptyTitle, taskChanged, translationReplacementRequired, parametersFrozen, noMedia, noReadyMedia, invalidOutputs, translationRequired, unconfiguredTranslationService
     case duplicateMedia(UUID), emptyMediaTitle(UUID), invalidSource(UUID), unassociatedMedia(UUID)
     case workBeforeStart(UUID), emptyFailureReason(UUID)
 
@@ -278,7 +314,8 @@ public enum TaskValidationError: Error, LocalizedError, Equatable {
         switch self {
         case .emptyTitle: "任务名称不能为空。"
         case .taskChanged: "提交期间任务已改变，请重新打开任务准备。"
-        case .parametersFrozen: "本次参数已固定；更换参数需新建任务或明确重跑。"
+        case .parametersFrozen: "已有转写记录或字幕；更换模型或原文语言需新建任务。"
+        case .translationReplacementRequired: "目标语言已改变，需要确认清除现有译文；原文、时间与转写成果保持。"
         case .noMedia: "请先添加本地媒体。"
         case .noReadyMedia: "任务没有可开始的媒体，请修复失败条目或添加可用媒体。"
         case .invalidOutputs: "请选择不重复的 SRT 输出类型。"

@@ -6,6 +6,35 @@ import VoxlineCore
 @Suite("Task document persistence", .serialized)
 @MainActor
 struct TaskLibraryTests {
+    @Test func listOrderSurvivesWorkerSavesAndRestartAndDeletionDoesNotTouchMedia() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let media = directory.appendingPathComponent("source.mp4")
+        try Data("Source stays".utf8).write(to: media)
+        let first = ProcessingTask(title: "First")
+        let second = ProcessingTask(title: "Second")
+        let library = TaskLibrary(tasksDirectory: directory)
+        try library.save(first)
+        try library.save(second)
+        try library.move(entryID: first.id.uuidString, to: second.id.uuidString)
+        #expect(library.entries.map(\.taskID) == [first.id, second.id])
+        try library.save(first)
+        #expect(library.entries.map(\.taskID) == [first.id, second.id])
+        let recent = library.defaultURL(for: second.id)
+        let reopened = TaskLibrary(tasksDirectory: directory, recentDocumentURLs: { [recent] })
+        #expect(reopened.entries.map(\.taskID) == [first.id, second.id])
+        try reopened.delete(taskID: second.id)
+        reopened.refresh()
+        #expect(reopened.entries.map(\.taskID) == [first.id])
+        #expect(try Data(contentsOf: media) == Data("Source stays".utf8))
+        try FileManager.default.removeItem(at: directory.appendingPathComponent("task-order.json"))
+        try FileManager.default.createDirectory(at: directory.appendingPathComponent("task-order.json"), withIntermediateDirectories: false)
+        let before = reopened.entries.map(\.id)
+        #expect(throws: (any Error).self) { try reopened.reorder(entryIDs: before) }
+        #expect(reopened.entries.map(\.id) == before)
+    }
+
     @Test func nativeRecentDocumentsAreReadWithoutRewritingAndRegistrationIsSeparateFromSaving() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

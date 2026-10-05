@@ -6,6 +6,7 @@ import VoxlineCore
 struct IOSTaskLibraryView: View {
     @State private var library = IOSTaskLibrary()
     @State private var importing = false
+    @State private var deletingTask: ProcessingTask?
     @State private var replacement: ProcessingTask?
 
     var body: some View {
@@ -21,23 +22,38 @@ struct IOSTaskLibraryView: View {
                             .buttonStyle(.borderedProminent)
                     }
                 } else {
-                    List(library.tasks) { task in
-                        NavigationLink {
-                            IOSTaskDetailView(library: library, taskID: task.id)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(task.title).font(.headline)
-                                Text("\(task.items.count) 个媒体 · \(task.completedCount) 完成 · \(task.failedCount) 失败")
-                                    .font(.subheadline).foregroundStyle(.secondary)
-                                Text(task.status.label).font(.caption).foregroundStyle(.secondary)
+                    List {
+                        ForEach(library.tasks) { task in
+                            NavigationLink {
+                                IOSTaskDetailView(library: library, taskID: task.id)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(task.title).font(.headline)
+                                    Text("\(task.items.count) 个媒体 · \(task.completedCount) 完成 · \(task.failedCount) 失败")
+                                        .font(.subheadline).foregroundStyle(.secondary)
+                                    Text(task.status.label).font(.caption).foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 6)
                             }
-                            .padding(.vertical, 6)
+                            .contextMenu {
+                                Button("删除", systemImage: "trash", role: .destructive) { deletingTask = task }
+                                    .disabled(library.queue.taskID == task.id)
+                            }
+                        }
+                        .onMove { offsets, destination in
+                            var tasks = library.tasks
+                            tasks.move(fromOffsets: offsets, toOffset: destination)
+                            let entries = tasks.compactMap { task in library.storage.entries.first { $0.taskID == task.id } }
+                                + library.storage.entries.filter { $0.task == nil }
+                            do { try library.storage.reorder(entryIDs: entries.map(\.id)) }
+                            catch { library.errorMessage = error.localizedDescription }
                         }
                     }
                 }
             }
             .navigationTitle("任务")
             .toolbar {
+                ToolbarItem(placement: .primaryAction) { EditButton() }
                 ToolbarItem(placement: .primaryAction) {
                     Button("导入任务", systemImage: "square.and.arrow.down") { importing = true }
                 }
@@ -59,6 +75,19 @@ struct IOSTaskLibraryView: View {
             }
             .task { library.load() }
             .onOpenURL { importTask($0) }
+            .confirmationDialog("删除本地任务？", isPresented: Binding(
+                get: { deletingTask != nil }, set: { if !$0 { deletingTask = nil } }), titleVisibility: .visible) {
+                Button("删除", role: .destructive) {
+                    do {
+                        if let deletingTask {
+                            guard library.queue.taskID != deletingTask.id else { throw CheckpointError.workRunning }
+                            try library.storage.delete(taskID: deletingTask.id)
+                        }
+                        deletingTask = nil
+                    } catch { library.errorMessage = error.localizedDescription }
+                }
+                Button("取消", role: .cancel) { deletingTask = nil }
+            } message: { Text("删除设备上的任务副本及字幕成果，导入源文件和音视频保留。") }
             .alert("替换本地任务？", isPresented: Binding(
                 get: { replacement != nil }, set: { if !$0 { replacement = nil } })) {
                 Button("取消", role: .cancel) { replacement = nil }
@@ -85,6 +114,7 @@ struct IOSTaskLibraryView: View {
 private struct IOSTaskDetailView: View {
     let library: IOSTaskLibrary
     let taskID: UUID
+    @State private var editingParameters = false
 
     var body: some View {
         if let task = library.task(taskID) {
@@ -103,7 +133,9 @@ private struct IOSTaskDetailView: View {
                             LabeledContent("引擎", value: "OpenAI 兼容接口")
                             LabeledContent("模型", value: api.modelID)
                             Text(api.baseURL.absoluteString).font(.caption).textSelection(.enabled)
-                            NavigationLink("本机翻译服务") { TranslationServicesSettingsView(referencedSettings: settings) }
+                            NavigationLink("本机翻译服务") { TranslationServicesSettingsView(referencedSettings: settings, onBindService: { service in
+                                try library.bindTranslationService(service, taskID: taskID)
+                            }) }
                         case .appleTranslation(let source):
                             LabeledContent("引擎", value: "Apple 本机翻译")
                             LabeledContent("原文语言", value: source)
@@ -130,6 +162,18 @@ private struct IOSTaskDetailView: View {
                             .padding(.vertical, 4)
                         }
                     }
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("调整参数", systemImage: "slider.horizontal.3") { editingParameters = true }
+                        .disabled(library.queue.taskID == taskID)
+                }
+            }
+            .sheet(isPresented: $editingParameters) {
+                TaskTranslationParametersView(task: task) { updated, original in
+                    guard library.task(taskID) == original else { throw TaskValidationError.taskChanged }
+                    try library.save(updated)
                 }
             }
             .navigationTitle(task.title)

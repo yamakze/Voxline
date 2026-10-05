@@ -10,6 +10,7 @@ enum AppleSubtitleTranslationError: Error, LocalizedError, Equatable {
     case busy
     case invalidResponse
     case languagePreparationFailed(String)
+    case languagesNotInstalled
     case simulatorUnsupported
 
     var errorDescription: String? {
@@ -20,6 +21,7 @@ enum AppleSubtitleTranslationError: Error, LocalizedError, Equatable {
         case .invalidResponse: "Apple Translation 返回的字幕 ID 或文本不完整，本批结果未保存。"
         case .languagePreparationFailed(let reason):
             "Apple 语言准备未完成：\(reason)。请在系统面板完成下载后重试，原文和已完成译文已保留。"
+        case .languagesNotInstalled: "本机翻译语言尚未安装，请先打开“准备本机语言”完成下载，再继续翻译。原文和已完成译文已保留。"
         case .simulatorUnsupported: "Apple 本机翻译不支持 iOS 模拟器，请在真实设备准备语言并翻译。"
         }
     }
@@ -57,6 +59,9 @@ final class AppleTranslationCoordinator {
             throw SubtitleTranslationError.invalidRequest
         }
         let (source, target) = try await Self.languagePair(sourceID: sourceID, targetID: settings.targetLanguage)
+        guard await LanguageAvailability().status(from: source, to: target) == .installed else {
+            throw AppleSubtitleTranslationError.languagesNotInstalled
+        }
         return try await requestSession(purpose: .translate(request.inputs), source: source, target: target)
     }
 
@@ -123,17 +128,25 @@ final class AppleTranslationCoordinator {
         let result: Result<[TranslationBatchOutput], any Error>
         do {
             let session: TranslationSession
-            if #available(macOS 26, iOS 26, *),
-               await LanguageAvailability().status(from: current.source, to: current.target) == .installed {
-                session = TranslationSession(installedSource: current.source, target: current.target)
-                cancelSession = { session.cancel() }
-            } else {
+            switch current.purpose {
+            case .prepareLanguages:
                 session = viewSession
                 do { try await session.prepareTranslation() }
                 catch {
                     if Task.isCancelled || work?.cancelled == true { throw CancellationError() }
                     throw AppleSubtitleTranslationError.languagePreparationFailed(error.localizedDescription)
                 }
+                guard await LanguageAvailability().status(from: current.source, to: current.target) == .installed else {
+                    throw AppleSubtitleTranslationError.languagesNotInstalled
+                }
+            case .translate:
+                guard await LanguageAvailability().status(from: current.source, to: current.target) == .installed else {
+                    throw AppleSubtitleTranslationError.languagesNotInstalled
+                }
+                if #available(macOS 26, iOS 26, *) {
+                    session = TranslationSession(installedSource: current.source, target: current.target)
+                    cancelSession = { session.cancel() }
+                } else { session = viewSession }
             }
             try Task.checkCancellation()
             if work?.cancelled == true { throw CancellationError() }

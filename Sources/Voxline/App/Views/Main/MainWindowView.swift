@@ -60,6 +60,7 @@ public struct MainWindowView: View {
                 },
                 set: { configurationTask = $0 }
             )) { prepared in
+                guard TaskProcessingQueue.shared.taskID != prepared.id else { throw QueueError.busy }
                 try library.save(prepared)
             }
         }
@@ -208,7 +209,7 @@ public struct MainWindowView: View {
                     }
 
                     ToolbarItemGroup(placement: .primaryAction) {
-                        if task.startedAt == nil {
+                        if TaskProcessingQueue.shared.taskID != task.id {
                             Button("调整参数", systemImage: "slider.horizontal.3") {
                                 configurationTask = task
                             }

@@ -22,9 +22,9 @@ struct AppleTranslationLanguageSettings: View {
             } else if languages.isEmpty {
                 Text("当前系统未提供可用的本机翻译语言。")
             } else {
-                languagePicker("原文语言", selection: $source)
+                LanguagePicker(title: "原文语言", selection: $source, identifiers: languages.map(\.minimalIdentifier))
                     .disabled(preparation != nil)
-                languagePicker("目标语言", selection: $target)
+                LanguagePicker(title: "目标语言", selection: $target, identifiers: languages.map(\.minimalIdentifier))
                     .disabled(preparation != nil)
             }
             Text(statusText).font(.caption).foregroundStyle(.secondary)
@@ -34,7 +34,7 @@ struct AppleTranslationLanguageSettings: View {
                     .disabled(preparation != nil)
             }
             if preparation != nil {
-                ProgressView("准备语言…")
+                ProgressView("等待系统许可并下载语言…")
                 Button("取消语言准备") { preparation?.cancel() }
             } else {
                 Button("准备语言") {
@@ -50,7 +50,7 @@ struct AppleTranslationLanguageSettings: View {
                     }
                 }
             }
-            Text("开始翻译时由系统请求下载许可；下载后可离线翻译。对白中的多义词仍需播放校对。失败保留成果，可继续或重试。")
+            Text("请先通过“准备语言”允许系统下载；完成后再开始翻译，可离线使用。对白中的多义词仍需播放校对。失败保留成果，可继续或重试。")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .disabled(preparation != nil && preparation?.isCancelled == true)
@@ -91,15 +91,4 @@ struct AppleTranslationLanguageSettings: View {
         }
     }
 
-    private func languagePicker(_ label: String, selection: Binding<String>) -> some View {
-        Picker(label, selection: selection) {
-            if !languages.contains(where: { $0.minimalIdentifier == selection.wrappedValue }) {
-                Text("不支持：\(selection.wrappedValue)").tag(selection.wrappedValue)
-            }
-            ForEach(languages, id: \.minimalIdentifier) { language in
-                Text(Locale.current.localizedString(forIdentifier: language.minimalIdentifier) ?? language.minimalIdentifier)
-                    .tag(language.minimalIdentifier)
-            }
-        }
-    }
 }

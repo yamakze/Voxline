@@ -67,7 +67,7 @@ public struct TranslationBatchCheckpoint: Codable, Equatable, Identifiable, Send
 
 public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
     public let media: MediaIdentity
-    public let parameters: TaskParameters
+    public internal(set) var parameters: TaskParameters
     public internal(set) var chunks: [TranscriptionChunkCheckpoint]
     public internal(set) var translationBatches: [TranslationBatchCheckpoint]
 

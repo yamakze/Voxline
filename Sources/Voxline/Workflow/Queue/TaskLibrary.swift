@@ -19,6 +19,8 @@ public final class TaskLibrary {
     }
 
     public let tasksDirectory: URL
+    private var orderedURLs: [URL] = []
+    private var orderURL: URL { tasksDirectory.appendingPathComponent("task-order.json") }
     private let recentDocumentURLs: @MainActor () -> [URL]
     private let noteRecentDocument: @MainActor (URL) -> Void
 
@@ -48,8 +50,9 @@ public final class TaskLibrary {
         }
         let entry = Entry(id: task.id.uuidString, taskID: task.id, url: fileURL, task: task, error: nil)
         openTasks[task.id] = entry
+        let position = entries.firstIndex { $0.taskID == task.id || $0.url == fileURL } ?? 0
         entries.removeAll { $0.taskID == task.id || $0.url == fileURL }
-        entries.insert(entry, at: 0)
+        entries.insert(entry, at: min(position, entries.count))
     }
 
     public func defaultURL(for taskID: UUID) -> URL {
@@ -90,14 +93,51 @@ public final class TaskLibrary {
     }
 
     public func delete(taskID: UUID) throws {
-        let fileURL = self.url(for: taskID)
-        if let fileURL { try FileManager.default.removeItem(at: fileURL) }
-        openTasks[taskID] = nil
-        entries.removeAll { $0.taskID == taskID }
+        guard let entry = entries.first(where: { $0.taskID == taskID }) else { throw CheckpointError.taskUnavailable }
+        try delete(entryID: entry.id)
+    }
+
+    public func delete(entryID: String) throws {
+        guard let entry = entries.first(where: { $0.id == entryID }), let url = entry.url else {
+            throw CheckpointError.taskUnavailable
+        }
+        guard entry.task?.status != .running else { throw CheckpointError.workRunning }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        try FileManager.default.removeItem(at: url)
+        openTasks[entry.taskID] = nil
+        entries.removeAll { $0.id == entryID }
+    }
+
+    /// Persist list order separately from immutable processing results.
+    public func move(entryID: String, to destinationID: String) throws {
+        guard let from = entries.firstIndex(where: { $0.id == entryID }),
+              let to = entries.firstIndex(where: { $0.id == destinationID }) else { throw CheckpointError.taskUnavailable }
+        guard entryID != destinationID else { return }
+        var reordered = entries
+        let entry = reordered.remove(at: from)
+        reordered.insert(entry, at: to)
+        try reorder(entryIDs: reordered.map(\.id))
+    }
+
+    public func reorder(entryIDs: [String]) throws {
+        guard entryIDs.count == entries.count, Set(entryIDs) == Set(entries.map(\.id)) else {
+            throw TaskValidationError.taskChanged
+        }
+        let current = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        let reordered = entryIDs.map { current[$0]! }
+        let urls = reordered.compactMap(\.url)
+        try JSONEncoder().encode(urls).write(to: orderURL, options: .atomic)
+        orderedURLs = urls
+        entries = reordered
     }
 
     public func refresh() {
         errorMessage = nil
+        do {
+            orderedURLs = FileManager.default.fileExists(atPath: orderURL.path)
+                ? try JSONDecoder().decode([URL].self, from: Data(contentsOf: orderURL)) : []
+        } catch { errorMessage = "任务顺序读取失败：\(error.localizedDescription)" }
         var foundEntries: [Entry] = []
         var seenIDs = Set<UUID>()
 
@@ -143,6 +183,9 @@ public final class TaskLibrary {
                     seenIDs.insert(task.id)
                     foundEntries.append(Entry(id: url.absoluteString, taskID: task.id, url: url, task: task, error: nil))
                 }
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                // Deleted documents can remain in the system's recent-document list.
+                continue
             } catch {
                 if !foundEntries.contains(where: { $0.url == url }) {
                     foundEntries.append(Entry(id: url.absoluteString, taskID: UUID(), url: url, task: nil, error: error.localizedDescription))
@@ -150,6 +193,14 @@ public final class TaskLibrary {
             }
         }
 
-        entries = foundEntries.sorted { ($0.task?.startedAt ?? Date.distantPast) > ($1.task?.startedAt ?? Date.distantPast) }
+        entries = foundEntries.sorted {
+            let left = $0.url.flatMap { orderedURLs.firstIndex(of: $0) }
+            let right = $1.url.flatMap { orderedURLs.firstIndex(of: $0) }
+            if left != right { return (left ?? -1) < (right ?? -1) }
+            if $0.task?.startedAt != $1.task?.startedAt {
+                return ($0.task?.startedAt ?? .distantPast) > ($1.task?.startedAt ?? .distantPast)
+            }
+            return $0.title.localizedStandardCompare($1.title) == .orderedAscending
+        }
     }
 }

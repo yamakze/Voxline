@@ -35,6 +35,7 @@ public struct TaskConfigurationView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var showMediaImporter = false
+    @State private var confirmTranslationReplacement = false
     @State private var showModelManager = false
     @State private var showTranslationSettings = false
 
@@ -198,6 +199,14 @@ public struct TaskConfigurationView: View {
                 translationBatchSize = service.batchSize
                 translationSystemPrompt = service.systemPrompt
             }
+        }
+        .confirmationDialog("更换目标语言？", isPresented: $confirmTranslationReplacement, titleVisibility: .visible) {
+            Button("清除现有译文并保存", role: .destructive) {
+                saveTask = Task { await commitTask(discardingTranslations: true) }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("现有译文将清除，原文、时间、转写成果和待校对标记保持。保存后可继续翻译。")
         }
         .onDisappear {
             importTask?.cancel()
@@ -508,15 +517,19 @@ public struct TaskConfigurationView: View {
 
                         Picker("原文语言", selection: $languageMode) {
                             Text("自动识别语言").tag(TranscriptionSettings.LanguageMode.automatic)
-                            Text("指定语言代码").tag(TranscriptionSettings.LanguageMode.specified)
+                            Text("选择语言").tag(TranscriptionSettings.LanguageMode.specified)
                         }
 
                         if languageMode == .specified {
-                            TextField("语言代码（如 en / ja）", text: $languageCode)
-                                .textFieldStyle(.roundedBorder)
+                            LanguagePicker(title: "原文语言", selection: $languageCode, identifiers: WhisperKitLanguages.codes)
                         }
                     }
+                    .disabled(!originalTask.canChangeTranscription)
                     .padding(.top, 6)
+                    if !originalTask.canChangeTranscription {
+                        Text("已有转写记录或字幕，模型与原文语言保持原值。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 } label: {
                     Label("转写引擎 (WhisperKit)", systemImage: "cpu")
                         .font(.subheadline.bold())
@@ -559,8 +572,7 @@ public struct TaskConfigurationView: View {
                                 TextField("翻译模型（如 gpt-4o-mini）", text: $translationModel)
                                     .textFieldStyle(.roundedBorder)
 
-                                TextField("目标语言（默认 zh-Hans）", text: $targetLanguage)
-                                    .textFieldStyle(.roundedBorder)
+                                LanguagePicker(title: "目标语言", selection: $targetLanguage)
                                 Text("每批最多 \(translationBatchSize) 条字幕").font(.caption)
                                 DisclosureGroup("系统提示词") {
                                     Text(translationSystemPrompt).font(.caption).textSelection(.enabled)
@@ -630,7 +642,7 @@ public struct TaskConfigurationView: View {
 
             Spacer()
 
-            Button("保存草稿") {
+            Button(originalTask.startedAt == nil ? "保存草稿" : "保存参数") {
                 saveTask = Task { await commitTask() }
             }
             .disabled(isInspecting || isSaving)
@@ -668,7 +680,7 @@ public struct TaskConfigurationView: View {
         return nil
     }
 
-    private func commitTask() async {
+    private func commitTask(discardingTranslations: Bool = false) async {
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
@@ -703,12 +715,6 @@ public struct TaskConfigurationView: View {
             updated.title = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
             if updated.title.isEmpty { updated.title = "未命名任务" }
 
-            try updated.updateParameters(TaskParameters(
-                transcription: transcription,
-                translation: translation,
-                srtOutputs: [.source, .translation, .bilingual].filter { outputs.contains($0) }
-            ))
-
             var newItems: [TaskMediaItem] = existingItems
             var addedBookmarkPairs: [(TaskMediaItem, MediaInspection, Int32)] = []
 
@@ -742,6 +748,10 @@ public struct TaskConfigurationView: View {
             }
 
             updated.items = newItems
+            try updated.updateParameters(TaskParameters(
+                transcription: transcription, translation: translation,
+                srtOutputs: [.source, .translation, .bilingual].filter { outputs.contains($0) }
+            ), discardingTranslations: discardingTranslations)
             try updated.validate()
 
             for (item, inspection, trackID) in addedBookmarkPairs {
@@ -764,6 +774,8 @@ public struct TaskConfigurationView: View {
             try onCommit?(updated)
             task = updated
             dismiss()
+        } catch TaskValidationError.translationReplacementRequired {
+            confirmTranslationReplacement = true
         } catch {
             errorMessage = error.localizedDescription
         }

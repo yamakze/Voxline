@@ -8,9 +8,12 @@ public struct TranslationServicesSettingsView: View {
     @State private var editingService: TranslationServiceConfig?
     @State private var errorMessage: String?
     @State private var connectionTask: Task<Void, Never>?
+    @State private var bindingService: TranslationServiceConfig?
+    private var onBindService: ((TranslationServiceConfig) throws -> Void)?
     private var referencedService: TranslationServiceConfig?
 
-    public init(referencedSettings: TranslationSettings? = nil) {
+    public init(referencedSettings: TranslationSettings? = nil, onBindService: ((TranslationServiceConfig) throws -> Void)? = nil) {
+        self.onBindService = onBindService
         if let api = referencedSettings?.api, let id = api.serviceID, let settings = referencedSettings {
             referencedService = .init(id: id, name: api.modelID, baseURL: api.baseURL, modelID: api.modelID,
                                       batchSize: settings.batchSize, systemPrompt: api.systemPrompt)
@@ -93,6 +96,18 @@ public struct TranslationServicesSettingsView: View {
                 try await store.addOrUpdate(updated, apiKey: key)
             }
         }
+        .confirmationDialog("本次任务使用此服务？", isPresented: Binding(
+            get: { bindingService != nil }, set: { if !$0 { bindingService = nil } }), titleVisibility: .visible) {
+            Button("绑定到本次任务") {
+                do {
+                    if let bindingService { try onBindService?(bindingService) }
+                    bindingService = nil
+                } catch { errorMessage = error.localizedDescription }
+            }
+            Button("取消", role: .cancel) { bindingService = nil }
+        } message: {
+            Text("本次任务将使用所选服务地址和模型，保留原目标语言、批量数量、提示词与已有译文。\n\(bindingService?.name ?? "") · \(bindingService?.modelID ?? "")\n\(bindingService?.baseURL.absoluteString ?? "")")
+        }
         .alert("服务配置未修改", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("好", role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
@@ -168,6 +183,13 @@ public struct TranslationServicesSettingsView: View {
                 }
             }
 
+            if onBindService != nil {
+                Button("本次任务使用此服务") { bindingService = service }
+                    .disabled(store.isLoading || store.isSaving)
+                if referencedService?.id == service.id, referencedService?.baseURL == service.baseURL {
+                    Text("本次任务已绑定此服务").font(.caption).foregroundStyle(.secondary)
+                }
+            }
             Text("每批最多 \(service.batchSize) 条字幕").font(.caption).foregroundStyle(.secondary)
 
             Divider()
