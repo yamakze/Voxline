@@ -22,19 +22,36 @@ public struct TranslationServicesSettingsView: View {
 
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("字幕文本发送到所选服务；音频保持本地。密钥仅保存在本设备。")
-                    .font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 18) {
                 if let referencedService, !store.services.contains(where: { $0.id == referencedService.id }) {
-                    Text("本次任务引用的服务尚未在此设备配置。地址、模型和参数沿用任务快照。")
-                        .font(.callout)
-                    Button("配置本次服务") { editingService = referencedService }
+                    HStack(spacing: 10) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.blue)
+                        Text("当前任务引用的服务尚未在此设备配置")
+                            .font(.subheadline)
+                        Spacer()
+                        Button("配置此服务") { editingService = referencedService }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                    .padding(12)
+                    .background(Color.blue.opacity(0.08), in: .rect(cornerRadius: 8))
                 }
-                if store.isLoading { ProgressView("读取服务与 Keychain…") }
+
+                if store.isLoading {
+                    ProgressView("正在读取服务…")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 20)
+                }
+
                 if let error = store.errorMessage {
-                    Text(error).foregroundStyle(.red).textSelection(.enabled)
-                    Button("重新读取") { Task { await store.load() } }.disabled(store.isLoading || store.isSaving)
+                    HStack {
+                        Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+                        Spacer()
+                        Button("重试") { Task { await store.load() } }.disabled(store.isLoading || store.isSaving)
+                    }
                 }
+
                 // Inset Grouped Service Cards
                 if store.services.isEmpty {
                     ContentUnavailableView(
@@ -42,7 +59,7 @@ public struct TranslationServicesSettingsView: View {
                         systemImage: "character.bubble",
                         description: Text("点击右上角“+”按钮配置 OpenAI 或本地 Ollama 接口以开启字幕翻译。")
                     )
-                    .padding(.vertical, 40)
+                    .padding(.vertical, 60)
                     .frame(maxWidth: .infinity)
                 } else {
                     VStack(spacing: 12) {
@@ -52,7 +69,7 @@ public struct TranslationServicesSettingsView: View {
                     }
                 }
             }
-            .padding(28)
+            .padding(24)
         }
         .toolbar {
             #if os(macOS)
@@ -107,46 +124,67 @@ public struct TranslationServicesSettingsView: View {
 
     @ViewBuilder
     private func serviceCard(service: TranslationServiceConfig) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                // Service Icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.teal.opacity(0.15))
-                        .frame(width: 40, height: 40)
-                    Image(systemName: "character.book.closed")
-                        .font(.title3)
-                        .foregroundStyle(.teal)
-                }
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.teal.opacity(0.12))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "character.book.closed")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.teal)
+            }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        Text(service.name)
-                            .font(.headline)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(service.name)
+                        .font(.headline)
 
-                        // Status dot from test result
-                        if let result = store.testResult[service.id] {
-                            switch result {
-                            case .success:
-                                Circle().fill(Color.green).frame(width: 8, height: 8)
-                                    .help("接口连接正常")
-                            case .failure:
-                                Circle().fill(Color.red).frame(width: 8, height: 8)
-                                    .help("接口连接异常")
-                            }
+                    if let result = store.testResult[service.id] {
+                        switch result {
+                        case .success:
+                            Circle().fill(Color.green).frame(width: 8, height: 8)
+                                .help("连接正常")
+                        case .failure:
+                            Circle().fill(Color.red).frame(width: 8, height: 8)
+                                .help("连接失败")
                         }
                     }
-
-                    Text(service.baseURL.absoluteString)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
                 }
 
-                Spacer()
+                HStack(spacing: 6) {
+                    Text(service.modelID)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
 
-                // Test connection button
-                VStack(alignment: .trailing, spacing: 4) {
-                    Button("测试连接") {
+                    Text("•")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+
+                    Text(service.baseURL.host ?? service.baseURL.absoluteString)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            HStack(spacing: 10) {
+                if onBindService != nil {
+                    Button(referencedService?.id == service.id ? "已绑定" : "使用") {
+                        bindingService = service
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(referencedService?.id == service.id || store.isLoading || store.isSaving)
+                }
+
+                if store.testingServiceID == service.id {
+                    HStack(spacing: 4) {
+                        ProgressView().controlSize(.small)
+                        Text("测试中…").font(.caption2).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Button("测试") {
                         connectionTask = Task {
                             defer { connectionTask = nil }
                             do { _ = try await store.testConnection(service: service) }
@@ -156,72 +194,35 @@ public struct TranslationServicesSettingsView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(store.testingServiceID != nil || store.isLoading || store.isSaving)
-                    .help("向服务发送一条短文本，调用当前模型验证聊天接口。")
-
-                    if store.testingServiceID == service.id {
-                        HStack(spacing: 4) {
-                            ProgressView().controlSize(.mini)
-                            Text("连接中…").font(.caption2).foregroundStyle(.secondary)
-                        }
-                        Button("取消测试") { connectionTask?.cancel() }
-                    } else if let result = store.testResult[service.id] {
-                        switch result {
-                        case .success(let msg):
-                            Text(msg).font(.caption2).foregroundStyle(.green)
-                        case .failure(let err):
-                            Text(err.localizedDescription).font(.caption2).foregroundStyle(.red)
-                        }
-                    }
-                }
-            }
-
-            if onBindService != nil {
-                Button("本次任务使用此服务") { bindingService = service }
-                    .disabled(store.isLoading || store.isSaving)
-                if referencedService?.id == service.id, referencedService?.baseURL == service.baseURL {
-                    Text("本次任务已绑定此服务").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Text("每批最多 \(service.batchSize) 条字幕").font(.caption).foregroundStyle(.secondary)
-
-            Divider()
-
-            // Service details
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Text("默认模型：").font(.caption2).foregroundStyle(.secondary)
-                    Text(service.modelID).font(.caption.monospaced().bold())
                 }
 
-                HStack(spacing: 6) {
-                    Text("API 密钥：").font(.caption2).foregroundStyle(.secondary)
-                    Text(store.credentialPresence[service.id] == true ? "已保存在 Keychain" : "未设置（无鉴权）").font(.caption)
-                }
-
-                HStack {
-                    Button("编辑", systemImage: "pencil") {
+                Menu {
+                    Button {
                         editingService = service
+                    } label: {
+                        Label("编辑…", systemImage: "pencil")
                     }
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundStyle(.tint)
-                    .disabled(store.isLoading || store.isSaving)
 
-                    Button("删除", systemImage: "trash") {
+                    Divider()
+
+                    Button(role: .destructive) {
                         Task {
                             do { try await store.remove(id: service.id) }
                             catch { errorMessage = error.localizedDescription }
                         }
+                    } label: {
+                        Label("删除", systemImage: "trash")
                     }
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .disabled(store.isLoading || store.isSaving)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.body)
                 }
+                .menuStyle(.borderlessButton)
+                .frame(width: 24, height: 24)
             }
         }
-        .padding(16)
-        .liquidGlassSurface()
+        .padding(14)
+        .liquidGlassSurface(cornerRadius: 12)
     }
 }
 
@@ -245,6 +246,7 @@ private struct ServiceEditorModal: View {
     @State private var isSaving = false
     @State private var keyReadFailed = false
     @State private var connectionTask: Task<Void, Never>?
+    @State private var isAdvancedExpanded = false
 
     init(service: TranslationServiceConfig?, store: TranslationServiceStore,
          onSave: @escaping (TranslationServiceConfig, String) async throws -> Void) {
@@ -262,12 +264,16 @@ private struct ServiceEditorModal: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Modal Header
             HStack {
                 Text(original == nil ? "添加翻译服务" : "编辑翻译服务")
                     .font(.headline)
                 Spacer()
-                Button("取消") { connectionTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction).disabled(isSaving)
+                Button("取消") {
+                    connectionTask?.cancel()
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+                .disabled(isSaving)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -276,60 +282,103 @@ private struct ServiceEditorModal: View {
             Divider()
 
             Form {
-                Section("服务接入参数") {
-                    TextField("显示名称（如 OpenAI 官方 / DeepSeek）", text: $name)
-                    TextField("接口 Base URL（如 https://api.openai.com/v1）", text: $baseURLString)
-                    TextField("默认模型 ID（如 gpt-4o-mini）", text: $modelID)
+                Section("服务接入") {
+                    TextField("名称", text: $name, prompt: Text("例如 OpenAI / DeepSeek"))
+                    TextField("接口地址", text: $baseURLString, prompt: Text("https://api.openai.com/v1"))
+                    TextField("模型", text: $modelID, prompt: Text("gpt-4o-mini"))
+                    PasswordVisibilityField("API 密钥（选填）", text: $apiKey)
                 }
 
-                Section("字幕翻译参数") {
-                    TextField("每批字幕数量", text: $batchSizeText)
-                    Text("字幕和上下文容量较大时，每批可能少于此数量。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text("系统提示词")
-                    TextEditor(text: $systemPrompt).frame(minHeight: 80)
-                        .accessibilityLabel("系统提示词")
-                    Button("恢复默认提示词") { systemPrompt = TranslationSettings.defaultSystemPrompt }
-                    Text("提示词控制翻译要求。字幕 ID 与 JSON 输出格式由应用固定维护；修改配置仅影响后续任务。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                Section {
+                    DisclosureGroup("高级选项", isExpanded: $isAdvancedExpanded) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack {
+                                Text("每批字幕数")
+                                Spacer()
+                                TextField("数量", text: $batchSizeText)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(width: 80)
+                            }
 
-                Section("API 凭据") {
-                    PasswordVisibilityField("输入 API 密钥", text: $apiKey)
-                    Text("密钥保存到 Keychain。留空时不发送鉴权头，仅适用于无需密钥的服务。")
-                        .font(.caption).foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("系统提示词")
+                                    Spacer()
+                                    Button("恢复默认") {
+                                        systemPrompt = TranslationSettings.defaultSystemPrompt
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .font(.caption)
+                                    .foregroundStyle(.tint)
+                                }
+                                TextEditor(text: $systemPrompt)
+                                    .font(.callout)
+                                    .frame(minHeight: 90)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                                    )
+                            }
+                        }
+                        .padding(.top, 6)
+                    }
                 }
             }
             .formStyle(.grouped)
             .disabled(isLoadingKey || isSaving)
-            if isLoadingKey { ProgressView("读取 Keychain…") }
-            if keyReadFailed { Button("重新读取密钥") { Task { await loadCredential() } } }
+
+            if isLoadingKey {
+                ProgressView("正在读取密钥…")
+                    .padding(.vertical, 8)
+            }
+            if keyReadFailed {
+                Button("重新读取密钥") { Task { await loadCredential() } }
+                    .padding(.vertical, 4)
+            }
 
             if let errorMessage {
-                Text(errorMessage).font(.caption).foregroundStyle(.red).padding(.horizontal, 20)
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
             }
             if let testSuccessMessage {
-                Text(testSuccessMessage).font(.caption).foregroundStyle(.green).padding(.horizontal, 20)
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle")
+                        .foregroundStyle(.green)
+                    Text(testSuccessMessage)
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
             }
 
             Divider()
 
-            // Modal Footer
             HStack {
-                Button("测试接口连通性") {
+                Button("测试连接") {
                     testConnection()
                 }
                 .disabled(isTesting || isLoadingKey || isSaving)
-                .help("向服务发送一条短文本，调用当前模型验证聊天接口。")
 
                 if isTesting {
                     ProgressView().controlSize(.small)
-                    Button("取消测试") { connectionTask?.cancel() }
+                    Button("取消") { connectionTask?.cancel() }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
                 }
 
                 Spacer()
 
-                Button("保存配置") {
+                Button("保存") {
                     saveService()
                 }
                 .buttonStyle(.borderedProminent)
@@ -341,7 +390,7 @@ private struct ServiceEditorModal: View {
             .background(.regularMaterial)
         }
         #if os(macOS)
-        .frame(width: 560, height: 690)
+        .frame(width: 500, height: 480)
         #else
         .autocorrectionDisabled()
         .textInputAutocapitalization(.never)
