@@ -8,25 +8,38 @@ struct IOSTaskLibraryView: View {
     @State private var importing = false
     @State private var deletingTask: ProcessingTask?
     @State private var replacement: ProcessingTask?
+    @State private var newTaskDraft: ProcessingTask?
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             Group {
                 if library.tasks.isEmpty {
                     ContentUnavailableView {
                         Label("还没有任务", systemImage: "tray")
                     } description: {
-                        Text("导入 Mac 的 .voxline 任务成果，再关联本地音视频进行播放校对。")
+                        Text("创建本地任务或导入 Mac 的 .voxline 成果。")
                     } actions: {
-                        Button("导入任务", systemImage: "square.and.arrow.down") { importing = true }
+                        HStack(spacing: 12) {
+                            Button {
+                                newTaskDraft = ProcessingTask()
+                            } label: {
+                                Label("新建任务", systemImage: "plus")
+                            }
                             .buttonStyle(.borderedProminent)
+
+                            Button {
+                                importing = true
+                            } label: {
+                                Label("导入任务", systemImage: "square.and.arrow.down")
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     }
                 } else {
                     List {
                         ForEach(library.tasks) { task in
-                            NavigationLink {
-                                IOSTaskDetailView(library: library, taskID: task.id)
-                            } label: {
+                            NavigationLink(value: task.id) {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(task.title).font(.headline)
                                     Text("\(task.items.count) 个媒体 · \(task.completedCount) 完成" + (task.failedCount > 0 ? " · \(task.failedCount) 失败" : ""))
@@ -52,14 +65,39 @@ struct IOSTaskLibraryView: View {
                 }
             }
             .navigationTitle("任务")
+            .navigationDestination(for: UUID.self) { taskID in
+                IOSTaskDetailView(library: library, taskID: taskID)
+            }
             .toolbar {
-                ToolbarItem(placement: .primaryAction) { EditButton() }
-                ToolbarItem(placement: .primaryAction) {
-                    Button("导入任务", systemImage: "square.and.arrow.down") { importing = true }
-                }
                 ToolbarItem(placement: .topBarLeading) {
                     NavigationLink { IOSSettingsView() } label: { Label("设置", systemImage: "gearshape") }
                 }
+                ToolbarItem(placement: .primaryAction) { EditButton() }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        newTaskDraft = ProcessingTask()
+                    } label: {
+                        Label("新建任务", systemImage: "plus")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("导入任务", systemImage: "square.and.arrow.down") { importing = true }
+                }
+            }
+            .sheet(item: $newTaskDraft) { draft in
+                TaskConfigurationView(
+                    task: Binding(
+                        get: { newTaskDraft ?? draft },
+                        set: { newTaskDraft = $0 }
+                    ),
+                    onCommit: { prepared in
+                        try library.save(prepared)
+                        library.load()
+                        let newID = prepared.id
+                        newTaskDraft = nil
+                        navigationPath.append(newID)
+                    }
+                )
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.voxlineTask, .json]) { result in
                 switch result {

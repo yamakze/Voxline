@@ -1,4 +1,3 @@
-#if os(macOS)
 import VoxlineTranslation
 import VoxlineWhisperKit
 import SwiftUI
@@ -39,6 +38,11 @@ public struct TaskConfigurationView: View {
     @State private var confirmTranslationReplacement = false
     @State private var showModelManager = false
     @State private var showTranslationSettings = false
+
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var iosActiveTab = 0
+    #endif
 
     private let inspector = MediaInspector.shared
     private let modelManager = ModelManager.shared
@@ -83,33 +87,13 @@ public struct TaskConfigurationView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            // Sheet Header Bar (Pages / FCP style)
-            sheetHeaderBar
-            Divider()
-
-            if let errorMessage {
-                Text(errorMessage).font(.callout).foregroundStyle(.red)
-                    .textSelection(.enabled).padding(.horizontal, 20).padding(.vertical, 8)
-            }
-
-            // Main Dual-Pane: Left (FCP Media Import & Audio Track Inspector) + Right (Pages Parameters Form)
-            HSplitView {
-                // Left Column: Final Cut Pro Media Import & Tracks Panel
-                fcpMediaImportPane
-                    .frame(minWidth: 420, idealWidth: 460)
-
-                // Right Column: Pages/Keynote Parameters Form with DisclosureGroups
-                pagesParametersPane
-                    .frame(minWidth: 380, idealWidth: 420)
-            }
-
-            Divider()
-
-            // Bottom Action Bar
-            bottomActionBar
+        Group {
+            #if os(macOS)
+            macosBody
+            #else
+            iosBody
+            #endif
         }
-        .frame(minWidth: 840, idealWidth: 900, minHeight: 600, idealHeight: 650)
         .sheet(isPresented: $showModelManager) {
             NavigationStack {
                 ModelManagementView()
@@ -152,6 +136,9 @@ public struct TaskConfigurationView: View {
 
                     for url in additions {
                         if Task.isCancelled { return }
+                        let access = url.startAccessingSecurityScopedResource()
+                        defer { if access { url.stopAccessingSecurityScopedResource() } }
+
                         let kind: TaskMediaKind
                         do { kind = try MediaInspector.kind(of: url) }
                         catch {
@@ -220,6 +207,103 @@ public struct TaskConfigurationView: View {
         }
     }
 
+    #if os(macOS)
+    private var macosBody: some View {
+        VStack(spacing: 0) {
+            sheetHeaderBar
+            Divider()
+
+            if let errorMessage {
+                Text(errorMessage).font(.callout).foregroundStyle(.red)
+                    .textSelection(.enabled).padding(.horizontal, 20).padding(.vertical, 8)
+            }
+
+            HSplitView {
+                fcpMediaImportPane
+                    .frame(minWidth: 420, idealWidth: 460)
+
+                pagesParametersPane
+                    .frame(minWidth: 380, idealWidth: 420)
+            }
+
+            Divider()
+
+            bottomActionBar
+        }
+        .frame(minWidth: 840, idealWidth: 900, minHeight: 600, idealHeight: 650)
+    }
+    #endif
+
+    #if os(iOS)
+    private var iosBody: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if let errorMessage {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.circle")
+                            .foregroundStyle(.red)
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.red.opacity(0.08))
+                }
+
+                if horizontalSizeClass == .regular {
+                    HStack(spacing: 0) {
+                        fcpMediaImportPane
+                            .frame(minWidth: 320, maxWidth: .infinity)
+                        Divider()
+                        pagesParametersPane
+                            .frame(minWidth: 360, maxWidth: .infinity)
+                    }
+                } else {
+                    VStack(spacing: 0) {
+                        let totalCount = existingItems.count + candidates.count
+                        Picker("", selection: $iosActiveTab) {
+                            Text("媒体 (\(totalCount))").tag(0)
+                            Text("参数").tag(1)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+
+                        Divider()
+
+                        if iosActiveTab == 0 {
+                            fcpMediaImportPane
+                        } else {
+                            pagesParametersPane
+                        }
+                    }
+                }
+            }
+            .navigationTitle(originalTask.items.isEmpty ? "新建任务" : "任务准备")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        importTask?.cancel()
+                        saveTask?.cancel()
+                        dismiss()
+                    }
+                    .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(originalTask.startedAt == nil ? "保存任务" : "保存参数") {
+                        saveTask = Task { await commitTask() }
+                    }
+                    .bold()
+                    .disabled(isInspecting || isSaving || preflightBlockReason != nil)
+                }
+            }
+        }
+    }
+    #endif
+
     // MARK: - Sheet Header Bar
     private var sheetHeaderBar: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -272,7 +356,7 @@ public struct TaskConfigurationView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(Color.voxlineControlBackground)
 
             Divider()
 
@@ -322,12 +406,12 @@ public struct TaskConfigurationView: View {
                                 .buttonStyle(.plain)
                         }
                         .padding(10)
-                        .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 8))
+                        .background(Color.voxlineControlBackground, in: .rect(cornerRadius: 8))
                     }
 
                     // Newly selected candidates
-                    ForEach($candidates) { $candidate in
-                        candidateCard(candidate: $candidate)
+                    ForEach(Array(candidates.enumerated()), id: \.element.id) { index, _ in
+                        candidateCard(index: index, candidate: $candidates[index])
                     }
 
                     if isInspecting {
@@ -341,11 +425,11 @@ public struct TaskConfigurationView: View {
                 .padding(12)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color.voxlineWindowBackground)
     }
 
     @ViewBuilder
-    private func candidateCard(candidate: Binding<ImportCandidate>) -> some View {
+    private func candidateCard(index: Int, candidate: Binding<ImportCandidate>) -> some View {
         let cand = candidate.wrappedValue
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
@@ -387,10 +471,26 @@ public struct TaskConfigurationView: View {
                 Spacer()
 
                 Button {
+                    candidates.swapAt(index, index - 1)
+                } label: {
+                    Image(systemName: "arrow.up")
+                }
+                .buttonStyle(.plain)
+                .disabled(index == 0)
+
+                Button {
+                    candidates.swapAt(index, index + 1)
+                } label: {
+                    Image(systemName: "arrow.down")
+                }
+                .buttonStyle(.plain)
+                .disabled(index == candidates.count - 1)
+
+                Button {
                     candidates.removeAll { $0.id == cand.id }
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "trash")
+                        .foregroundStyle(.red)
                 }
                 .buttonStyle(.plain)
             }
@@ -446,7 +546,7 @@ public struct TaskConfigurationView: View {
             }
         }
         .padding(10)
-        .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 8))
+        .background(Color.voxlineControlBackground, in: .rect(cornerRadius: 8))
     }
 
     // MARK: - Right: Parameters Form
@@ -584,7 +684,7 @@ public struct TaskConfigurationView: View {
                                         .font(.callout)
                                         .frame(minHeight: 75)
                                         .padding(4)
-                                        .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 6))
+                                        .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 6)
                                                 .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
@@ -754,14 +854,18 @@ public struct TaskConfigurationView: View {
             }
 
             updated.items = newItems
+            let effectiveOutputs: [SRTOutputKind] = translation == nil ? [.source] : [.source, .translation, .bilingual].filter { outputs.contains($0) }
             try updated.updateParameters(TaskParameters(
                 transcription: transcription, translation: translation,
-                srtOutputs: [.source, .translation, .bilingual].filter { outputs.contains($0) }
+                srtOutputs: effectiveOutputs.isEmpty ? [.source] : effectiveOutputs
             ), discardingTranslations: discardingTranslations)
             try updated.validate()
 
             for (item, inspection, trackID) in addedBookmarkPairs {
                 do {
+                    let access = inspection.url.startAccessingSecurityScopedResource()
+                    defer { if access { inspection.url.stopAccessingSecurityScopedResource() } }
+
                     let identity = try await inspector.confirm(inspection, audioTrackID: trackID)
                     try await LocalMediaStore.shared.save(projectID: item.id, identity: identity, url: inspection.url)
                 } catch is CancellationError {
@@ -788,4 +892,3 @@ public struct TaskConfigurationView: View {
     }
 }
 
-#endif

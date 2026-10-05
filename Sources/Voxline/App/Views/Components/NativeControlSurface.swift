@@ -102,4 +102,20 @@ extension Color {
         Color(uiColor: .secondarySystemGroupedBackground)
         #endif
     }
+
+    static var voxlineWindowBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(uiColor: .systemGroupedBackground)
+        #endif
+    }
+
+    static var voxlineTextBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .textBackgroundColor)
+        #else
+        Color(uiColor: .secondarySystemBackground)
+        #endif
+    }
 }

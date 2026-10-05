@@ -2,7 +2,7 @@
 
 Mac 采用 SwiftPM，iOS 采用 Xcode 工程。依赖提交由 Package.swift / Package.resolved 锁定，Mac 只链接 WhisperKit 产品。工具链、构建与产物统一见 [开发工作流](../development.md)。
 
-两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态、模型与翻译设置、参数编辑、原生材质组件在 Views 内共用。Apple 系统翻译接线在 Pipeline 内共用。iOS 通过原生导航进入模型管理、服务配置与语言准备，并能继续导入成果中已完成转写的媒体翻译；本机 Task 创建、完整转写与批量执行、导出分享和字幕重译入口仍待接入。主要页面接入时复用领域操作及状态，平台分支承担导航、触摸布局和原生文件 API。
+两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态、模型与翻译设置、参数编辑、原生材质组件在 Views 内共用。Apple 系统翻译接线在 Pipeline 内共用。iOS 通过原生导航进入模型管理、服务配置与语言准备，支持本地 Task 创建与媒体准备（复用 TaskConfigurationView 并适配原生触摸布局与安全作用域访问），并能继续导入成果中已完成转写的媒体翻译；完整转写与批量执行、导出分享和字幕重译入口仍待接入。主要页面接入时复用领域操作及状态，平台分支承担导航、触摸布局和原生文件 API。
 
 iOS 的 Core、Media、WhisperKit、Translation 与 Workflow 框架直接编译同一份源码，WhisperKit 集成框架只链接固定版本的 WhisperKit 软件包产品。导入 .voxline / JSON 后验证、迁移并保存独立副本到本地 Documents。同任务 ID 再次导入须确认覆盖本地校对，原文件不写回，Mac 书签不传入 iOS。
 
