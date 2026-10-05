@@ -494,7 +494,7 @@ public struct TaskConfigurationView: View {
 
                     Spacer()
 
-                    Button("管理模型…") {
+                    Button("管理模型") {
                         showModelManager = true
                     }
                     .buttonStyle(.borderless)
@@ -523,7 +523,7 @@ public struct TaskConfigurationView: View {
 
                 if translates {
                     Picker("翻译服务", selection: $translationEngine) {
-                        Text("在线接口 (OpenAI / DeepSeek)").tag(TranslationEngineChoice.api)
+                        Text("OpenAI 接口").tag(TranslationEngineChoice.api)
                         Text("Apple Translation (本机)").tag(TranslationEngineChoice.apple)
                     }
 
@@ -559,32 +559,30 @@ public struct TaskConfigurationView: View {
                         LanguagePicker(title: "目标语言", selection: $targetLanguage)
 
                         DisclosureGroup("高级选项") {
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack {
-                                    Text("每批字幕数")
-                                    Spacer()
-                                    TextField("数量", value: $translationBatchSize, format: .number)
-                                        .multilineTextAlignment(.trailing)
-                                        .frame(width: 60)
-                                }
+                            TextField("每批字幕数", value: $translationBatchSize, format: .number)
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text("系统提示词")
-                                        Spacer()
-                                        Button("恢复默认") {
-                                            translationSystemPrompt = TranslationSettings.defaultSystemPrompt
-                                        }
-                                        .buttonStyle(.borderless)
-                                        .font(.caption2)
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text("系统提示词")
+                                        .font(.subheadline)
+                                    Spacer()
+                                    Button("恢复默认") {
+                                        translationSystemPrompt = TranslationSettings.defaultSystemPrompt
                                     }
-                                    TextEditor(text: $translationSystemPrompt)
-                                        .font(.caption)
-                                        .frame(minHeight: 60)
-                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+                                    .buttonStyle(.borderless)
+                                    .font(.caption)
                                 }
+                                TextEditor(text: $translationSystemPrompt)
+                                    .font(.callout)
+                                    .frame(minHeight: 70)
+                                    .padding(4)
+                                    .background(Color(nsColor: .textBackgroundColor), in: .rect(cornerRadius: 6))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                                    )
                             }
-                            .padding(.top, 4)
+                            .padding(.vertical, 4)
                         }
                     }
                 }

@@ -45,8 +45,6 @@ struct TaskTranslationParametersView: View {
             Form {
                 Section("转写") {
                     Text(original.parameters.transcription.modelID)
-                    Text("已有转写和原文保持；此处调整翻译及导出参数。")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("字幕翻译") {
                     Toggle("启用翻译", isOn: $enabled)
@@ -70,8 +68,6 @@ struct TaskTranslationParametersView: View {
                             LanguagePicker(title: "目标语言", selection: $target)
                             TextField("每批字幕数量", value: $batchSize, format: .number)
                             TextEditor(text: $prompt).frame(minHeight: 100).accessibilityLabel("系统提示词")
-                            Text("字幕文本发送至所选服务，音频保持本地。")
-                                .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }

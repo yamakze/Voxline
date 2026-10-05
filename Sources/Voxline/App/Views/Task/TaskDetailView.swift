@@ -23,9 +23,6 @@ public struct TaskDetailView: View {
                 // Compact Metrics Bar
                 compactMetricsBar
 
-                // Parameter Snapshot (Read-only, clean disclosure)
-                parametersSnapshotCard
-
                 // Media processing queue
                 mediaQueue
             }
@@ -96,71 +93,13 @@ public struct TaskDetailView: View {
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.5), in: .rect(cornerRadius: 10))
     }
 
-    // MARK: - Parameter Snapshot
-    private var parametersSnapshotCard: some View {
-        DisclosureGroup {
-            VStack(alignment: .leading, spacing: 8) {
-                Divider()
-                HStack(spacing: 32) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("转写引擎").font(.caption2.bold()).foregroundStyle(.secondary)
-                        Text(task.parameters.transcription.modelID).font(.caption.monospaced())
-                        Text("语言：\(task.parameters.transcription.languageCode ?? "自动识别")")
-                            .font(.caption2).foregroundStyle(.secondary)
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("字幕翻译").font(.caption2.bold()).foregroundStyle(.secondary)
-                        if let translation = task.parameters.translation {
-                            switch translation.engine {
-                            case .openAICompatible(let api):
-                                Text("\(api.modelID) (\(translation.targetLanguage))").font(.caption.bold())
-                                DisclosureGroup("系统提示词") {
-                                    Text(api.systemPrompt).font(.caption2).textSelection(.enabled)
-                                }
-                                Text(api.baseURL.absoluteString).font(.caption2).foregroundStyle(.secondary)
-                            case .appleTranslation(let source):
-                                Text("Apple Translation · 本机").font(.caption.bold())
-                                Text("\(source) → \(translation.targetLanguage)").font(.caption2)
-                            }
-                            Text("每批最多 \(translation.batchSize) 条字幕").font(.caption2)
-                        } else {
-                            Text("未启用翻译").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("SRT 导出计划").font(.caption2.bold()).foregroundStyle(.secondary)
-                        Text(task.parameters.srtOutputs.map(\.label).joined(separator: " · "))
-                            .font(.caption)
-                    }
-                }
-                .padding(.top, 6)
-            }
-        } label: {
-            HStack {
-                Label("本次参数快照 (只读)", systemImage: "slider.horizontal.2")
-                    .font(.subheadline.bold())
-                Spacer()
-                Text(queue.taskID == task.id ? "处理中不可修改" : "停止处理后可调整翻译与输出")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(14)
-        .liquidGlassSurface()
-    }
-
     // MARK: - Media processing queue
     private var mediaQueue: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("批处理流水线清单", systemImage: "list.bullet.rectangle.portrait")
+                Label("媒体列表", systemImage: "film.stack")
                     .font(.headline)
                 Spacer()
-                Text("按序执行 · 单项失败不阻断其余")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
             }
 
             if task.items.isEmpty {
