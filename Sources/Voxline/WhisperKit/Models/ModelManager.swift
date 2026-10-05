@@ -19,8 +19,7 @@ public enum ModelStatus: Equatable, Sendable {
         case .loading: "加载中"
         case .cancelling: "取消中"
         case .cancelled: "已取消，可重新下载"
-        case .downloaded(_, let bytes): String(format: "已安装 %.1f MB，未加载", Double(bytes) / 1_000_000)
-        case .ready(_, let bytes): String(format: "已加载 %.1f MB", Double(bytes) / 1_000_000)
+        case .downloaded(_, let bytes), .ready(_, let bytes): String(format: "已安装 %.1f MB", Double(bytes) / 1_000_000)
         case .failed(let reason): "操作失败：\(reason)"
         case .corrupted(let reason): "安装不完整：\(reason)"
         }

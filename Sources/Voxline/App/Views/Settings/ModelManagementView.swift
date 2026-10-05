@@ -182,17 +182,7 @@ public struct ModelManagementView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
 
-                    case .downloaded:
-                        Button("预载") {
-                            modelManager.load(modelID: model.id)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .help("预先加载到内存中以加速推理响应")
-
-                        modelOptionsMenu(model: model, status: status, usage: usage)
-
-                    case .ready:
+                    case .downloaded, .ready:
                         modelOptionsMenu(model: model, status: status, usage: usage)
 
                     case .failed(let reason), .corrupted(let reason):
@@ -239,14 +229,6 @@ public struct ModelManagementView: View {
     @ViewBuilder
     private func modelOptionsMenu(model: WhisperModelDescriptor, status: ModelStatus, usage: Int64) -> some View {
         Menu {
-            if case .ready = status {
-                Button {
-                    Task { await modelManager.unload(modelID: model.id) }
-                } label: {
-                    Label("释放内存", systemImage: "eject")
-                }
-            }
-
             #if os(macOS)
             if let directory = modelManager.modelDirectories[model.id], usage > 0 {
                 Button {
@@ -258,7 +240,9 @@ public struct ModelManagementView: View {
             #endif
 
             if usage > 0 {
+                #if os(macOS)
                 Divider()
+                #endif
                 Button(role: .destructive) {
                     Task { await modelManager.delete(modelID: model.id) }
                 } label: {
@@ -277,12 +261,9 @@ public struct ModelManagementView: View {
     private func statusBadge(status: ModelStatus) -> some View {
         HStack(spacing: 4) {
             switch status {
-            case .ready:
+            case .ready, .downloaded:
                 Circle().fill(Color.green).frame(width: 7, height: 7)
                 Text("已就绪").foregroundStyle(.green)
-            case .downloaded:
-                Circle().fill(Color.secondary).frame(width: 7, height: 7)
-                Text("已下载").foregroundStyle(.secondary)
             case .downloading, .checking:
                 ProgressView().controlSize(.mini)
                 Text("下载中").foregroundStyle(.blue)
@@ -290,7 +271,7 @@ public struct ModelManagementView: View {
                 EmptyView()
             case .loading:
                 ProgressView().controlSize(.mini)
-                Text("加载中").foregroundStyle(.secondary)
+                Text("准备中").foregroundStyle(.secondary)
             case .cancelling:
                 ProgressView().controlSize(.mini)
                 Text("正在取消").foregroundStyle(.secondary)

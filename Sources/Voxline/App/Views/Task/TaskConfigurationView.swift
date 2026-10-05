@@ -570,14 +570,9 @@ public struct TaskConfigurationView: View {
                     let status = modelManager.status(for: modelID)
                     HStack(spacing: 5) {
                         switch status {
-                        case .ready:
+                        case .ready, .downloaded:
                             Circle().fill(Color.green).frame(width: 7, height: 7)
-                            Text("就绪").foregroundStyle(.green)
-                        case .downloaded:
-                            Circle().fill(Color.secondary).frame(width: 7, height: 7)
-                            Text("已下载").foregroundStyle(.secondary)
-                            Button("加载") { modelManager.load(modelID: modelID) }
-                                .buttonStyle(.borderless)
+                            Text("已就绪").foregroundStyle(.green)
                         case .downloading, .checking:
                             ProgressView().controlSize(.mini)
                             Text("下载中…").foregroundStyle(.blue)
