@@ -36,10 +36,6 @@ struct IOSTaskLibraryView: View {
                 }
 
                 ToolbarItemGroup(placement: .primaryAction) {
-                    if !library.tasks.isEmpty {
-                        EditButton()
-                    }
-
                     Menu {
                         Button {
                             newTaskDraft = ProcessingTask()
@@ -190,17 +186,26 @@ struct IOSTaskLibraryView: View {
                     }
                     .disabled(library.queue.taskID == task.id)
                 }
-            }
-            .onMove { offsets, destination in
-                var tasks = library.tasks
-                tasks.move(fromOffsets: offsets, toOffset: destination)
-                let entries = tasks.compactMap { task in library.storage.entries.first { $0.taskID == task.id } }
-                    + library.storage.entries.filter { $0.task == nil }
-                do { try library.storage.reorder(entryIDs: entries.map(\.id)) }
-                catch { library.errorMessage = error.localizedDescription }
+                .draggable(task.id.uuidString)
+                .dropDestination(for: String.self) { items, _ in
+                    guard let item = items.first, let fromID = UUID(uuidString: item) else { return false }
+                    moveTask(fromID: fromID, toID: task.id)
+                    return true
+                }
             }
         }
         .listStyle(.insetGrouped)
+    }
+
+    private func moveTask(fromID: UUID, toID: UUID) {
+        guard fromID != toID else { return }
+        withAnimation {
+            do {
+                try library.move(taskID: fromID, to: toID)
+            } catch {
+                library.errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func taskCard(_ task: ProcessingTask) -> some View {
@@ -336,19 +341,6 @@ private struct IOSTaskDetailView: View {
                                 }
                             }
                         }
-                    }
-                }
-
-                // 任务参数概要
-                Section("任务参数") {
-                    LabeledContent("转写模型", value: task.parameters.transcription.modelID)
-                    LabeledContent("原文识别", value: task.parameters.transcription.languageMode == .automatic ? "自动检测" : (task.parameters.transcription.languageCode ?? "未知"))
-
-                    if let settings = task.parameters.translation {
-                        LabeledContent("目标语言", value: settings.targetLanguage)
-                        LabeledContent("翻译引擎", value: settings.engine.isApple ? "Apple 本机翻译" : "OpenAI 兼容接口")
-                    } else {
-                        LabeledContent("字幕翻译", value: "未启用")
                     }
                 }
             }

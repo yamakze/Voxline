@@ -7,6 +7,7 @@ public struct TaskLibraryView: View {
     @State private var library = TaskLibrary.shared
     @State private var deletingEntry: TaskLibrary.Entry?
     @State private var errorMessage: String?
+    @State private var targetedEntryID: String?
     var onSelectTask: ((ProcessingTask) -> Void)?
     var onNewTask: (() -> Void)?
     var onOpenFile: (() -> Void)?
@@ -117,71 +118,73 @@ public struct TaskLibraryView: View {
 
     @ViewBuilder
     private func taskEntryRow(entry: TaskLibrary.Entry) -> some View {
-        Button {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "film.stack")
+                .font(.title2)
+                .foregroundStyle(Color.voxlineAccent)
+                .frame(width: 36, height: 36)
+                .background(Color.voxlineAccent.opacity(0.12), in: .circle)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                if let task = entry.task {
+                    HStack(spacing: 8) {
+                        Text("\(task.items.count) 媒体")
+                        Text("·")
+                        Text("\(task.completedCount) 完成")
+                        if task.failedCount > 0 {
+                            Text("·")
+                            Text("\(task.failedCount) 失败").foregroundStyle(.red)
+                        }
+                        if let started = task.startedAt {
+                            Text("·")
+                            Text(started.formatted(date: .abbreviated, time: .shortened))
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                    if !task.items.isEmpty && task.startedAt != nil {
+                        ProgressView(
+                            value: Double(task.completedCount),
+                            total: Double(task.items.count)
+                        )
+                        .controlSize(.mini)
+                        .padding(.top, 2)
+                    }
+                }
+
+                if let problem = entry.error {
+                    Text(problem).font(.caption2).foregroundStyle(.red)
+                }
+            }
+
+            Spacer()
+
+            if let task = entry.task {
+                TaskStatusBadge(status: task.status)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption.bold())
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .liquidGlassSurface()
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(targetedEntryID == entry.id ? Color.voxlineAccent : Color.clear, lineWidth: 2)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
             if let task = entry.task {
                 onSelectTask?(task)
             }
-        } label: {
-            HStack(alignment: .center, spacing: 14) {
-                Image(systemName: "film.stack")
-                    .font(.title2)
-                    .foregroundStyle(Color.voxlineAccent)
-                    .frame(width: 36, height: 36)
-                    .background(Color.voxlineAccent.opacity(0.12), in: .circle)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.title)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-
-                    if let task = entry.task {
-                        HStack(spacing: 8) {
-                            Text("\(task.items.count) 媒体")
-                            Text("·")
-                            Text("\(task.completedCount) 完成")
-                            if task.failedCount > 0 {
-                                Text("·")
-                                Text("\(task.failedCount) 失败").foregroundStyle(.red)
-                            }
-                            if let started = task.startedAt {
-                                Text("·")
-                                Text(started.formatted(date: .abbreviated, time: .shortened))
-                            }
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-
-                        if !task.items.isEmpty && task.startedAt != nil {
-                            ProgressView(
-                                value: Double(task.completedCount),
-                                total: Double(task.items.count)
-                            )
-                            .controlSize(.mini)
-                            .padding(.top, 2)
-                        }
-                    }
-
-                    if let problem = entry.error {
-                        Text(problem).font(.caption2).foregroundStyle(.red)
-                    }
-                }
-
-                Spacer()
-
-                if let task = entry.task {
-                    TaskStatusBadge(status: task.status)
-                }
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.bold())
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .liquidGlassSurface()
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .contextMenu {
             Button("删除", systemImage: "trash", role: .destructive) { deletingEntry = entry }
                 .disabled(TaskProcessingQueue.shared.taskID == entry.taskID)
@@ -189,8 +192,16 @@ public struct TaskLibraryView: View {
         .draggable(entry.id)
         .dropDestination(for: String.self) { ids, _ in
             guard let id = ids.first, library.entries.contains(where: { $0.id == id }) else { return false }
-            do { try library.move(entryID: id, to: entry.id); return true }
-            catch { errorMessage = error.localizedDescription; return false }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                do {
+                    try library.move(entryID: id, to: entry.id)
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
+            }
+            return true
+        } isTargeted: { targeted in
+            targetedEntryID = targeted ? entry.id : (targetedEntryID == entry.id ? nil : targetedEntryID)
         }
     }
 }

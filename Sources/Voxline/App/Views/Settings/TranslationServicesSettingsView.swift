@@ -304,7 +304,13 @@ private struct ServiceEditorModal: View {
                     .padding(.vertical, 2)
 
                     if isAdvancedExpanded {
-                        TextField("每批字幕数", text: $batchSizeText)
+                        LabeledContent("每批字幕数") {
+                            TextField("每批字幕数", text: $batchSizeText)
+                                .multilineTextAlignment(.trailing)
+                                #if os(iOS)
+                                .keyboardType(.numberPad)
+                                #endif
+                        }
 
                         LabeledContent {
                             VStack(alignment: .trailing, spacing: 4) {

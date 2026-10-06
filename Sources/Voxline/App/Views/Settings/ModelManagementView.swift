@@ -79,8 +79,8 @@ public struct ModelManagementView: View {
                 Color.clear.frame(width: 1, height: 1)
             }
             #endif
+            #if os(macOS)
             ToolbarItemGroup(placement: .primaryAction) {
-                #if os(macOS)
                 Button {
                     if let dir = modelManager.modelDirectories.values.first ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("huggingface/models") {
                         NSWorkspace.shared.open(dir)
@@ -89,15 +89,8 @@ public struct ModelManagementView: View {
                     Image(systemName: "folder")
                 }
                 .help("在访达中打开模型存储目录")
-                #endif
-
-                Button {
-                    Task { await modelManager.refreshAll() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .help("重新检测与刷新模型状态")
             }
+            #endif
         }
         .navigationTitle("模型管理")
         .task {

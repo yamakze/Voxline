@@ -68,6 +68,10 @@ final class IOSTaskLibrary {
 
     func task(_ id: UUID) -> ProcessingTask? { storage.task(for: id) }
 
+    func move(taskID: UUID, to destinationID: UUID) throws {
+        try storage.move(entryID: taskID.uuidString, to: destinationID.uuidString)
+    }
+
     func handleScenePhaseChange(to phase: ScenePhase) {
         if phase == .background {
             guard queue.taskID != nil, backgroundTask == nil else { return }
