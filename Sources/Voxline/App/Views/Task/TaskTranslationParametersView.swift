@@ -63,7 +63,9 @@ struct TaskTranslationParametersView: View {
                                 }
                                 ForEach(store.services) { service in Text(service.name).tag(Optional(service.id)) }
                             }
-                            NavigationLink("管理翻译服务") { TranslationServicesSettingsView() }
+                            NavigationLink("管理翻译服务") {
+                                TranslationServicesSettingsView(referencedSettings: original.parameters.translation)
+                            }
                             TextField("翻译模型", text: $model)
                             LanguagePicker(title: "目标语言", selection: $target)
                             TextField("每批字幕数量", value: $batchSize, format: .number)
