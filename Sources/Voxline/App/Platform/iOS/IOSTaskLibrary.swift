@@ -1,6 +1,7 @@
 #if os(iOS)
-import Foundation
+import UIKit
 import Observation
+import SwiftUI
 import VoxlineCore
 import VoxlineWorkflow
 import VoxlineTranslation
@@ -12,6 +13,7 @@ final class IOSTaskLibrary {
     let storage: TaskLibrary
     let queue: TaskProcessingQueue
     var errorMessage: String?
+    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
     var tasks: [ProcessingTask] {
         storage.entries.compactMap(\.task)
     }
@@ -64,5 +66,29 @@ final class IOSTaskLibrary {
     }
 
     func task(_ id: UUID) -> ProcessingTask? { storage.task(for: id) }
+
+    func handleScenePhaseChange(to phase: ScenePhase) {
+        if phase == .background {
+            guard queue.taskID != nil, backgroundTaskID == .invalid else { return }
+            backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "VoxlineTaskProcessing") { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    try? self.queue.cancel()
+                    self.endBackgroundTask()
+                }
+            }
+        } else if phase == .active {
+            if queue.taskID == nil {
+                endBackgroundTask()
+            }
+        }
+    }
+
+    func endBackgroundTask() {
+        if backgroundTaskID != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTaskID)
+            backgroundTaskID = .invalid
+        }
+    }
 }
 #endif

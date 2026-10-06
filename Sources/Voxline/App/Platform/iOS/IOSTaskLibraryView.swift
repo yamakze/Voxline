@@ -6,64 +6,20 @@ import VoxlineCore
 struct IOSTaskLibraryView: View {
     @State private var library = IOSTaskLibrary.shared
     @Environment(\.scenePhase) private var scenePhase
-    @State private var foregroundMessage: String?
     @State private var importing = false
     @State private var deletingTask: ProcessingTask?
     @State private var replacement: ProcessingTask?
     @State private var newTaskDraft: ProcessingTask?
     @State private var navigationPath = NavigationPath()
+    @State private var sharingURL: URL?
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
             Group {
                 if library.tasks.isEmpty {
-                    ContentUnavailableView {
-                        Label("还没有任务", systemImage: "tray")
-                    } description: {
-                        Text("创建本地任务或导入 Mac 的 .voxline 成果。")
-                    } actions: {
-                        HStack(spacing: 12) {
-                            Button {
-                                newTaskDraft = ProcessingTask()
-                            } label: {
-                                Label("新建任务", systemImage: "plus")
-                            }
-                            .buttonStyle(.borderedProminent)
-
-                            Button {
-                                importing = true
-                            } label: {
-                                Label("导入任务", systemImage: "square.and.arrow.down")
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
+                    emptyStateView
                 } else {
-                    List {
-                        ForEach(library.tasks) { task in
-                            NavigationLink(value: task.id) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(task.title).font(.headline)
-                                    Text("\(task.items.count) 个媒体 · \(task.completedCount) 完成" + (task.failedCount > 0 ? " · \(task.failedCount) 失败" : ""))
-                                        .font(.subheadline).foregroundStyle(.secondary)
-                                    Text(task.status.label).font(.caption).foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 6)
-                            }
-                            .contextMenu {
-                                Button("删除", systemImage: "trash", role: .destructive) { deletingTask = task }
-                                    .disabled(library.queue.taskID == task.id)
-                            }
-                        }
-                        .onMove { offsets, destination in
-                            var tasks = library.tasks
-                            tasks.move(fromOffsets: offsets, toOffset: destination)
-                            let entries = tasks.compactMap { task in library.storage.entries.first { $0.taskID == task.id } }
-                                + library.storage.entries.filter { $0.task == nil }
-                            do { try library.storage.reorder(entryIDs: entries.map(\.id)) }
-                            catch { library.errorMessage = error.localizedDescription }
-                        }
-                    }
+                    taskList
                 }
             }
             .navigationTitle("任务")
@@ -72,18 +28,35 @@ struct IOSTaskLibraryView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink { IOSSettingsView() } label: { Label("设置", systemImage: "gearshape") }
-                }
-                ToolbarItem(placement: .primaryAction) { EditButton() }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        newTaskDraft = ProcessingTask()
+                    NavigationLink {
+                        IOSSettingsView()
                     } label: {
-                        Label("新建任务", systemImage: "plus")
+                        Image(systemName: "gearshape")
                     }
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button("导入任务", systemImage: "square.and.arrow.down") { importing = true }
+
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if !library.tasks.isEmpty {
+                        EditButton()
+                    }
+
+                    Menu {
+                        Button {
+                            newTaskDraft = ProcessingTask()
+                        } label: {
+                            Label("新建任务", systemImage: "plus")
+                        }
+
+                        Button {
+                            importing = true
+                        } label: {
+                            Label("导入任务文件…", systemImage: "square.and.arrow.down")
+                        }
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(Color.voxlineAccent)
+                    }
                 }
             }
             .sheet(item: $newTaskDraft) { draft in
@@ -101,13 +74,16 @@ struct IOSTaskLibraryView: View {
                     }
                 )
             }
+            .sheet(item: Binding(get: { sharingURL.map { SharePayload(url: $0) } }, set: { sharingURL = $0?.url })) { payload in
+                ShareActivitySheet(activityItems: [payload.url])
+            }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.voxlineTask, .json]) { result in
                 switch result {
                 case .success(let url): importTask(url)
                 case .failure(let error): library.errorMessage = error.localizedDescription
                 }
             }
-            .alert("任务读取失败", isPresented: Binding(
+            .alert("读取失败", isPresented: Binding(
                 get: { library.errorMessage != nil }, set: { if !$0 { library.errorMessage = nil } })) {
                 Button("好") { library.errorMessage = nil }
             } message: {
@@ -115,19 +91,10 @@ struct IOSTaskLibraryView: View {
             }
             .task { library.load() }
             .onChange(of: scenePhase) { _, phase in
-                guard phase == .background, library.queue.taskID != nil else { return }
-                do {
-                    try library.queue.cancel()
-                    foregroundMessage = "应用已进入后台，处理停止调度。已提交成果保留，请返回任务详情继续未完成处理。"
-                } catch { library.errorMessage = error.localizedDescription }
+                library.handleScenePhaseChange(to: phase)
             }
-            .alert("前台处理已停止", isPresented: Binding(
-                get: { foregroundMessage != nil && scenePhase == .active },
-                set: { if !$0 { foregroundMessage = nil } })) {
-                Button("好") { foregroundMessage = nil }
-            } message: { Text(foregroundMessage ?? "") }
             .onOpenURL { importTask($0) }
-            .confirmationDialog("删除本地任务？", isPresented: Binding(
+            .confirmationDialog("删除任务？", isPresented: Binding(
                 get: { deletingTask != nil }, set: { if !$0 { deletingTask = nil } }), titleVisibility: .visible) {
                 Button("删除", role: .destructive) {
                     do {
@@ -139,18 +106,169 @@ struct IOSTaskLibraryView: View {
                     } catch { library.errorMessage = error.localizedDescription }
                 }
                 Button("取消", role: .cancel) { deletingTask = nil }
-            } message: { Text("删除设备上的任务副本及其字幕成果，音视频源文件保留。") }
-            .alert("替换本地任务？", isPresented: Binding(
+            } message: {
+                Text("将删除设备上的任务及其字幕，源媒体文件不受影响。")
+            }
+            .alert("覆盖同名任务？", isPresented: Binding(
                 get: { replacement != nil }, set: { if !$0 { replacement = nil } })) {
                 Button("取消", role: .cancel) { replacement = nil }
-                Button("替换", role: .destructive) {
+                Button("覆盖", role: .destructive) {
                     do {
                         if let replacement { try library.save(replacement) }
                         replacement = nil
                     } catch { library.errorMessage = error.localizedDescription }
                 }
-            } message: { Text("同 ID 任务已存在。替换会覆盖设备上的字幕校对，请确认已保留所需成果。") }
+            } message: {
+                Text("已存在同 ID 任务，覆盖将替换已有校对成果。")
+            }
         }
+    }
+
+    private var emptyStateView: some View {
+        ContentUnavailableView {
+            Label("暂无任务", systemImage: "waveform.badge.magnifyingglass")
+        } description: {
+            Text("添加音视频开始本地转写与翻译")
+        } actions: {
+            HStack(spacing: 14) {
+                Button {
+                    newTaskDraft = ProcessingTask()
+                } label: {
+                    Label("新建任务", systemImage: "plus")
+                        .font(.headline)
+                        .padding(.horizontal, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+
+                Button {
+                    importing = true
+                } label: {
+                    Label("导入任务", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private var taskList: some View {
+        List {
+            ForEach(library.tasks) { task in
+                NavigationLink(value: task.id) {
+                    taskCard(task)
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        deletingTask = task
+                    } label: {
+                        Label("删除", systemImage: "trash")
+                    }
+                    .disabled(library.queue.taskID == task.id)
+
+                    Button {
+                        shareTask(task)
+                    } label: {
+                        Label("分享", systemImage: "square.and.arrow.up")
+                    }
+                    .tint(.blue)
+                }
+                .contextMenu {
+                    Button {
+                        shareTask(task)
+                    } label: {
+                        Label("分享任务文件 (.voxline)", systemImage: "square.and.arrow.up")
+                    }
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        deletingTask = task
+                    } label: {
+                        Label("删除任务", systemImage: "trash")
+                    }
+                    .disabled(library.queue.taskID == task.id)
+                }
+            }
+            .onMove { offsets, destination in
+                var tasks = library.tasks
+                tasks.move(fromOffsets: offsets, toOffset: destination)
+                let entries = tasks.compactMap { task in library.storage.entries.first { $0.taskID == task.id } }
+                    + library.storage.entries.filter { $0.task == nil }
+                do { try library.storage.reorder(entryIDs: entries.map(\.id)) }
+                catch { library.errorMessage = error.localizedDescription }
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+
+    private func taskCard(_ task: ProcessingTask) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(task.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                Spacer()
+                statusBadge(task.status)
+            }
+
+            HStack(spacing: 8) {
+                Text("\(task.items.count) 个媒体")
+                Text("•")
+                Text("\(task.completedCount) 完成")
+                if task.failedCount > 0 {
+                    Text("•")
+                    Text("\(task.failedCount) 失败")
+                        .foregroundStyle(.red)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if !task.items.isEmpty {
+                let progress = Double(task.completedCount) / Double(task.items.count)
+                ProgressView(value: progress)
+                    .tint(task.status == .completed ? .green : Color.voxlineAccent)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func statusBadge(_ status: ProcessingTaskStatus) -> some View {
+        HStack(spacing: 4) {
+            switch status {
+            case .completed:
+                Circle().fill(Color.green).frame(width: 6, height: 6)
+                Text("已完成").foregroundStyle(.green)
+            case .running:
+                ProgressView().controlSize(.mini)
+                Text("处理中").foregroundStyle(Color.voxlineAccent)
+            case .queued:
+                Circle().fill(Color.blue).frame(width: 6, height: 6)
+                Text("排队中").foregroundStyle(.blue)
+            case .draft:
+                Circle().fill(Color.secondary).frame(width: 6, height: 6)
+                Text("草稿").foregroundStyle(.secondary)
+            case .cancelled:
+                Circle().fill(Color.orange).frame(width: 6, height: 6)
+                Text("已取消").foregroundStyle(.orange)
+            case .interrupted, .translationPaused:
+                Circle().fill(Color.orange).frame(width: 6, height: 6)
+                Text("已暂停").foregroundStyle(.orange)
+            case .needsReview:
+                Circle().fill(Color.orange).frame(width: 6, height: 6)
+                Text("待校对").foregroundStyle(.orange)
+            case .partiallyFailed, .failed:
+                Circle().fill(Color.red).frame(width: 6, height: 6)
+                Text("失败").foregroundStyle(.red)
+            }
+        }
+        .font(.caption2.weight(.medium))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Color.secondary.opacity(0.08), in: Capsule())
     }
 
     private func importTask(_ url: URL) {
@@ -161,6 +279,14 @@ struct IOSTaskLibraryView: View {
         } catch { library.errorMessage = error.localizedDescription }
     }
 
+    private func shareTask(_ task: ProcessingTask) {
+        do {
+            let url = try IOSExportHelper.prepareTaskArchive(for: task)
+            sharingURL = url
+        } catch {
+            library.errorMessage = error.localizedDescription
+        }
+    }
 }
 
 private struct IOSTaskDetailView: View {
@@ -169,239 +295,29 @@ private struct IOSTaskDetailView: View {
     @State private var editingParameters = false
     @State private var configuringTask = false
     @State private var errorMessage: String?
+    @State private var sharingURL: URL?
 
     var body: some View {
         if let task = library.task(taskID) {
             List {
-                // MARK: 1. 概览指标
-                Section("概览") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 16) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "film.stack").foregroundStyle(.secondary)
-                                Text("\(task.items.count) 媒体").font(.subheadline.weight(.medium))
-                            }
-                            HStack(spacing: 4) {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                                Text("\(task.completedCount) 完成").font(.subheadline.weight(.medium))
-                            }
-                            if task.failedCount > 0 {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
-                                    Text("\(task.failedCount) 失败").font(.subheadline.weight(.medium))
-                                }
-                            }
-                            let totalCues = task.items.reduce(0) { $0 + $1.cues.count }
-                            HStack(spacing: 4) {
-                                Image(systemName: "character.bubble").foregroundStyle(.secondary)
-                                Text("\(totalCues) 句字幕").font(.subheadline.weight(.medium))
-                            }
-                        }
-
-                        if !task.items.isEmpty {
-                            let progress = Double(task.completedCount) / Double(task.items.count)
-                            HStack(spacing: 8) {
-                                ProgressView(value: progress)
-                                Text(String(format: "%.0f%%", progress * 100))
-                                    .font(.caption.monospacedDigit().bold())
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        HStack {
-                            Text("状态")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(task.status.label)
-                                .font(.caption.bold())
-                                .foregroundStyle(task.status == .completed ? .green : .primary)
-                        }
-                    }
-                    .padding(.vertical, 4)
+                // 顶部指标与控制卡片
+                Section {
+                    overviewCard(task)
                 }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
 
-                // MARK: 2. 处理控制
-                if library.queue.taskID == taskID {
-                    Section("处理控制") {
-                        HStack {
-                            if let fraction = library.queue.extractionFraction {
-                                ProgressView(value: fraction).frame(width: 60)
-                            } else {
-                                ProgressView().controlSize(.small)
-                            }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(library.queue.isCancelling ? "正在取消，等待当前操作结束…" : (library.queue.progressText ?? "处理中…"))
-                                    .font(.caption.weight(.medium))
-                                if let wait = library.queue.translationRetryWait, !library.queue.isCancelling {
-                                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                                        Text(wait.label(at: context.date))
-                                            .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            Spacer()
-                            Button("取消任务") {
-                                do { try library.queue.cancel() }
-                                catch { errorMessage = error.localizedDescription }
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .disabled(library.queue.isCancelling)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                } else {
-                    Section("处理控制") {
-                        Button(task.startedAt == nil ? "开始处理" : "继续未完成处理", systemImage: "play.fill") {
-                            do { try library.queue.start(taskID: taskID) }
-                            catch { errorMessage = error.localizedDescription }
-                        }
-                        .disabled(library.queue.taskID != nil || !task.items.contains(where: \.canResumeProcessing))
-
-                        if let error = library.queue.errorMessage {
-                            HStack(spacing: 6) {
-                                Image(systemName: "exclamationmark.circle").foregroundStyle(.red)
-                                Text(error).font(.caption).foregroundStyle(.red)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    }
-                }
-
-                // MARK: 3. 当前参数
-                Section("当前参数") {
-                    LabeledContent("转写模型", value: task.parameters.transcription.modelID)
-                    LabeledContent("原文语言", value: task.parameters.transcription.languageMode == .automatic ? "自动识别" : (task.parameters.transcription.languageCode ?? "未知"))
-
-                    if let settings = task.parameters.translation {
-                        LabeledContent("目标语言", value: settings.targetLanguage)
-                        LabeledContent("每批字幕数", value: String(settings.batchSize))
-                        switch settings.engine {
-                        case .openAICompatible(let api):
-                            LabeledContent("翻译引擎", value: "OpenAI 兼容接口")
-                            LabeledContent("模型", value: api.modelID)
-                            NavigationLink("配置本机翻译服务") {
-                                TranslationServicesSettingsView(referencedSettings: settings, onBindService: { service in
-                                    try library.bindTranslationService(service, taskID: taskID)
-                                })
-                            }
-                        case .appleTranslation(let source):
-                            LabeledContent("翻译引擎", value: "Apple 本机翻译")
-                            LabeledContent("源语言", value: source)
-                            NavigationLink("准备本机语言") {
-                                IOSAppleLanguagesView(settings: settings)
-                            }
-                        }
-                    } else {
-                        LabeledContent("字幕翻译", value: "未启用")
-                    }
-
-                    let outputsText = task.parameters.srtOutputs.map(\.label).joined(separator: "、")
-                    LabeledContent("导出选项", value: outputsText.isEmpty ? "无" : outputsText)
-
-                    HStack {
-                        Spacer()
-                        if task.startedAt == nil {
-                            Button("任务准备与媒体…") { configuringTask = true }
-                                .disabled(library.queue.taskID == taskID)
-                        }
-                        Button("调整参数…") { editingParameters = true }
-                            .disabled(library.queue.taskID == taskID)
-                    }
-                    .font(.subheadline)
-                }
-
-                // MARK: 4. 媒体列表
-                Section("媒体列表 (\(task.items.count))") {
+                // 媒体条目列表
+                Section("媒体条目 (\(task.items.count))") {
                     if task.items.isEmpty {
-                        ContentUnavailableView("暂无媒体条目", systemImage: "film.stack", description: Text("请点击任务准备添加音视频。"))
+                        ContentUnavailableView("暂无媒体条目", systemImage: "film.stack",
+                                               description: Text("请点击右上角参数菜单添加音视频。"))
                     } else {
                         ForEach(task.items) { item in
                             NavigationLink {
                                 IOSMediaDetailView(library: library, taskID: taskID, mediaID: item.id)
                             } label: {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack(alignment: .top, spacing: 10) {
-                                        Image(systemName: item.kind == .video ? "film" : "waveform")
-                                            .font(.title3)
-                                            .foregroundStyle(item.kind == .video ? .blue : .purple)
-
-                                        VStack(alignment: .leading, spacing: 3) {
-                                            Text(item.title)
-                                                .font(.headline)
-                                                .lineLimit(1)
-
-                                            HStack(spacing: 8) {
-                                                if let media = item.media {
-                                                    Text(String(format: "%.1fs", Double(media.durationMilliseconds) / 1000.0))
-                                                    Text("音轨 \(media.audioTrackID)")
-                                                    Text("\(item.cues.count) 句字幕")
-                                                } else {
-                                                    Text("未关联媒体").foregroundStyle(.red)
-                                                }
-                                            }
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                        }
-
-                                        Spacer()
-
-                                        Text(item.status.label)
-                                            .font(.caption2.bold())
-                                            .padding(.horizontal, 6).padding(.vertical, 2)
-                                            .background(Color.secondary.opacity(0.12), in: .capsule)
-                                    }
-
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        MediaProcessingStepsView(item: item, hasTranslation: task.parameters.translation != nil)
-                                            .padding(.vertical, 2)
-                                    }
-
-                                    if case .translationPaused(let reason) = item.status {
-                                        HStack(alignment: .center, spacing: 6) {
-                                            Image(systemName: "pause.circle.fill").foregroundStyle(.orange)
-                                            Text("翻译暂停：\(reason)")
-                                                .font(.caption2)
-                                                .foregroundStyle(.orange)
-                                            Spacer()
-                                            if item.status.isRetryable && item.canResumeProcessing {
-                                                Button("继续翻译") {
-                                                    do { try library.queue.start(taskID: task.id, mediaID: item.id) }
-                                                    catch { errorMessage = error.localizedDescription }
-                                                }
-                                                .buttonStyle(.bordered)
-                                                .controlSize(.mini)
-                                                .disabled(library.queue.taskID != nil)
-                                            }
-                                        }
-                                        .padding(6)
-                                        .background(Color.orange.opacity(0.08), in: .rect(cornerRadius: 6))
-                                    }
-
-                                    if case .failed(let reason) = item.status {
-                                        HStack(alignment: .center, spacing: 6) {
-                                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
-                                            Text("失败原因：\(reason)")
-                                                .font(.caption2)
-                                                .foregroundStyle(.red)
-                                            Spacer()
-                                            if item.status.isRetryable && item.canResumeProcessing {
-                                                Button("重试") {
-                                                    do { try library.queue.start(taskID: task.id, mediaID: item.id) }
-                                                    catch { errorMessage = error.localizedDescription }
-                                                }
-                                                .buttonStyle(.bordered)
-                                                .controlSize(.mini)
-                                                .disabled(library.queue.taskID != nil)
-                                            }
-                                        }
-                                        .padding(6)
-                                        .background(Color.red.opacity(0.08), in: .rect(cornerRadius: 6))
-                                    }
-
-                                }
-                                .padding(.vertical, 4)
+                                mediaItemCard(item: item, task: task)
                             }
                             .contextMenu {
                                 if item.status.isRetryable && item.canResumeProcessing {
@@ -422,14 +338,56 @@ private struct IOSTaskDetailView: View {
                         }
                     }
                 }
+
+                // 任务参数概要
+                Section("任务参数") {
+                    LabeledContent("转写模型", value: task.parameters.transcription.modelID)
+                    LabeledContent("原文识别", value: task.parameters.transcription.languageMode == .automatic ? "自动检测" : (task.parameters.transcription.languageCode ?? "未知"))
+
+                    if let settings = task.parameters.translation {
+                        LabeledContent("目标语言", value: settings.targetLanguage)
+                        LabeledContent("翻译引擎", value: settings.engine.isApple ? "Apple 本机翻译" : "OpenAI 兼容接口")
+                    } else {
+                        LabeledContent("字幕翻译", value: "未启用")
+                    }
+                }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle(task.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("调整参数", systemImage: "slider.horizontal.3") { editingParameters = true }
+                    Menu {
+                        Button {
+                            shareTask(task)
+                        } label: {
+                            Label("分享任务文件 (.voxline)", systemImage: "square.and.arrow.up")
+                        }
+
+                        Divider()
+
+                        if task.startedAt == nil {
+                            Button {
+                                configuringTask = true
+                            } label: {
+                                Label("媒体管理与准备…", systemImage: "film")
+                            }
+                            .disabled(library.queue.taskID == taskID)
+                        }
+
+                        Button {
+                            editingParameters = true
+                        } label: {
+                            Label("调整参数…", systemImage: "slider.horizontal.3")
+                        }
                         .disabled(library.queue.taskID == taskID)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
+            }
+            .sheet(item: Binding(get: { sharingURL.map { SharePayload(url: $0) } }, set: { sharingURL = $0?.url })) { payload in
+                ShareActivitySheet(activityItems: [payload.url])
             }
             .sheet(isPresented: $editingParameters) {
                 TaskTranslationParametersView(task: task) { updated, original in
@@ -449,12 +407,253 @@ private struct IOSTaskDetailView: View {
                     }
                 )
             }
-            .alert("操作未完成", isPresented: Binding(
+            .alert("操作异常", isPresented: Binding(
                 get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button("好") { errorMessage = nil }
             } message: { Text(errorMessage ?? "") }
-        } else { ContentUnavailableView("任务不存在", systemImage: "tray") }
+        } else {
+            ContentUnavailableView("任务不存在", systemImage: "tray")
+        }
+    }
+
+    // MARK: - 概览与控制卡片
+    private func overviewCard(_ task: ProcessingTask) -> some View {
+        VStack(spacing: 14) {
+            // 指标行
+            HStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(task.items.count)")
+                        .font(.title2.bold())
+                    Text("媒体总数")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(task.completedCount)")
+                        .font(.title2.bold())
+                        .foregroundStyle(.green)
+                    Text("已完成")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if task.failedCount > 0 {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(task.failedCount)")
+                            .font(.title2.bold())
+                            .foregroundStyle(.red)
+                        Text("失败项")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                let totalCues = task.items.reduce(0) { $0 + $1.cues.count }
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(totalCues)")
+                        .font(.title2.bold())
+                    Text("字幕总句")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // 处理控制按钮或正在运行指示
+            if library.queue.taskID == taskID {
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.small)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(library.queue.isCancelling ? "正在取消…" : (library.queue.progressText ?? "处理中…"))
+                            .font(.subheadline.weight(.medium))
+                        if let wait = library.queue.translationRetryWait, !library.queue.isCancelling {
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                Text(wait.label(at: context.date))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    Spacer()
+                    Button("取消") {
+                        do { try library.queue.cancel() }
+                        catch { errorMessage = error.localizedDescription }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(library.queue.isCancelling)
+                }
+                .padding(10)
+                .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            } else {
+                let canResume = task.items.contains(where: \.canResumeProcessing)
+                Button {
+                    do { try library.queue.start(taskID: taskID) }
+                    catch { errorMessage = error.localizedDescription }
+                } label: {
+                    HStack {
+                        Spacer()
+                        Label(task.startedAt == nil ? "开始处理任务" : "继续未完成处理",
+                              systemImage: task.startedAt == nil ? "play.fill" : "arrow.clockwise")
+                            .font(.headline)
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(library.queue.taskID != nil || !canResume)
+            }
+
+            if let error = library.queue.errorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .padding(16)
+        .liquidGlassSurface(cornerRadius: 14)
+    }
+
+    // MARK: - 媒体卡片
+    private func mediaItemCard(item: TaskMediaItem, task: ProcessingTask) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: item.kind == .video ? "film" : "waveform")
+                    .font(.title3)
+                    .foregroundStyle(item.kind == .video ? .blue : .purple)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(.subheadline.bold())
+                        .lineLimit(1)
+
+                    HStack(spacing: 6) {
+                        if let media = item.media {
+                            Text(String(format: "%.1fs", Double(media.durationMilliseconds) / 1000.0))
+                            Text("•")
+                            Text("音轨 \(media.audioTrackID)")
+                            Text("•")
+                            Text("\(item.cues.count) 句")
+                        } else {
+                            Text("未关联媒体")
+                                .foregroundStyle(.red)
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                itemStatusTag(item.status)
+            }
+
+            // 处理步骤进度指示
+            ScrollView(.horizontal, showsIndicators: false) {
+                MediaProcessingStepsView(item: item, hasTranslation: task.parameters.translation != nil)
+                    .padding(.vertical, 2)
+            }
+
+            // 失败或暂停行快捷重试
+            if case .translationPaused(let reason) = item.status {
+                HStack(spacing: 6) {
+                    Image(systemName: "pause.circle.fill")
+                        .foregroundStyle(.orange)
+                    Text("翻译暂停：\(reason)")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                    Spacer()
+                    if item.status.isRetryable && item.canResumeProcessing {
+                        Button("继续") {
+                            do { try library.queue.start(taskID: task.id, mediaID: item.id) }
+                            catch { errorMessage = error.localizedDescription }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .disabled(library.queue.taskID != nil)
+                    }
+                }
+            }
+
+            if case .failed(let reason) = item.status {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                    Text(reason)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .lineLimit(1)
+                    Spacer()
+                    if item.status.isRetryable && item.canResumeProcessing {
+                        Button("重试") {
+                            do { try library.queue.start(taskID: task.id, mediaID: item.id) }
+                            catch { errorMessage = error.localizedDescription }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .disabled(library.queue.taskID != nil)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func itemStatusTag(_ status: TaskMediaStatus) -> some View {
+        HStack(spacing: 3) {
+            switch status {
+            case .completed:
+                Circle().fill(Color.green).frame(width: 5, height: 5)
+                Text("完成").foregroundStyle(.green)
+            case .running:
+                ProgressView().controlSize(.mini)
+                Text("处理中").foregroundStyle(Color.voxlineAccent)
+            case .pending:
+                Text("等待").foregroundStyle(.secondary)
+            case .cancelled:
+                Text("已取消").foregroundStyle(.orange)
+            case .interrupted, .translationPaused:
+                Text("暂停").foregroundStyle(.orange)
+            case .failed:
+                Text("失败").foregroundStyle(.red)
+            case .needsReview:
+                Text("待校对").foregroundStyle(.orange)
+            }
+        }
+        .font(.caption2.bold())
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color.secondary.opacity(0.08), in: Capsule())
+    }
+
+    private func shareTask(_ task: ProcessingTask) {
+        do {
+            let url = try IOSExportHelper.prepareTaskArchive(for: task)
+            sharingURL = url
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
+private struct SharePayload: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private extension TranslationSettings.Engine {
+    var isApple: Bool {
+        if case .appleTranslation = self { return true }
+        return false
+    }
+}
 #endif

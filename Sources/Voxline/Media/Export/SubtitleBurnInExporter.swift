@@ -1,4 +1,4 @@
-#if os(macOS)
+#if os(macOS) || os(iOS)
 @preconcurrency import AVFoundation
 import CoreImage
 import CoreText
