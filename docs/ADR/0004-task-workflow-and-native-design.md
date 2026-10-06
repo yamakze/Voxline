@@ -14,7 +14,7 @@ Mac MVP 完成队列、转写翻译和详情播放校对。首版按顺序处理
 
 来源在 MVP 仅为本地 MP4/MOV/M4V 与 M4A/MP3/WAV。YouTube URL 为后续条目，下载与字幕处理分开，获得本地文件后复用处理队列；不提前建立站点适配框架。
 
-iCloud 同步、云冲突合并和同步选项暂废弃；保留 Project 记录和重启条件。平台限定 macOS、iOS。iOS 首轮在 Mac MVP 后交付原生播放与校对，通过手动导入本地文件取得媒体与成果。其后逐步补齐独立批处理和 Mac 工作流能力，决定见 [ADR-0015](0015-ios-feature-parity.md)。
+iCloud 同步与同步选项的暂废弃决定已由 [ADR-0019](0019-icloud-and-cloud-transcription-scope.md) 替代，重新纳入后续交付；通用云冲突合并框架继续排除。平台限定 macOS、iOS。iOS 首轮在 Mac MVP 后交付原生播放与校对，通过手动导入本地文件取得媒体与成果。其后逐步补齐独立批处理和 Mac 工作流能力，决定见 [ADR-0015](0015-ios-feature-parity.md)。
 
 界面主题为 Liquid Glass。保留 macOS 15 和后续 iOS 18 基线，系统 26 及以上使用原生玻璃，旧系统使用原生材质。导航和控制层使用玻璃，内容和字幕编辑保持可读。优先系统容器和控件，减少自定义布局与视觉效果层。
 

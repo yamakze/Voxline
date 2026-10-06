@@ -176,7 +176,7 @@ MainWindowView 组织任务列表、准备表单、任务详情和媒体详情�
 
 原始 ASR 证据和可读字幕分开：RawTranscriptionSegment 保留原始对齐，转换为 SubtitleCue 前验证。切分及 Provider 不能排序、裁剪或丢弃文本来伪装成功。过期译文保留旧来源并显示待重译，新的自动处理不能覆盖较新的手工编辑。
 
-应用打包启用 App Sandbox、用户选择文件读写、应用范围书签和网络客户端。iCloud 同步暂废弃；YouTube 来源后续实施；产品只支持 macOS 与 iOS。
+应用打包启用 App Sandbox、用户选择文件读写、应用范围书签和网络客户端。当前打包尚未配置 iCloud 文档容器与同步接线；同步和云端转写的后续范围见 [ADR-0019](../ADR/0019-icloud-and-cloud-transcription-scope.md)，实施后更新本页的实际存储与执行规则。YouTube／Bilibili 来源后续实施；产品只支持 macOS 与 iOS。
 
 ## 模型安装与加载
 
