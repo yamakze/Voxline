@@ -2,6 +2,7 @@
 import AVFoundation
 import Foundation
 import Testing
+import SwiftUI
 import VoxlineCore
 import VoxlineMedia
 import VoxlineWhisperKit
@@ -10,6 +11,49 @@ import VoxlineWorkflow
 
 @Suite("iOS native media and queue", .serialized, .timeLimit(.minutes(1))) @MainActor
 struct IOSProcessingTests {
+    @Test func backgroundClaimsEndWithQueueAndOldExpirationCannotCancelNewClaim() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let media = try MediaIdentity(fileName: "missing.wav", byteCount: 42, sha256: String(repeating: "a", count: 64),
+            durationMilliseconds: 1000, audioTrackID: 1)
+        let library = IOSTaskLibrary(directory: root.appendingPathComponent("tasks"),
+            pipeline: LocalMediaTranscriptionPipeline(mediaStore: LocalMediaStore(directory: root.appendingPathComponent("bookmarks"))))
+        let task = ProcessingTask(items: [.init(title: "Missing local media", kind: .audio,
+            source: .localFile(fileName: media.fileName), media: media)])
+        try library.save(task)
+        try library.queue.start(taskID: task.id)
+        library.handleScenePhaseChange(to: .background)
+        let first = try #require(library.backgroundTask)
+        library.handleScenePhaseChange(to: .active)
+        #expect(library.backgroundTask == nil)
+        library.handleScenePhaseChange(to: .background)
+        let second = try #require(library.backgroundTask)
+        #expect(first.requestID != second.requestID)
+        library.expireBackgroundTask(requestID: first.requestID)
+        #expect(!library.queue.isCancelling)
+        #expect(library.backgroundTask?.requestID == second.requestID)
+        while library.queue.taskID != nil { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(library.backgroundTask == nil)
+        #expect(library.task(task.id)?.items[0].status == .failed(reason: "找不到本机媒体文件，请在详情中重新关联。"))
+
+        try library.queue.start(taskID: task.id)
+        library.handleScenePhaseChange(to: .background)
+        let expired = try #require(library.backgroundTask)
+        let originalURL = library.storage.defaultURL(for: task.id)
+        let saved = try Data(contentsOf: originalURL)
+        let blockedURL = root.appendingPathComponent("occupied.voxline")
+        try FileManager.default.createDirectory(at: blockedURL, withIntermediateDirectories: false)
+        library.storage.register(try #require(library.task(task.id)), at: blockedURL)
+        library.expireBackgroundTask(requestID: expired.requestID)
+        #expect(library.errorMessage != nil)
+        #expect(library.queue.isCancelling)
+        #expect(library.queue.errorMessage != nil)
+        #expect(library.backgroundTask == nil)
+        while library.queue.taskID != nil { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(try Data(contentsOf: originalURL) == saved)
+        #expect(library.backgroundTask == nil)
+    }
+
     @Test func selectedAudioIsBoundedAndIOSQueuePersistsActualModelFailuresAcrossRestart() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

@@ -25,6 +25,7 @@ public final class TaskProcessingQueue {
     public private(set) var extractionFraction: Double?
     public private(set) var errorMessage: String?
     public private(set) var translationRetryWait: TranslationRetryWait?
+    @ObservationIgnored public var onFinish: (@MainActor () -> Void)?
 
     public init(library: TaskLibrary, pipeline: any MediaTranscriptionPipeline = LocalMediaTranscriptionPipeline(),
          translationPipeline: any SubtitleTranslationPipeline,
@@ -80,16 +81,21 @@ public final class TaskProcessingQueue {
                 cancelledIDs.insert(requestedID)
             }
         } else {
-            // Commit waiting items first; a save error must be visible before cancellation is reported.
-            try library.commitCheckpoint(taskID: taskID) { task in
-                for index in task.items.indices where queuedIDs.contains(task.items[index].id) &&
-                    task.items[index].id != mediaID && task.items[index].status != .completed {
-                    task.items[index].status = .cancelled
-                }
-            }
+            // Stop actual work even when persisting cancellation fails (including OS expiration).
             stopRequested = true
             isCancelling = true
             mediaWork?.cancel()
+            do {
+                try library.commitCheckpoint(taskID: taskID) { task in
+                    for index in task.items.indices where queuedIDs.contains(task.items[index].id) &&
+                        task.items[index].id != mediaID && task.items[index].status != .completed {
+                        task.items[index].status = .cancelled
+                    }
+                }
+            } catch {
+                errorMessage = "取消状态保存失败：\(error.localizedDescription)"
+                throw error
+            }
         }
     }
 
@@ -139,6 +145,7 @@ public final class TaskProcessingQueue {
             self.taskID = nil
             worker = nil
             isCancelling = false
+            onFinish?()
         }
         for id in queuedIDs {
             queuedIDs.removeAll { $0 == id }

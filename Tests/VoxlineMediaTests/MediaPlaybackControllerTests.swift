@@ -78,10 +78,14 @@ struct MediaPlaybackControllerTests {
         player.pause()
         try await waitFor { !controller.isPlaying }
         controller.setRate(2)
+        #expect(!controller.isPlaying && player.rate == 0)
+        #expect(controller.playbackRate == 2)
         controller.togglePlayPause()
+        #expect(player.rate == 2)
         try await waitFor { controller.currentTimeSeconds >= 0.99 && !controller.isPlaying }
         #expect(controller.activeCue(in: item.cues) == nil)
         controller.togglePlayPause()
+        #expect(controller.playbackRate == 2)
         try await waitFor { controller.isPlaying && controller.currentTimeSeconds < 0.9 }
         controller.pause()
         try await waitFor { !controller.isPlaying }

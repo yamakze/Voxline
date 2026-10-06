@@ -13,7 +13,7 @@ final class IOSTaskLibrary {
     let storage: TaskLibrary
     let queue: TaskProcessingQueue
     var errorMessage: String?
-    private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    private(set) var backgroundTask: (requestID: UUID, identifier: UIBackgroundTaskIdentifier)?
     var tasks: [ProcessingTask] {
         storage.entries.compactMap(\.task)
     }
@@ -23,6 +23,7 @@ final class IOSTaskLibrary {
         let storage = TaskLibrary(tasksDirectory: directory, resourceCleanup: resourceCleanup)
         self.storage = storage
         queue = TaskProcessingQueue(library: storage, pipeline: pipeline, translationPipeline: ConfiguredSubtitleTranslationPipeline())
+        queue.onFinish = { [weak self] in self?.endBackgroundTask() }
     }
 
     func load() {
@@ -69,26 +70,37 @@ final class IOSTaskLibrary {
 
     func handleScenePhaseChange(to phase: ScenePhase) {
         if phase == .background {
-            guard queue.taskID != nil, backgroundTaskID == .invalid else { return }
-            backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "VoxlineTaskProcessing") { [weak self] in
+            guard queue.taskID != nil, backgroundTask == nil else { return }
+            let requestID = UUID()
+            let identifier = UIApplication.shared.beginBackgroundTask(withName: "VoxlineTaskProcessing") { [weak self] in
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    try? self.queue.cancel()
-                    self.endBackgroundTask()
+                    self?.expireBackgroundTask(requestID: requestID)
                 }
             }
-        } else if phase == .active {
-            if queue.taskID == nil {
-                endBackgroundTask()
+            if identifier == .invalid {
+                // No execution time was granted; stop the queue and expose save failures.
+                errorMessage = "后台执行不可用。"
+                do { try queue.cancel() }
+                catch { errorMessage = error.localizedDescription }
+            } else {
+                backgroundTask = (requestID, identifier)
             }
+        } else if phase == .active {
+            endBackgroundTask()
         }
     }
 
+    func expireBackgroundTask(requestID: UUID) {
+        guard backgroundTask?.requestID == requestID else { return }
+        do { try queue.cancel() }
+        catch { errorMessage = error.localizedDescription }
+        endBackgroundTask()
+    }
+
     func endBackgroundTask() {
-        if backgroundTaskID != .invalid {
-            UIApplication.shared.endBackgroundTask(backgroundTaskID)
-            backgroundTaskID = .invalid
-        }
+        guard let backgroundTask else { return }
+        self.backgroundTask = nil
+        UIApplication.shared.endBackgroundTask(backgroundTask.identifier)
     }
 }
 #endif

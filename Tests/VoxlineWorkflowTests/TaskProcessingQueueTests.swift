@@ -91,11 +91,18 @@ struct TaskProcessingQueueTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let pipeline = ControlledPipeline(holdFirstDecode: true)
         let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
+        var finishes = 0
+        queue.onFinish = { [weak queue] in
+            #expect(queue?.taskID == nil && queue?.mediaID == nil && queue?.isCancelling == false)
+            finishes += 1
+        }
         try queue.start(taskID: task.id)
         await pipeline.waitForHeldDecode()
         try queue.cancel()
+        #expect(finishes == 0)
         await pipeline.releaseDecode()
         await queue.waitUntilIdle()
+        #expect(finishes == 1)
         #expect(library.task(for: task.id)?.items.allSatisfy { $0.status == .cancelled } == true)
         #expect(await !pipeline.events.contains("extract:\(task.items[1].id)"))
         let reopenedLibrary = TaskLibrary(tasksDirectory: directory)
@@ -104,6 +111,41 @@ struct TaskProcessingQueueTests {
         try resumedQueue.start(taskID: task.id)
         await resumedQueue.waitUntilIdle()
         #expect(reopenedLibrary.task(for: task.id)?.status == .completed)
+    }
+
+    @Test func cancellationWriteFailureStillStopsActualWorkAndWaitingMedia() async throws {
+        let (directory, library, task) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let pipeline = ControlledPipeline(holdFirstDecode: true)
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
+        var finishes = 0
+        queue.onFinish = { finishes += 1 }
+        try queue.start(taskID: task.id)
+        await pipeline.waitForHeldDecode()
+        let originalURL = library.defaultURL(for: task.id)
+        let originalData = try Data(contentsOf: originalURL)
+        let blockedURL = directory.appendingPathComponent("occupied.voxline")
+        try FileManager.default.createDirectory(at: blockedURL, withIntermediateDirectories: false)
+        library.register(try #require(library.task(for: task.id)), at: blockedURL)
+
+        #expect(throws: (any Error).self) { try queue.cancel() }
+        #expect(queue.isCancelling)
+        #expect(queue.errorMessage?.hasPrefix("取消状态保存失败：") == true)
+        #expect(finishes == 0)
+        #expect(throws: QueueError.busy) { try queue.start(taskID: task.id) }
+        await pipeline.releaseDecode()
+        await queue.waitUntilIdle()
+        #expect(finishes == 1)
+        #expect(queue.errorMessage != nil)
+        #expect(await !pipeline.events.contains("extract:\(task.items[1].id)"))
+        #expect(try Data(contentsOf: originalURL) == originalData)
+
+        let interrupted = try #require(library.task(for: task.id))
+        library.register(interrupted, at: originalURL)
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        #expect(finishes == 2)
+        #expect(library.task(for: task.id)?.status == .completed)
     }
 
     @Test func writeFailureStopsSchedulingAndPreservesLatestSavedEdits() async throws {

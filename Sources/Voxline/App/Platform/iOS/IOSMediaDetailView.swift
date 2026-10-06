@@ -17,7 +17,6 @@ struct IOSMediaDetailView: View {
     @State private var showingOffset = false
     @State private var errorMessage: String?
     @State private var previewKind: SRTOutputKind = .bilingual
-    @State private var playbackSpeed: Float = 1.0
 
     // 多选重译
     @State private var isSelecting = false
@@ -300,12 +299,11 @@ struct IOSMediaDetailView: View {
             Menu {
                 ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { speed in
                     Button("\(speed, specifier: "%.2g")x") {
-                        playbackSpeed = Float(speed)
-                        playback.player?.rate = playbackSpeed
+                        playback.setRate(Float(speed))
                     }
                 }
             } label: {
-                Text("\(playbackSpeed, specifier: "%.2g")x")
+                Text("\(playback.playbackRate, specifier: "%.2g")x")
                     .font(.caption2.bold())
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
