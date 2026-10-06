@@ -83,4 +83,83 @@ struct ModelInstallationTests {
         let inventory = try await store.inventory(modelID: manifest.modelID)
         #expect(inventory.byteCount == 0)
     }
+
+    @Test func activityReportsLoadingAndReturnsToIdleAfterFailure() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = WhisperModelStore(directory: directory)
+        var changes = await store.activityChanges().makeAsyncIterator()
+        #expect(await changes.next() == false)
+        let modelID = try ModelFileManifest.baseline().modelID
+        await #expect(throws: WhisperModelError.notInstalled) { try await store.load(modelID: modelID) }
+        #expect(await changes.next() == true)
+        #expect(await changes.next() == false)
+    }
+
+    @Test @MainActor func deletionFailurePreservesInventoryAndRetriesDeletion() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let modelID = try ModelFileManifest.baseline().modelID
+        let root = directory.appendingPathComponent(modelID)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let file = root.appendingPathComponent("unfinished.bin")
+        try Data("partial".utf8).write(to: file)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let store = WhisperModelStore(directory: directory)
+        let manager = ModelManager(store: store)
+        await manager.refresh(modelID: modelID)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: root.path)
+        await manager.delete(modelID: modelID)
+        #expect(manager.deletionErrors[modelID] != nil)
+        let remaining = try await store.inventory(modelID: modelID)
+        #expect(manager.diskUsage[modelID] == remaining.byteCount)
+        guard case .corrupted = manager.status(for: modelID) else {
+            Issue.record("Delete error replaced the actual partial installation state")
+            return
+        }
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+        await manager.delete(modelID: modelID)
+        #expect(manager.deletionErrors[modelID] == nil)
+        #expect(manager.status(for: modelID) == .notDownloaded)
+        #expect(manager.diskUsage[modelID] == 0)
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_MODEL_DIRECTORY"] != nil))
+    @MainActor func realLoadedModelRejectsBusyDeletionThenDeletesWithoutManualUnload() async throws {
+        let models = try #require(ProcessInfo.processInfo.environment["VOXLINE_MODEL_DIRECTORY"])
+        let modelID = try ModelFileManifest.baseline().modelID
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let root = directory.appendingPathComponent(modelID)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: models).appendingPathComponent(modelID), to: root)
+        let store = WhisperModelStore(directory: directory)
+        let manager = ModelManager(store: store)
+        await manager.refresh(modelID: modelID)
+        var changes = await store.activityChanges().makeAsyncIterator()
+        #expect(await changes.next() == false)
+        let loading = Task { try await store.load(modelID: modelID) }
+        #expect(await changes.next() == true)
+        for _ in 0..<100 where !manager.isOperating { await Task.yield() }
+        #expect(manager.isOperating)
+        await manager.delete(modelID: modelID)
+        #expect(manager.deletionErrors[modelID] == "模型使用中")
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("installation.json").path))
+        try await loading.value
+        #expect(await changes.next() == false)
+        for _ in 0..<100 where manager.isOperating { await Task.yield() }
+        await manager.refresh(modelID: modelID)
+        guard case .ready = manager.status(for: modelID) else { Issue.record("Real model did not load"); return }
+        await manager.delete(modelID: modelID)
+        #expect(manager.deletionErrors[modelID] == nil)
+        #expect(manager.status(for: modelID) == .notDownloaded)
+        #expect(manager.diskUsage[modelID] == 0)
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+        // The private sample installation is a read-only source for this disposable copy.
+        #expect(FileManager.default.fileExists(atPath: URL(fileURLWithPath: models).appendingPathComponent(modelID).path))
+    }
 }

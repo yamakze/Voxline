@@ -22,9 +22,25 @@ public actor WhisperModelStore {
     private let directory: URL?
     private var loadedKit: WhisperKit?
     private var loadedModelID: String?
-    private var operating = false
+    private var operating = false {
+        didSet { for observer in activityObservers.values { observer.yield(operating) } }
+    }
+    private var activityObservers: [UUID: AsyncStream<Bool>.Continuation] = [:]
 
     public init(directory: URL? = nil) { self.directory = directory }
+
+    public func activityChanges() -> AsyncStream<Bool> {
+        let id = UUID()
+        let (stream, continuation) = AsyncStream<Bool>.makeStream(bufferingPolicy: .bufferingNewest(2))
+        activityObservers[id] = continuation
+        continuation.yield(operating)
+        continuation.onTermination = { [weak self] _ in
+            Task { await self?.removeActivityObserver(id) }
+        }
+        return stream
+    }
+
+    private func removeActivityObserver(_ id: UUID) { activityObservers[id] = nil }
 
     public func inventory(modelID: String) throws -> WhisperModelInventory {
         let manifest = try ModelFileManifest.baseline()

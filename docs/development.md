@@ -91,6 +91,13 @@ swift test --filter 'realSampleProvider|realProviderLanguageAndCancellation'
 
 模型目录是已完整安装的基准型号父目录；PCM 目录是 S001 提取出的九块缓存。验证使用真实 SDK 和本地模型，保留每个成功／对齐失败块的证据，再检查自动语言识别、解码取消、模型占用和卸载；不下载模型，不将对齐失败算作转写成功。产物位于忽略目录 tmp/provider-validation；默认 swift test 跳过此私有样本入口。
 
+模型删除验证使用完整安装的独立临时副本，检查真实加载期间拒绝删除、空闲时自动卸载删除及原安装保留。普通 ModelInstallationTests 同时检查权限导致的删除失败、实际空间与重试删除；私有入口默认跳过：
+
+```sh
+VOXLINE_MODEL_DIRECTORY="/absolute/path/Models" \
+swift test --filter ModelInstallationTests
+```
+
 ## 已保存转写证据的字幕切分验证
 
 ```sh

@@ -109,6 +109,10 @@ public struct ModelManagementView: View {
     private func modelCard(model: WhisperModelDescriptor) -> some View {
         let status = modelManager.status(for: model.id)
         let usage = modelManager.diskUsage[model.id] ?? 0
+        let modelError: String? = switch status {
+        case .failed(let reason), .corrupted(let reason): reason
+        default: nil
+        }
 
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
@@ -165,7 +169,11 @@ public struct ModelManagementView: View {
 
                 // Actions & Status
                 HStack(spacing: 10) {
-                    statusBadge(status: status)
+                    if modelManager.deletingModels.contains(model.id) {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        statusBadge(status: status)
+                    }
 
                     switch status {
                     case .notDownloaded, .cancelled:
@@ -183,18 +191,20 @@ public struct ModelManagementView: View {
                         .controlSize(.small)
 
                     case .downloaded, .ready:
-                        modelOptionsMenu(model: model, status: status, usage: usage)
+                        modelOptionsMenu(model: model, usage: usage)
 
-                    case .failed(let reason), .corrupted(let reason):
-                        Button("重试") {
-                            modelManager.download(modelID: model.id)
+                    case .failed, .corrupted:
+                        if modelManager.deletionErrors[model.id] == nil {
+                            Button("重新下载") {
+                                modelManager.download(modelID: model.id)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .disabled(modelManager.isOperating || modelManager.deletingModels.contains(model.id))
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .help(reason)
 
                         if usage > 0 {
-                            modelOptionsMenu(model: model, status: status, usage: usage)
+                            modelOptionsMenu(model: model, usage: usage)
                         }
 
                     case .loading, .cancelling:
@@ -203,6 +213,24 @@ public struct ModelManagementView: View {
                 }
             }
             .padding(14)
+
+            if let error = modelManager.deletionErrors[model.id] {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                    Spacer()
+                    Button("重试删除", role: .destructive) {
+                        Task { await modelManager.delete(modelID: model.id) }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(modelManager.isOperating || modelManager.deletingModels.contains(model.id))
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
+            } else if let reason = modelError {
+                Text(reason).font(.caption).foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14).padding(.bottom, 12)
+            }
 
             // Progress bar if downloading
             if case .downloading(let component, let progress) = status {
@@ -227,7 +255,7 @@ public struct ModelManagementView: View {
     }
 
     @ViewBuilder
-    private func modelOptionsMenu(model: WhisperModelDescriptor, status: ModelStatus, usage: Int64) -> some View {
+    private func modelOptionsMenu(model: WhisperModelDescriptor, usage: Int64) -> some View {
         Menu {
             #if os(macOS)
             if let directory = modelManager.modelDirectories[model.id], usage > 0 {
@@ -248,6 +276,7 @@ public struct ModelManagementView: View {
                 } label: {
                     Label("删除模型文件", systemImage: "trash")
                 }
+                .disabled(modelManager.isOperating || modelManager.deletingModels.contains(model.id))
             }
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -262,8 +291,9 @@ public struct ModelManagementView: View {
         HStack(spacing: 4) {
             switch status {
             case .ready, .downloaded:
-                Circle().fill(Color.green).frame(width: 7, height: 7)
-                Text("已就绪").foregroundStyle(.green)
+                Circle().fill(modelManager.isOperating ? Color.orange : Color.green).frame(width: 7, height: 7)
+                Text(modelManager.isOperating ? "使用中" : "已就绪")
+                    .foregroundStyle(modelManager.isOperating ? .orange : .green)
             case .downloading, .checking:
                 ProgressView().controlSize(.mini)
                 Text("下载中").foregroundStyle(.blue)

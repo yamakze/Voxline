@@ -65,7 +65,7 @@ struct ModelFileManifest: Codable, Equatable, Sendable {
 }
 
 public enum WhisperModelError: Error, LocalizedError, Equatable {
-    case missingManifest, unknownModel, differentVersion, notInstalled, loadedModel
+    case missingManifest, unknownModel, differentVersion, notInstalled
     case incompleteFile(String), differentFile(String)
     case insufficientSpace(required: Int64, available: Int64), unavailableDiskSpace
 
@@ -75,7 +75,6 @@ public enum WhisperModelError: Error, LocalizedError, Equatable {
         case .unknownModel: "当前只支持已验证的 S001 基准型号。"
         case .differentVersion: "本地模型版本不匹配，请重新下载。"
         case .notInstalled: "模型尚未完整安装，请先下载。"
-        case .loadedModel: "模型已加载，请先卸载再删除或重新下载。"
         case .incompleteFile(let file): "模型文件缺失或不完整：\(file)"
         case .differentFile(let file): "模型文件与固定版本不符：\(file)"
         case .insufficientSpace(let required, let available):

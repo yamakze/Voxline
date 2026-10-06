@@ -47,15 +47,27 @@ public final class ModelManager {
     public private(set) var diskUsage: [String: Int64] = [:]
     public private(set) var modelDirectories: [String: URL] = [:]
     public private(set) var modelRevisions: [String: String] = [:]
+    public private(set) var isOperating = false
+    public private(set) var deletingModels: Set<String> = []
+    public private(set) var deletionErrors: [String: String] = [:]
     public var storageError: String?
     private let store: WhisperModelStore
     private struct Operation { let id: UUID; let task: Task<Void, Never> }
     private var operations: [String: Operation] = [:]
+    private var activityTask: Task<Void, Never>?
 
     init(store: WhisperModelStore = .shared) {
         self.store = store
-        Task { await refreshAll() }
+        activityTask = Task { [weak self, store] in
+            for await busy in await store.activityChanges() {
+                guard let self else { return }
+                self.isOperating = busy
+                if !busy { await self.refreshAll() }
+            }
+        }
     }
+
+    isolated deinit { activityTask?.cancel() }
 
     public func status(for modelID: String) -> ModelStatus { modelStatuses[modelID] ?? .notDownloaded }
 
@@ -158,14 +170,20 @@ public final class ModelManager {
     }
 
     public func delete(modelID: String) async {
-        guard operations[modelID] == nil else { return }
-        do {
-            try await store.unload(modelID: modelID)
-            try await store.delete(modelID: modelID)
-            await refresh(modelID: modelID)
-        } catch {
-            modelStatuses[modelID] = .failed(reason: error.localizedDescription)
+        guard operations[modelID] == nil, !isOperating, !deletingModels.contains(modelID) else {
+            deletionErrors[modelID] = "模型使用中"
+            return
         }
+        deletingModels.insert(modelID)
+        defer { deletingModels.remove(modelID) }
+        deletionErrors[modelID] = nil
+        do {
+            try await store.delete(modelID: modelID)
+        } catch {
+            deletionErrors[modelID] = (error as? WhisperTranscriptionError) == .busy
+                ? "模型使用中" : error.localizedDescription
+        }
+        await refresh(modelID: modelID)
     }
 
     public func totalDiskUsage() -> Int64 { diskUsage.values.reduce(0, +) }
