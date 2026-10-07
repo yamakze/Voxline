@@ -146,7 +146,9 @@ public struct TaskSyncSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        #if os(iOS)
         .navigationTitle("iCloud 文件夹同步")
+        #endif
         .fileImporter(
             isPresented: $isSelectingFolder,
             allowedContentTypes: [.folder],

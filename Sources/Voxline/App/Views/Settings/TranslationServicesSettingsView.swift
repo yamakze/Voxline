@@ -73,17 +73,6 @@ public struct TranslationServicesSettingsView: View {
             .padding(24)
         }
         .toolbar {
-            #if os(macOS)
-            ToolbarItem(placement: .navigation) {
-                Text("翻译服务")
-                    .font(.headline)
-            }
-
-            ToolbarItem(placement: .principal) {
-                Color.clear.frame(width: 1, height: 1)
-            }
-
-            #endif
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     isAddingService = true
@@ -94,7 +83,9 @@ public struct TranslationServicesSettingsView: View {
                 .disabled(store.isLoading || store.isSaving)
             }
         }
+        #if os(iOS)
         .navigationTitle("翻译服务")
+        #endif
         .onDisappear { connectionTask?.cancel() }
         .sheet(isPresented: $isAddingService) {
             ServiceEditorModal(service: nil, store: store) { newService, key in

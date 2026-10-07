@@ -67,15 +67,6 @@ public struct CloudTranscriptionServicesSettingsView: View {
             .padding(24)
         }
         .toolbar {
-            #if os(macOS)
-            ToolbarItem(placement: .navigation) {
-                Text("云端转写服务")
-                    .font(.headline)
-            }
-            ToolbarItem(placement: .principal) {
-                Color.clear.frame(width: 1, height: 1)
-            }
-            #endif
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     isAddingService = true
@@ -86,7 +77,9 @@ public struct CloudTranscriptionServicesSettingsView: View {
                 .disabled(store.isLoading || store.isSaving)
             }
         }
+        #if os(iOS)
         .navigationTitle("云端转写服务")
+        #endif
         .sheet(isPresented: $isAddingService) {
             CloudTranscriptionServiceEditorModal(service: nil, store: store)
         }

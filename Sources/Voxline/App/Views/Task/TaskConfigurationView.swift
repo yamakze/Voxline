@@ -103,6 +103,7 @@ public struct TaskConfigurationView: View {
         .sheet(isPresented: $showModelManager) {
             NavigationStack {
                 ModelManagementView()
+                    .navigationTitle("模型管理")
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("完成") { showModelManager = false }
@@ -113,6 +114,7 @@ public struct TaskConfigurationView: View {
         .sheet(isPresented: $showTranslationSettings) {
             NavigationStack {
                 TranslationServicesSettingsView()
+                    .navigationTitle("翻译服务")
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("完成") {
@@ -128,6 +130,7 @@ public struct TaskConfigurationView: View {
         .sheet(isPresented: $showCloudTranscriptionSettings) {
             NavigationStack {
                 CloudTranscriptionServicesSettingsView()
+                    .navigationTitle("云端转写服务")
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("完成") {

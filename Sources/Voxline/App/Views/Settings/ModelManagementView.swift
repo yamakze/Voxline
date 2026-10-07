@@ -68,18 +68,8 @@ public struct ModelManagementView: View {
             }
             .padding(24)
         }
+        #if os(macOS)
         .toolbar {
-            #if os(macOS)
-            ToolbarItem(placement: .navigation) {
-                Text("模型管理")
-                    .font(.headline)
-            }
-
-            ToolbarItem(placement: .principal) {
-                Color.clear.frame(width: 1, height: 1)
-            }
-            #endif
-            #if os(macOS)
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     if let dir = modelManager.modelDirectories.values.first ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("huggingface/models") {
@@ -90,9 +80,11 @@ public struct ModelManagementView: View {
                 }
                 .help("在访达中打开模型存储目录")
             }
-            #endif
         }
+        #endif
+        #if os(iOS)
         .navigationTitle("模型管理")
+        #endif
         .task {
             await modelManager.refreshAll()
         }

@@ -26,39 +26,44 @@ public struct AppSettingsView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            #if os(macOS)
-            HStack {
-                Picker("设置分类", selection: $selectedTab) {
+        Group {
+            switch selectedTab {
+            case .models:
+                ModelManagementView()
+            case .translation:
+                TranslationServicesSettingsView()
+            case .cloudTranscription:
+                CloudTranscriptionServicesSettingsView()
+            case .sync:
+                TaskSyncSettingsView()
+            }
+        }
+        #if os(macOS)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("", selection: $selectedTab) {
                     ForEach(Tab.allCases) { tab in
-                        Label(tab.rawValue, systemImage: tab.icon).tag(tab)
+                        Text(tab.rawValue).tag(tab)
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 480)
-
-                Spacer()
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-            .padding(.bottom, 10)
-
-            Divider()
-            #endif
-
-            Group {
-                switch selectedTab {
-                case .models:
-                    ModelManagementView()
-                case .translation:
-                    TranslationServicesSettingsView()
-                case .cloudTranscription:
-                    CloudTranscriptionServicesSettingsView()
-                case .sync:
-                    TaskSyncSettingsView()
-                }
+                .labelsHidden()
+                .frame(width: 380)
             }
         }
+        #elseif os(iOS)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("", selection: $selectedTab) {
+                    ForEach(Tab.allCases) { tab in
+                        Text(tab.rawValue).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+        }
+        #endif
         .navigationTitle("设置")
     }
 }
