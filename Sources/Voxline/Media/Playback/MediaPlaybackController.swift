@@ -118,10 +118,9 @@ public final class MediaPlaybackController {
                 }
             }
             playbackObservation = newPlayer.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
-                let active = player.timeControlStatus != .paused
                 Task { @MainActor [weak self] in
                     guard let self, self.generation == loadID else { return }
-                    self.isPlaying = active && self.isReady
+                    self.isPlaying = player.timeControlStatus != .paused && self.isReady
                 }
             }
             timeObserver = newPlayer.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
@@ -220,7 +219,7 @@ public final class MediaPlaybackController {
     public func setRate(_ rate: Float) {
         guard rate.isFinite, rate > 0 else { return }
         playbackRate = rate
-        if isPlaying { player?.rate = rate }
+        if let player, player.timeControlStatus != .paused { player.rate = rate }
     }
 
     public func activeCue(in cues: [SubtitleCue]) -> SubtitleCue? {

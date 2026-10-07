@@ -76,9 +76,9 @@ struct MediaPlaybackControllerTests {
         player.playImmediately(atRate: 0.5)
         try await waitFor { controller.isPlaying }
         player.pause()
-        try await waitFor { !controller.isPlaying }
+        try await waitFor { !controller.isPlaying && player.timeControlStatus == .paused }
         controller.setRate(2)
-        #expect(!controller.isPlaying && player.rate == 0)
+        #expect(!controller.isPlaying && player.timeControlStatus == .paused)
         #expect(controller.playbackRate == 2)
         controller.togglePlayPause()
         #expect(player.rate == 2)
