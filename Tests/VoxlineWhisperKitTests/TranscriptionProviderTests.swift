@@ -191,6 +191,33 @@ struct TranscriptionProviderTests {
             languageMode: .specified, languageCode: "en"))
     }
 
+    @Test func shiftedWordTextRecoversWholeWindowWithoutLosingOriginalRecognition() throws {
+        let original = [TranscriptionSegment(start: 0, end: 1, text: " Go home."),
+                        TranscriptionSegment(start: 1, end: 2, text: " Good night.")]
+        var aligned = original
+        aligned[0].words = [WordTiming(word: " Go", tokens: [1], start: 0, end: 0.3, probability: 0.9)]
+        aligned[1].words = [WordTiming(word: " home. Good night.", tokens: [2], start: 1, end: 2, probability: 0.9)]
+        let selected = try TranscriptionEvidenceSeeker.selectTiming(segments: original, aligned: aligned,
+            offset: 0, lower: 0, upper: 2)
+        #expect(selected.usesSegmentTimings)
+        let audio = try TranscriptionAudio(localURL: URL(fileURLWithPath: "/unused.wav"), sourceStartMilliseconds: 0, durationMilliseconds: 2000)
+        var evidence = TranscriptionEvidence(settings: .whisperKitBaseline, audio: audio)
+        evidence.outcome = .completed
+        evidence.windows = [.init(seekFrame: 0, frameCount: 32_000, decodedText: " Go home. Good night.",
+            decodedTokens: [1, 2], language: "en", skippedAsNoSpeech: false,
+            segmentsBeforeAlignment: original.map { TranscriptionEvidenceSeeker.raw($0, offset: 0) },
+            alignedSegments: aligned.map { TranscriptionEvidenceSeeker.raw($0, offset: 0) }, usesSegmentTimings: false)]
+        evidence.segments = try #require(evidence.windows[0].alignedSegments)
+        let recovered = try WhisperKitTranscriptionProvider.recoverCompletedEvidence(evidence)
+        #expect(recovered.windows[0].alignedSegments == evidence.windows[0].alignedSegments)
+        #expect(recovered.windows[0].usesSegmentTimings == true)
+        let cues = try SubtitleSegmenter.segment(recovered, sourceID: UUID(), mediaDurationMilliseconds: 2000).cues
+        #expect(cues.map(\.sourceText) == ["Go home.", "Good night."])
+        #expect(cues.allSatisfy { $0.requiresTimingReview == true })
+        evidence.outcome = .cancelled
+        #expect(throws: (any Error).self) { try WhisperKitTranscriptionProvider.recoverCompletedEvidence(evidence) }
+    }
+
     @Test func invalidInputAndCancellationKeepFailureRangeAndStorageErrors() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

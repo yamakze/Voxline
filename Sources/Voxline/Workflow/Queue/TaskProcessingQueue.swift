@@ -3,6 +3,7 @@ import Observation
 import VoxlineCore
 import VoxlineMedia
 import VoxlineTranslation
+import VoxlineWhisperKit
 
 @Observable
 @MainActor
@@ -243,7 +244,9 @@ public final class TaskProcessingQueue {
             let savedRecognition: TranscriptionEvidence?
             switch chunks[index].state {
             case .failed(_, let evidence), .cancelled(let evidence):
-                savedRecognition = evidence?.cloudResult == nil ? nil : evidence
+                savedRecognition = evidence?.cloudResult != nil ||
+                    (evidence?.outcome == .completed && evidence?.settings.provider == .whisperKit && evidence?.windows.isEmpty == false)
+                    ? evidence : nil
             default: savedRecognition = nil
             }
             let sourceID = try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.beginTranscriptionChunk(chunkID) }
@@ -253,7 +256,9 @@ public final class TaskProcessingQueue {
             let evidence: TranscriptionEvidence
             do {
                 if let savedRecognition {
-                    evidence = try CloudTranscriptionAlignment.completedEvidence(from: savedRecognition)
+                    evidence = try savedRecognition.cloudResult != nil
+                        ? CloudTranscriptionAlignment.completedEvidence(from: savedRecognition)
+                        : WhisperKitTranscriptionProvider.recoverCompletedEvidence(savedRecognition)
                 } else {
                     evidence = try await pipeline.transcribe(mediaID: mediaID, audio: audio[index], settings: parameters.transcription) { progress in
                         Task { @MainActor in

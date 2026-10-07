@@ -47,8 +47,13 @@ public actor LocalMediaStore {
         #else
         let options: URL.BookmarkResolutionOptions = [.withoutUI]
         #endif
-        let url = try URL(resolvingBookmarkData: record.bookmark, options: options,
+        let url: URL
+        do {
+            url = try URL(resolvingBookmarkData: record.bookmark, options: options,
                           relativeTo: nil, bookmarkDataIsStale: &stale)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            throw MediaAccessError.missingFile(identity.fileName)
+        }
         return ResolvedMediaBookmark(url: url, isStale: stale)
     }
 

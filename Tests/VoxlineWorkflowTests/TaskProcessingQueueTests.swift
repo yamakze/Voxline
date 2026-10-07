@@ -92,6 +92,84 @@ struct TaskProcessingQueueTests {
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: reopened.defaultURL(for: task.id))) == saved)
     }
 
+    @Test func savedLocalRecognitionRecoversShiftedWordsAndPreservesEditedCompletedChunk() async throws {
+        let (directory, library, initial) = try fixture(count: 1)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        try task.freezeParameters()
+        try task.items[0].initializeCheckpoint(parameters: task.parameters, ranges: [
+            .init(sourceStartMilliseconds: 0, durationMilliseconds: 2000),
+            .init(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)])
+        let chunks = try #require(task.items[0].checkpoint).chunks
+        for (index, chunk) in chunks.enumerated() {
+            let sourceID = try task.items[0].beginTranscriptionChunk(chunk.id)
+            let start = Double(chunk.range.sourceStartMilliseconds) / 1000
+            let original = RawTranscriptionSegment(startSeconds: start, endSeconds: start + 2, text: "Saved recognition.", words: nil)
+            let aligned = RawTranscriptionSegment(startSeconds: start, endSeconds: start + 2, text: original.text,
+                words: [.init(text: "Wrong words.", startSeconds: start, endSeconds: start + 2, probability: 0.9)])
+            var evidence = TranscriptionEvidence(settings: task.parameters.transcription,
+                audio: try .init(localURL: directory.appendingPathComponent("unused.wav"),
+                    sourceStartMilliseconds: chunk.range.sourceStartMilliseconds, durationMilliseconds: 2000))
+            evidence.outcome = .completed
+            evidence.segments = index == 0 ? [original] : [aligned]
+            evidence.windows = [.init(seekFrame: 0, frameCount: 32_000, decodedText: original.text,
+                decodedTokens: [1], language: "en", skippedAsNoSpeech: false, segmentsBeforeAlignment: [original],
+                alignedSegments: evidence.segments, usesSegmentTimings: false)]
+            if index == 0 {
+                try task.items[0].commitTranscriptionChunk(chunk.id, result: SubtitleSegmenter.segment(evidence,
+                    sourceID: sourceID, mediaDurationMilliseconds: 4000))
+            } else {
+                try task.items[0].recordTranscriptionFailure(chunk.id, sourceID: sourceID, reason: "Word mismatch", evidence: evidence)
+            }
+        }
+        try task.items[0].cues[0].replaceSourceText(with: "Manual correction")
+        let edited = task.items[0].cues[0]
+        try library.save(task)
+        let reopened = TaskLibrary(tasksDirectory: directory)
+        let pipeline = ControlledPipeline()
+        let queue = TaskProcessingQueue(library: reopened, pipeline: pipeline, translationPipeline: TranslationNotExpected())
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        #expect(await pipeline.events == ["extract:\(task.items[0].id)"])
+        let saved = try TaskDocumentCodec.decode(Data(contentsOf: reopened.defaultURL(for: task.id)))
+        #expect(saved.items[0].cues[0] == edited)
+        #expect(saved.items[0].cues[1].sourceText == "Saved recognition.")
+        #expect(saved.items[0].cues[1].requiresTimingReview == true)
+        #expect(saved.items[0].checkpoint?.chunks.allSatisfy(\.isCompleted) == true)
+        #expect(saved.items[0].status == .needsReview)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_RECOVERY_TASK_PATH"] != nil))
+    func realSavedTaskRecoversOnlyFailedAlignmentWithoutInference() async throws {
+        let source = try #require(ProcessInfo.processInfo.environment["VOXLINE_RECOVERY_TASK_PATH"])
+        var task = try TaskDocumentCodec.decode(Data(contentsOf: URL(fileURLWithPath: source)))
+        var parameters = task.parameters
+        parameters.translation = nil
+        parameters.srtOutputs = [.source]
+        try task.updateParameters(parameters)
+        let originalCues = task.items[0].cues
+        let originalChunks = try #require(task.items[0].checkpoint).chunks
+        let root = URL(fileURLWithPath: "tmp/horror-recovery-validation", isDirectory: true)
+        let library = TaskLibrary(tasksDirectory: root)
+        try library.save(task)
+        let pipeline = SavedRangesPipeline(ranges: originalChunks.map(\.range))
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        let saved = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        let completed = try #require(saved.items[0].checkpoint).chunks
+        #expect(completed.allSatisfy { $0.isCompleted })
+        for chunk in originalChunks where chunk.isCompleted {
+            #expect(completed.first(where: { $0.id == chunk.id }) == chunk)
+        }
+        for cue in originalCues { #expect(saved.items[0].cues.first(where: { $0.id == cue.id }) == cue) }
+        #expect(await pipeline.requestCount == 0)
+        #expect(saved.items[0].cues.count > originalCues.count)
+        #expect(saved.items[0].cues.contains { $0.requiresTimingReview == true })
+        #expect(saved.items[0].status == .needsReview)
+        print("SAVED_TASK_RECOVERY completed=\(completed.count) retainedCues=\(originalCues.count) totalCues=\(saved.items[0].cues.count) providerRequests=0")
+    }
+
     @Test func itemCancellationWaitsForOldInferenceAndContinuesOtherMedia() async throws {
         let (directory, library, task) = try fixture(count: 3)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -791,5 +869,20 @@ private struct TranslationNotExpected: SubtitleTranslationPipeline {
 private struct UnavailableServicePipeline: SubtitleTranslationPipeline {
     func translate(settings: TranslationSettings, request: SubtitleTranslationRequest) async throws -> [TranslationBatchOutput] {
         throw TranslationServiceError.unknownService
+    }
+}
+
+private actor SavedRangesPipeline: MediaTranscriptionPipeline {
+    let ranges: [TranscriptionChunkRange]
+    private(set) var requestCount = 0
+    init(ranges: [TranscriptionChunkRange]) { self.ranges = ranges }
+    func extract(item: TaskMediaItem, progress: @escaping @Sendable (AudioExtractionProgress) -> Void) async throws -> [TranscriptionAudio] {
+        try ranges.map { try .init(localURL: URL(fileURLWithPath: "/unused.wav"),
+            sourceStartMilliseconds: $0.sourceStartMilliseconds, durationMilliseconds: $0.durationMilliseconds) }
+    }
+    func transcribe(mediaID: UUID, audio: TranscriptionAudio, settings: TranscriptionSettings,
+                    progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> TranscriptionEvidence {
+        requestCount += 1
+        throw QueueError.unavailable("Saved recognition must not request inference")
     }
 }

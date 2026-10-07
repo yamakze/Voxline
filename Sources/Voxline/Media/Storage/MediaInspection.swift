@@ -51,11 +51,19 @@ public actor MediaInspector {
         // Unscoped URLs can be directly accessible in tools. Actual reads still throw on denial.
         var freshURL = url
         freshURL.removeAllCachedResourceValues()
-        let before = try freshURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey])
-        guard before.isRegularFile == true, let size = before.fileSize, size > 0,
-              let modified = before.contentModificationDate else { throw MediaAccessError.invalidFile }
-        // Always test actual access. Cached metadata must not hide revoked file permission.
-        let handle = try FileHandle(forReadingFrom: url)
+        let size: Int
+        let modified: Date
+        let handle: FileHandle
+        do {
+            let before = try freshURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey])
+            guard before.isRegularFile == true, let fileSize = before.fileSize, fileSize > 0,
+                  let date = before.contentModificationDate else { throw MediaAccessError.invalidFile }
+            size = fileSize; modified = date
+            // Always test actual access. Cached metadata must not hide revoked file permission.
+            handle = try FileHandle(forReadingFrom: url)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            throw MediaAccessError.missingFile(url.lastPathComponent)
+        }
         defer { try? handle.close() }
         let cacheKey = url.standardizedFileURL
         if let cached = inspectedFiles[cacheKey], cached.size == size, cached.modified == modified {
@@ -131,6 +139,7 @@ public actor MediaInspector {
 public enum MediaAccessError: Error, LocalizedError, Equatable {
     case unsupportedFormat, invalidFile, protectedMedia, invalidDuration, noVideo, noAudio
     case undecodableVideo, undecodableAudio, invalidAudioTrack, fileChanged, invalidBookmark, itemChanged
+    case missingFile(String)
     public var errorDescription: String? {
         switch self {
         case .unsupportedFormat: "请选择本地 MP4／MOV／M4V 视频或 M4A／MP3／WAV 音频。"
@@ -145,6 +154,7 @@ public enum MediaAccessError: Error, LocalizedError, Equatable {
         case .fileChanged: "检查期间媒体发生变化，请重试。"
         case .invalidBookmark: "本地媒体关联记录无效，请重新关联媒体。"
         case .itemChanged: "确认期间媒体条目已改变，请重新关联。"
+        case .missingFile(let name): "找不到“\(name)”，请重新关联媒体。"
         }
     }
 }

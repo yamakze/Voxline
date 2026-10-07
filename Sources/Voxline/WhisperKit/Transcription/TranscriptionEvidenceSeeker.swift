@@ -76,14 +76,25 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
     /// Recover the entire window so original segment times cannot overlap adjacent aligned segments.
     static func selectTiming(segments: [TranscriptionSegment], aligned: [TranscriptionSegment], offset: Double,
                              lower: Double, upper: Double) throws -> (segments: [TranscriptionSegment], usesSegmentTimings: Bool) {
+        var original = segments
+        for index in original.indices { original[index].words = nil }
+        let recovered = try requiresSegmentTimings(original: original.map { raw($0, offset: offset) },
+            aligned: aligned.map { raw($0, offset: offset) }, lower: lower, upper: upper)
+        return (recovered ? original : aligned, recovered)
+    }
+
+    /// The same selection is used during inference and when recovering saved recognition.
+    static func requiresSegmentTimings(original: [RawTranscriptionSegment], aligned: [RawTranscriptionSegment],
+                                       lower: Double, upper: Double) throws -> Bool {
+        guard original.map(\.text) == aligned.map(\.text) else {
+            throw WhisperTranscriptionError.invalidAlignment("词对齐改变了识别文本。")
+        }
         do {
-            try validate(aligned.map { raw($0, offset: offset) }, lower: lower, upper: upper)
-            return (aligned, false)
+            try validate(aligned, lower: lower, upper: upper)
+            return false
         } catch WhisperTranscriptionError.invalidTiming {
-            var original = segments
-            for index in original.indices { original[index].words = nil }
-            try validate(original.map { raw($0, offset: offset) }, lower: lower, upper: upper)
-            return (original, true)
+            try validate(original, lower: lower, upper: upper)
+            return true
         }
     }
 
@@ -133,6 +144,13 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
         }
         var previousEnd = lower - 0.02
         for segment in segments {
+            if let words = segment.words, !words.isEmpty {
+                let wordText = words.map(\.text).joined().precomposedStringWithCanonicalMapping.filter { !$0.isWhitespace }
+                let segmentText = segment.text.precomposedStringWithCanonicalMapping.filter { !$0.isWhitespace }
+                guard wordText == segmentText else {
+                    throw WhisperTranscriptionError.invalidTiming("词对齐文本与原始段不一致，保留段时间供校对。")
+                }
+            }
             // Empty model evidence remains in the report; it is never exported as a subtitle cue.
             guard !segment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
             guard segment.startSeconds.isFinite, segment.endSeconds.isFinite,

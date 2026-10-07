@@ -100,6 +100,39 @@ struct SharedTaskDocumentTests {
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: cloudFile)) == changed)
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("settings.json").path))
     }
+    @Test func missingOriginalKeepsPolicyDisabledAndRelinkAllowsRetryWithoutChangingTask() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let fixture = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("VoxlineMediaTests/Fixtures/multi-audio.mov")
+        let source = root.appendingPathComponent("removed.mov")
+        try FileManager.default.copyItem(at: fixture, to: source)
+        let inspector = MediaInspector()
+        let inspection = try await inspector.inspect(source)
+        let identity = try inspection.identity(audioTrackID: #require(inspection.audioTracks.first?.id))
+        let item = TaskMediaItem(title: "Original", kind: .video, source: .localFile(fileName: identity.fileName), media: identity)
+        let task = ProcessingTask(items: [item])
+        let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"))
+        try library.save(task)
+        let store = LocalMediaStore(directory: root.appendingPathComponent("associations"))
+        try await store.save(projectID: item.id, identity: identity, url: source)
+        let settingsURL = root.appendingPathComponent("settings.json")
+        let settings = TaskSyncSettings(library: library, storageURL: settingsURL, mediaStore: store, inspector: inspector)
+        try await settings.enable(folder: root.appendingPathComponent("cloud"), originals: false)
+        try FileManager.default.removeItem(at: source)
+        await #expect(throws: MediaAccessError.missingFile(identity.fileName)) { try await settings.setOriginalMediaSync(true) }
+        #expect(settings.syncOriginalMedia == false)
+        #expect(try (JSONSerialization.jsonObject(with: Data(contentsOf: settingsURL)) as? [String: Any])?["syncOriginalMedia"] as? Bool == false)
+        try await store.save(projectID: item.id, identity: identity, url: fixture)
+        try await settings.setOriginalMediaSync(true)
+        let target = try settings.originalMediaURL(for: identity)
+        #expect(try Data(contentsOf: target) == Data(contentsOf: fixture))
+        #expect(settings.syncOriginalMedia && settings.errorMessage == nil)
+        #expect(library.task(for: task.id) == task)
+        try settings.disable()
+    }
+
     @Test func originalMediaCopyReusesActualContentAndRelinksOnOtherDevice() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

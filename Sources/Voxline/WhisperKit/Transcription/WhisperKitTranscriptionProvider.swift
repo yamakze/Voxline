@@ -28,6 +28,42 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
         try await transcribeEvidence(audio: audio).segments
     }
 
+    /// Only completed recognition can be realigned; partial decoding never becomes a completed result.
+    public static func recoverCompletedEvidence(_ original: TranscriptionEvidence) throws -> TranscriptionEvidence {
+        guard original.settings.provider == .whisperKit, original.outcome == .completed,
+              original.failureReason == nil, original.partialDecodedText == nil, original.partialDecodedTokens == nil,
+              !original.windows.isEmpty, original.durationMilliseconds <= 120_000 else {
+            throw WhisperTranscriptionError.invalidAlignment("没有完整的本地识别结果可恢复。")
+        }
+        guard original.windows.allSatisfy({ $0.seekFrame >= 0 && $0.seekFrame <= 1_920_000 &&
+            $0.frameCount > 0 && $0.frameCount <= 480_000 && $0.seekFrame + $0.frameCount <= 1_920_000 }) else {
+            throw WhisperTranscriptionError.invalidAudio
+        }
+        let frameCount = original.windows.map { $0.seekFrame + $0.frameCount }.max()!
+        guard Int64((frameCount + 15) / 16) == original.durationMilliseconds else { throw WhisperTranscriptionError.invalidAudio }
+        let selected = original.windows.flatMap { $0.usesSegmentTimings == true ? $0.segmentsBeforeAlignment :
+            ($0.alignedSegments ?? $0.segmentsBeforeAlignment) }
+        guard selected.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ==
+                original.segments.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            throw WhisperTranscriptionError.invalidAlignment("保存的识别结果遗漏或改变了窗口文本。")
+        }
+        var evidence = original
+        let offset = Double(evidence.sourceStartMilliseconds) / 1000
+        for index in evidence.windows.indices where evidence.windows[index].usesSegmentTimings != true {
+            let window = evidence.windows[index]
+            guard let aligned = window.alignedSegments else { continue }
+            evidence.windows[index].usesSegmentTimings = try TranscriptionEvidenceSeeker.requiresSegmentTimings(
+                original: window.segmentsBeforeAlignment, aligned: aligned,
+                lower: offset + Double(window.seekFrame) / 16_000,
+                upper: offset + Double(window.seekFrame + window.frameCount) / 16_000)
+        }
+        let recovered = evidence.windows.flatMap { $0.usesSegmentTimings == true ? $0.segmentsBeforeAlignment :
+            ($0.alignedSegments ?? $0.segmentsBeforeAlignment) }
+        evidence.segments = try TranscriptionEvidenceSeeker.validatedSegments(windows: evidence.windows,
+            sourceOffsetSeconds: offset, frameCount: frameCount, returnedSegments: recovered)
+        return evidence
+    }
+
     /// Bounded input only. Local re-transcription must extract an explicit range first, preserving its source offset.
     public func transcribeEvidence(audio: TranscriptionAudio) async throws -> TranscriptionEvidence {
         let seeker = TranscriptionEvidenceSeeker(sourceStartMilliseconds: audio.sourceStartMilliseconds)
