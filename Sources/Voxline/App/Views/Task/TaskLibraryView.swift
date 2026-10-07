@@ -5,7 +5,9 @@ import VoxlineCore
 
 public struct TaskLibraryView: View {
     @State private var library = TaskLibrary.shared
+    @State private var syncSettings = TaskSyncSettings.shared
     @State private var deletingEntry: TaskLibrary.Entry?
+    @State private var conflictResolutionTaskID: UUID?
     @State private var errorMessage: String?
     @State private var targetedEntryID: String?
     var onSelectTask: ((ProcessingTask) -> Void)?
@@ -114,21 +116,41 @@ public struct TaskLibraryView: View {
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("好", role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
+        .sheet(isPresented: Binding(
+            get: { conflictResolutionTaskID != nil },
+            set: { if !$0 { conflictResolutionTaskID = nil } }
+        )) {
+            if let taskID = conflictResolutionTaskID {
+                TaskConflictResolutionSheet(taskID: taskID) {
+                    library.refresh()
+                    syncSettings.refresh()
+                }
+            }
+        }
     }
 
     @ViewBuilder
     private func taskEntryRow(entry: TaskLibrary.Entry) -> some View {
+        let fileState = entry.url.flatMap { syncSettings.fileStates[$0.standardizedFileURL] }
+        let isPlaceholder = entry.task == nil || fileState == .notDownloaded
+
         HStack(alignment: .center, spacing: 14) {
-            Image(systemName: "film.stack")
+            Image(systemName: isPlaceholder ? "icloud.and.arrow.down" : "film.stack")
                 .font(.title2)
                 .foregroundStyle(Color.voxlineAccent)
                 .frame(width: 36, height: 36)
                 .background(Color.voxlineAccent.opacity(0.12), in: .circle)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(entry.title)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+                HStack(spacing: 8) {
+                    Text(entry.title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    if let fileState {
+                        SyncFileStatusBadge(state: fileState)
+                    }
+                }
 
                 if let task = entry.task {
                     HStack(spacing: 8) {
@@ -155,6 +177,10 @@ public struct TaskLibraryView: View {
                         .controlSize(.mini)
                         .padding(.top, 2)
                     }
+                } else if isPlaceholder {
+                    Text("云端任务占位，点击下载即可加载完整任务成果与字幕。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
 
                 if let problem = entry.error {
@@ -163,6 +189,25 @@ public struct TaskLibraryView: View {
             }
 
             Spacer()
+
+            if fileState == .conflict {
+                Button("解决冲突") {
+                    conflictResolutionTaskID = entry.taskID
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else if isPlaceholder, let url = entry.url {
+                Button("下载", systemImage: "arrow.down.circle") {
+                    do {
+                        try syncSettings.requestDownload(url)
+                        syncSettings.refresh()
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
 
             if let task = entry.task {
                 TaskStatusBadge(status: task.status)
@@ -183,6 +228,13 @@ public struct TaskLibraryView: View {
         .onTapGesture {
             if let task = entry.task {
                 onSelectTask?(task)
+            } else if let url = entry.url {
+                do {
+                    try syncSettings.requestDownload(url)
+                    syncSettings.refresh()
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
             }
         }
         .focusable(entry.task != nil, interactions: .activate)
@@ -201,6 +253,22 @@ public struct TaskLibraryView: View {
             }
         }
         .contextMenu {
+            if fileState == .conflict {
+                Button("解决版本冲突…", systemImage: "arrow.triangle.merge") {
+                    conflictResolutionTaskID = entry.taskID
+                }
+            }
+            if isPlaceholder, let url = entry.url {
+                Button("请求下载云端任务", systemImage: "icloud.and.arrow.down") {
+                    do {
+                        try syncSettings.requestDownload(url)
+                        syncSettings.refresh()
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                }
+            }
+            Divider()
             Button("删除", systemImage: "trash", role: .destructive) { deletingEntry = entry }
                 .disabled(TaskProcessingQueue.shared.taskID == entry.taskID)
         }

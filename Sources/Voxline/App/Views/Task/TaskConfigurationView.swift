@@ -11,6 +11,8 @@ public struct TaskConfigurationView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var draftTitle: String
+    @State private var transcriptionProvider: TranscriptionSettings.Provider
+    @State private var selectedCloudServiceID: UUID?
     @State private var modelID: String
     @State private var languageMode: TranscriptionSettings.LanguageMode
     @State private var languageCode: String
@@ -38,6 +40,7 @@ public struct TaskConfigurationView: View {
     @State private var confirmTranslationReplacement = false
     @State private var showModelManager = false
     @State private var showTranslationSettings = false
+    @State private var showCloudTranscriptionSettings = false
 
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -47,6 +50,7 @@ public struct TaskConfigurationView: View {
     private let inspector = MediaInspector.shared
     private let modelManager = ModelManager.shared
     private let serviceStore = TranslationServiceStore.shared
+    private let cloudStore = CloudTranscriptionServiceStore.shared
     @State private var originalTask: ProcessingTask
 
     public init(task: Binding<ProcessingTask>, onCommit: ((ProcessingTask) throws -> Void)? = nil) {
@@ -55,6 +59,8 @@ public struct TaskConfigurationView: View {
         let value = task.wrappedValue
         _originalTask = State(initialValue: value)
         _draftTitle = State(initialValue: value.title)
+        _transcriptionProvider = State(initialValue: value.parameters.transcription.provider)
+        _selectedCloudServiceID = State(initialValue: value.parameters.transcription.cloud?.serviceID)
         _modelID = State(initialValue: value.parameters.transcription.modelID)
         _languageMode = State(initialValue: value.parameters.transcription.languageMode)
         _languageCode = State(initialValue: value.parameters.transcription.languageCode ?? "en")
@@ -113,6 +119,21 @@ public struct TaskConfigurationView: View {
                                 showTranslationSettings = false
                                 if selectedServiceID == nil, let first = serviceStore.services.first {
                                     selectedServiceID = first.id
+                                }
+                            }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showCloudTranscriptionSettings) {
+            NavigationStack {
+                CloudTranscriptionServicesSettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("完成") {
+                                showCloudTranscriptionSettings = false
+                                if selectedCloudServiceID == nil, let first = cloudStore.services.first {
+                                    selectedCloudServiceID = first.id
                                 }
                             }
                         }
@@ -203,6 +224,19 @@ public struct TaskConfigurationView: View {
         .onAppear {
             if translates && selectedServiceID == nil {
                 selectedServiceID = serviceStore.services.first?.id
+            }
+            if transcriptionProvider == .openAICompatible && selectedCloudServiceID == nil {
+                selectedCloudServiceID = cloudStore.services.first?.id
+            }
+        }
+        .onChange(of: transcriptionProvider) { _, newProvider in
+            if newProvider == .openAICompatible {
+                modelID = "whisper-1"
+                if selectedCloudServiceID == nil {
+                    selectedCloudServiceID = cloudStore.services.first?.id
+                }
+            } else if modelID == "whisper-1" {
+                modelID = ModelManager.availableModels.first?.id ?? TranscriptionSettings.whisperKitBaseline.modelID
             }
         }
     }
@@ -557,57 +591,112 @@ public struct TaskConfigurationView: View {
             }
 
             Section("语音转写") {
-                Picker("转写模型", selection: $modelID) {
-                    if !ModelManager.availableModels.contains(where: { $0.id == modelID }) {
-                        Text("未收录：\(modelID)").tag(modelID)
-                    }
-                    ForEach(ModelManager.availableModels) { model in
-                        Text(model.name).tag(model.id)
-                    }
+                Picker("转写方式", selection: $transcriptionProvider) {
+                    Text("本地 WhisperKit").tag(TranscriptionSettings.Provider.whisperKit)
+                    Text("云端 OpenAI 兼容").tag(TranscriptionSettings.Provider.openAICompatible)
                 }
 
-                HStack {
-                    let status = modelManager.status(for: modelID)
-                    HStack(spacing: 5) {
-                        switch status {
-                        case .ready, .downloaded:
-                            Circle().fill(Color.green).frame(width: 7, height: 7)
-                            Text("已就绪").foregroundStyle(.green)
-                        case .downloading, .checking:
-                            ProgressView().controlSize(.mini)
-                            Text("下载中…").foregroundStyle(.blue)
-                        case .notDownloaded, .cancelled:
-                            Text("未下载").foregroundStyle(.secondary)
-                            Button("下载") { modelManager.download(modelID: modelID) }
-                                .buttonStyle(.borderless)
-                        case .failed, .corrupted:
-                            Text("异常").foregroundStyle(.red)
-                        case .loading, .cancelling:
-                            ProgressView().controlSize(.mini)
+                if transcriptionProvider == .whisperKit {
+                    Picker("转写模型", selection: $modelID) {
+                        if !ModelManager.availableModels.contains(where: { $0.id == modelID }) {
+                            Text("未收录：\(modelID)").tag(modelID)
+                        }
+                        ForEach(ModelManager.availableModels) { model in
+                            Text(model.name).tag(model.id)
                         }
                     }
-                    .font(.caption)
 
-                    Spacer()
+                    HStack {
+                        let status = modelManager.status(for: modelID)
+                        HStack(spacing: 5) {
+                            switch status {
+                            case .ready, .downloaded:
+                                Circle().fill(Color.green).frame(width: 7, height: 7)
+                                Text("已就绪").foregroundStyle(.green)
+                            case .downloading, .checking:
+                                ProgressView().controlSize(.mini)
+                                Text("下载中…").foregroundStyle(.blue)
+                            case .notDownloaded, .cancelled:
+                                Text("未下载").foregroundStyle(.secondary)
+                                Button("下载") { modelManager.download(modelID: modelID) }
+                                    .buttonStyle(.borderless)
+                            case .failed, .corrupted:
+                                Text("异常").foregroundStyle(.red)
+                            case .loading, .cancelling:
+                                ProgressView().controlSize(.mini)
+                            }
+                        }
+                        .font(.caption)
 
-                    Button("管理模型") {
-                        showModelManager = true
+                        Spacer()
+
+                        Button("管理模型") {
+                            showModelManager = true
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
                     }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-                }
 
-                Picker("原文语言", selection: $languageMode) {
-                    Text("自动识别").tag(TranscriptionSettings.LanguageMode.automatic)
-                    Text("指定语言").tag(TranscriptionSettings.LanguageMode.specified)
-                }
+                    Picker("原文语言", selection: $languageMode) {
+                        Text("自动识别").tag(TranscriptionSettings.LanguageMode.automatic)
+                        Text("指定语言").tag(TranscriptionSettings.LanguageMode.specified)
+                    }
 
-                if languageMode == .specified {
-                    LanguagePicker(title: "语言", selection: $languageCode, identifiers: WhisperKitLanguages.codes)
+                    if languageMode == .specified {
+                        LanguagePicker(title: "语言", selection: $languageCode, identifiers: WhisperKitLanguages.codes)
+                    }
+                } else {
+                    // 云端 OpenAI 兼容
+                    if cloudStore.services.isEmpty {
+                        HStack {
+                            Text("尚未配置云端转写服务")
+                                .font(.caption).foregroundStyle(.orange)
+                            Spacer()
+                            Button("去配置…") {
+                                showCloudTranscriptionSettings = true
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    } else {
+                        Picker("转写服务", selection: $selectedCloudServiceID) {
+                            Text("请选择服务").tag(nil as UUID?)
+                            ForEach(cloudStore.services) { service in
+                                Text(service.name).tag(Optional(service.id))
+                            }
+                        }
+
+                        if let serviceID = selectedCloudServiceID, let service = cloudStore.services.first(where: { $0.id == serviceID }) {
+                            HStack {
+                                Text("API 地址")
+                                Spacer()
+                                Text(service.baseURL.absoluteString)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .font(.caption)
+                        }
+                    }
+
+                    HStack {
+                        Text("服务模型")
+                        Spacer()
+                        Text("whisper-1")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Picker("原文语言", selection: $languageMode) {
+                        Text("自动识别").tag(TranscriptionSettings.LanguageMode.automatic)
+                        Text("指定语言").tag(TranscriptionSettings.LanguageMode.specified)
+                    }
+
+                    if languageMode == .specified {
+                        LanguagePicker(title: "语言 (ISO 639-1)", selection: $languageCode)
+                    }
                 }
 
                 if !originalTask.canChangeTranscription {
-                    Text("已有转写记录，模型与原文语言已锁定")
+                    Text("已有转写记录，转写方式与参数已锁定")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -768,6 +857,19 @@ public struct TaskConfigurationView: View {
                 return "媒体“\(candidate.url.lastPathComponent)”尚未选择音轨。"
             }
         }
+        if transcriptionProvider == .openAICompatible {
+            if cloudStore.isLoading || cloudStore.isSaving { return "云端转写服务配置正在读取或保存。" }
+            if let error = cloudStore.errorMessage { return error }
+            if selectedCloudServiceID == nil || cloudStore.services.isEmpty {
+                return "开启云端转写需选择已配置的转写服务。"
+            }
+            if languageMode == .specified {
+                let code = languageCode.trimmingCharacters(in: .whitespacesAndNewlines)
+                if code.count != 2 || !code.allSatisfy({ $0.isASCII && $0.isLetter }) {
+                    return "云端转写指定语言需为有效的两字母 ISO 639-1 代码（如 en、zh）。"
+                }
+            }
+        }
         if translates && translationEngine == .api {
             if serviceStore.isLoading || serviceStore.isSaving { return "翻译服务配置正在读取或保存。" }
             if let error = serviceStore.errorMessage { return error }
@@ -787,11 +889,22 @@ public struct TaskConfigurationView: View {
         defer { isSaving = false }
 
         do {
-            let transcription = TranscriptionSettings(
-                provider: originalTask.parameters.transcription.provider, modelID: modelID,
-                languageMode: languageMode,
-                languageCode: languageMode == .specified ? languageCode : nil, cloud: originalTask.parameters.transcription.cloud
-            )
+            let transcription: TranscriptionSettings
+            if transcriptionProvider == .whisperKit {
+                transcription = TranscriptionSettings(
+                    provider: .whisperKit,
+                    modelID: modelID,
+                    languageMode: languageMode,
+                    languageCode: languageMode == .specified ? languageCode : nil,
+                    cloud: nil
+                )
+            } else {
+                guard let serviceID = selectedCloudServiceID,
+                      let service = cloudStore.services.first(where: { $0.id == serviceID }) else {
+                    throw CloudTranscriptionError.unconfiguredService
+                }
+                transcription = try service.settings(languageCode: languageMode == .specified ? languageCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() : nil)
+            }
 
             var translation: TranslationSettings?
             if translates && translationEngine == .apple {

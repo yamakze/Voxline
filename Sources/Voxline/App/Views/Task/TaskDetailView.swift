@@ -9,7 +9,11 @@ public struct TaskDetailView: View {
     @Binding var selectedMediaID: UUID?
 
     @State private var queue = TaskProcessingQueue.shared
+    @State private var syncSettings = TaskSyncSettings.shared
+    @State private var showConflictSheet = false
     @State private var errorMessage: String?
+    @State private var noticeMessage: String?
+    @State private var pendingCloudRetryItem: TaskMediaItem?
 
     public init(task: ProcessingTask, isConfiguring: Binding<Bool>, selectedMediaID: Binding<UUID?>) {
         self.task = task
@@ -17,11 +21,22 @@ public struct TaskDetailView: View {
         _selectedMediaID = selectedMediaID
     }
 
+    private var fileState: TaskSyncSettings.FileState? {
+        TaskLibrary.shared.url(for: task.id).flatMap { syncSettings.fileStates[$0.standardizedFileURL] }
+    }
+
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                if fileState == .conflict {
+                    conflictBanner
+                }
+
                 // Compact Metrics Bar
                 compactMetricsBar
+
+                // Parameters summary line
+                parametersSummaryBar
 
                 // Media processing queue
                 mediaQueue
@@ -34,11 +49,122 @@ public struct TaskDetailView: View {
                 Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled).padding()
             }
         }
-        .alert("处理未开始或取消失败", isPresented: Binding(
+        .sheet(isPresented: $showConflictSheet) {
+            TaskConflictResolutionSheet(taskID: task.id, draftTask: task) {
+                TaskLibrary.shared.refresh()
+                syncSettings.refresh()
+            }
+        }
+        .alert("提示", isPresented: Binding(
+            get: { noticeMessage != nil }, set: { if !$0 { noticeMessage = nil } }
+        )) {
+            Button("好", role: .cancel) { noticeMessage = nil }
+        } message: { Text(noticeMessage ?? "") }
+        .alert("处理未开始或操作失败", isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
         )) {
             Button("好", role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
+        .confirmationDialog(
+            "确认开始云端转写？",
+            isPresented: Binding(
+                get: { pendingCloudRetryItem != nil },
+                set: { if !$0 { pendingCloudRetryItem = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("确认并重试") {
+                if let item = pendingCloudRetryItem {
+                    pendingCloudRetryItem = nil
+                    do { try queue.start(taskID: task.id, mediaID: item.id) }
+                    catch { errorMessage = error.localizedDescription }
+                }
+            }
+            Button("取消", role: .cancel) { pendingCloudRetryItem = nil }
+        } message: {
+            if let item = pendingCloudRetryItem {
+                let transcription = task.parameters.transcription
+                let destination = transcription.cloud?.baseURL.absoluteString ?? "未配置服务"
+                let lang = transcription.languageMode == .specified ? (transcription.languageCode ?? "指定语言") : "自动识别"
+                Text("媒体：\(item.title)\n目的服务：\(destination)\n模型：\(transcription.modelID)\n原文语言：\(lang)\n音频外发：所选音轨提取音频，按最多 120 秒分块上传。\n转写费用依具体服务提供商计费。")
+            }
+        }
+    }
+
+    private var conflictBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.title3)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("此任务存在云端冲突版本")
+                    .font(.subheadline.bold())
+                Text("另一设备在离线期间保存了不同内容，请选择保留版本或保存当前草稿副本。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button("解决冲突…") {
+                showConflictSheet = true
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(14)
+        .background(Color.orange.opacity(0.12), in: .rect(cornerRadius: 10))
+    }
+
+    private var parametersSummaryBar: some View {
+        HStack(spacing: 14) {
+            let transcription = task.parameters.transcription
+            HStack(spacing: 6) {
+                Image(systemName: transcription.provider == .openAICompatible ? "waveform.badge.mic" : "cpu")
+                    .foregroundStyle(.secondary)
+                if transcription.provider == .openAICompatible {
+                    Text("云端转写：\(transcription.modelID)")
+                        .font(.caption.weight(.medium))
+                    if let baseURL = transcription.cloud?.baseURL {
+                        Text("(\(baseURL.host ?? baseURL.absoluteString))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("本地转写：\(transcription.modelID)")
+                        .font(.caption.weight(.medium))
+                }
+            }
+
+            Text("•").foregroundStyle(.secondary)
+
+            HStack(spacing: 4) {
+                Text("语言：")
+                    .foregroundStyle(.secondary)
+                Text(transcription.languageMode == .specified ? (transcription.languageCode ?? "指定") : "自动识别")
+                    .font(.caption.weight(.medium))
+            }
+
+            if let translation = task.parameters.translation {
+                Text("•").foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text("翻译：")
+                        .foregroundStyle(.secondary)
+                    Text(translation.targetLanguage)
+                        .font(.caption.weight(.medium))
+                }
+            }
+
+            if let state = fileState {
+                Spacer()
+                SyncFileStatusBadge(state: state)
+            }
+        }
+        .font(.caption)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.35), in: .rect(cornerRadius: 8))
     }
 
     // MARK: - Compact Metrics Bar
@@ -163,15 +289,28 @@ public struct TaskDetailView: View {
                                 // Xcode Step Pipeline Badge (Audio -> Transcription -> Translation -> Ready)
                                 MediaProcessingStepsView(
                                     item: item,
-                                    hasTranslation: task.parameters.translation != nil
+                                    hasTranslation: task.parameters.translation != nil,
+                                    provider: task.parameters.transcription.provider
                                 )
 
                                 // In-line Action Buttons
                                 HStack(spacing: 6) {
+                                    if item.media == nil, syncSettings.isEnabled {
+                                        Button("关联云端媒体", systemImage: "icloud.and.arrow.down") {
+                                            associateCloudOriginal(for: item)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
+
                                     if item.status.isRetryable {
                                         Button(item.status.isTranslationPaused ? "继续翻译" : "重试", systemImage: "arrow.clockwise") {
-                                            do { try queue.start(taskID: task.id, mediaID: item.id) }
-                                            catch { errorMessage = error.localizedDescription }
+                                            if task.parameters.transcription.provider == .openAICompatible, !item.status.isTranslationPaused {
+                                                pendingCloudRetryItem = item
+                                            } else {
+                                                do { try queue.start(taskID: task.id, mediaID: item.id) }
+                                                catch { errorMessage = error.localizedDescription }
+                                            }
                                         }
                                             .buttonStyle(.bordered)
                                             .controlSize(.small)
@@ -232,6 +371,20 @@ public struct TaskDetailView: View {
                     }
                 }
                 .liquidGlassSurface(cornerRadius: 12)
+            }
+        }
+    }
+
+    private func associateCloudOriginal(for item: TaskMediaItem) {
+        Task {
+            do {
+                try await syncSettings.associateOriginal(for: item)
+                TaskLibrary.shared.refresh()
+                noticeMessage = "原媒体已成功下载并关联"
+            } catch SharedDocumentError.downloadRequired {
+                noticeMessage = "已请求系统下载原媒体，请稍候下载完成后再次关联"
+            } catch {
+                errorMessage = "关联原媒体失败：\(error.localizedDescription)"
             }
         }
     }

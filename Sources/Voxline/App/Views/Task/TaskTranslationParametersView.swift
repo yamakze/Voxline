@@ -44,7 +44,18 @@ struct TaskTranslationParametersView: View {
         NavigationStack {
             Form {
                 Section("转写") {
-                    Text(original.parameters.transcription.modelID)
+                    let transcription = original.parameters.transcription
+                    if transcription.provider == .openAICompatible {
+                        LabeledContent("转写路线", value: "云端 OpenAI 兼容")
+                        LabeledContent("转写模型", value: transcription.modelID)
+                        if let baseURL = transcription.cloud?.baseURL {
+                            LabeledContent("服务地址", value: baseURL.absoluteString)
+                        }
+                    } else {
+                        LabeledContent("转写路线", value: "本地 WhisperKit")
+                        LabeledContent("转写模型", value: transcription.modelID)
+                    }
+                    LabeledContent("语言识别", value: transcription.languageMode == .specified ? (transcription.languageCode ?? "未指定") : "自动识别")
                 }
                 Section("字幕翻译") {
                     Toggle("启用翻译", isOn: $enabled)

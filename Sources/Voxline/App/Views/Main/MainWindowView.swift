@@ -13,12 +13,16 @@ public struct MainWindowView: View {
     @State private var newTaskDraft: ProcessingTask?
     @State private var errorMessage: String?
 
+    @State private var pendingCloudConfirmationTask: ProcessingTask?
+
     public init() {}
 
     public enum NavigationItem: Hashable {
         case allTasks
         case task(UUID)
         case models
+        case sync
+        case cloudTranscription
         case settings
     }
 
@@ -69,6 +73,32 @@ public struct MainWindowView: View {
         )) {
             Button("好", role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
+        .confirmationDialog(
+            "确认开始云端转写？",
+            isPresented: Binding(
+                get: { pendingCloudConfirmationTask != nil },
+                set: { if !$0 { pendingCloudConfirmationTask = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("确认并开始") {
+                if let task = pendingCloudConfirmationTask {
+                    pendingCloudConfirmationTask = nil
+                    do { try TaskProcessingQueue.shared.start(taskID: task.id) }
+                    catch { errorMessage = error.localizedDescription }
+                }
+            }
+            Button("取消", role: .cancel) {
+                pendingCloudConfirmationTask = nil
+            }
+        } message: {
+            if let task = pendingCloudConfirmationTask {
+                let transcription = task.parameters.transcription
+                let destination = transcription.cloud?.baseURL.absoluteString ?? "未配置服务"
+                let lang = transcription.languageMode == .specified ? (transcription.languageCode ?? "指定语言") : "自动识别"
+                Text("目的服务：\(destination)\n模型：\(transcription.modelID)\n原文语言：\(lang)\n音频外发：将提取所选音轨音频，按最多 120 秒分块上传到云端服务。\n转写费用依具体服务提供商计费。")
+            }
+        }
         .onAppear {
             library.refresh()
         }
@@ -94,6 +124,14 @@ public struct MainWindowView: View {
             Section("系统") {
                 NavigationLink(value: NavigationItem.models) {
                     Label("模型管理", systemImage: "cpu")
+                }
+
+                NavigationLink(value: NavigationItem.sync) {
+                    Label("iCloud 文件夹同步", systemImage: "arrow.triangle.2.circlepath")
+                }
+
+                NavigationLink(value: NavigationItem.cloudTranscription) {
+                    Label("云端转写服务", systemImage: "waveform.badge.mic")
                 }
 
                 NavigationLink(value: NavigationItem.settings) {
@@ -159,6 +197,12 @@ public struct MainWindowView: View {
         case .models:
             ModelManagementView()
 
+        case .sync:
+            TaskSyncSettingsView()
+
+        case .cloudTranscription:
+            CloudTranscriptionServicesSettingsView()
+
         case .settings:
             TranslationServicesSettingsView()
         }
@@ -221,8 +265,12 @@ public struct MainWindowView: View {
                             .disabled(TaskProcessingQueue.shared.isCancelling)
                         } else {
                             Button(task.startedAt == nil ? "开始处理" : "继续处理", systemImage: "play.fill") {
-                                do { try TaskProcessingQueue.shared.start(taskID: task.id) }
-                                catch { errorMessage = error.localizedDescription }
+                                if task.parameters.transcription.provider == .openAICompatible {
+                                    pendingCloudConfirmationTask = task
+                                } else {
+                                    do { try TaskProcessingQueue.shared.start(taskID: task.id) }
+                                    catch { errorMessage = error.localizedDescription }
+                                }
                             }
                             .buttonStyle(.borderedProminent)
                             .disabled(TaskProcessingQueue.shared.taskID != nil || task.items.isEmpty || task.status == .completed)
