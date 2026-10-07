@@ -58,6 +58,10 @@ public enum SubtitleEmbeddingExporter {
         let temporary = destination.deletingLastPathComponent().appendingPathComponent(".\(UUID()).partial.mp4")
         let reader = try AVAssetReader(asset: asset)
         let writer = try AVAssetWriter(outputURL: temporary, fileType: .mp4)
+        let videoTimeScale = try await video.load(.naturalTimeScale)
+        let audioTimeScale = try await audio.load(.naturalTimeScale)
+        writer.movieTimeScale = CMTimeAdd(CMTime(value: 1, timescale: videoTimeScale),
+            CMTime(value: 1, timescale: audioTimeScale)).timescale
         var pairs: [(AVAssetReaderTrackOutput, AVAssetWriterInput)] = []
         for track in [video, audio] {
             let formats = try await track.load(.formatDescriptions)
@@ -65,7 +69,7 @@ public enum SubtitleEmbeddingExporter {
             let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
             output.alwaysCopiesSampleData = false
             let input = AVAssetWriterInput(mediaType: track.mediaType, outputSettings: nil, sourceFormatHint: format)
-            if track.mediaType == .video { input.transform = transform }
+            if track.mediaType == .video { input.transform = transform; input.mediaTimeScale = videoTimeScale }
             input.expectsMediaDataInRealTime = false
             guard reader.canAdd(output), writer.canAdd(input) else { throw SubtitleEmbeddingError.unsupportedFormat }
             reader.add(output); writer.add(input); pairs.append((output, input))
@@ -98,11 +102,23 @@ public enum SubtitleEmbeddingExporter {
             var ended = Set<Int>()
             var subtitleIndex = 0
             var lastProgress: Double = 0
+            var audioPriming = CMTime.zero
+            var audioStarted = false
             while ended.count < pairs.count || subtitleIndex < samples.count {
                 try Task.checkCancellation()
                 var advanced = false
                 for (index, pair) in pairs.enumerated() where !ended.contains(index) && pair.1.isReadyForMoreMediaData {
                     if let sample = pair.0.copyNextSampleBuffer() {
+                        // Reader edit/drain markers are not encoded media samples.
+                        if CMSampleBufferGetNumSamples(sample) == 0 { advanced = true; continue }
+                        if index == 1, !audioStarted,
+                           let format = CMSampleBufferGetFormatDescription(sample),
+                           CMFormatDescriptionGetMediaSubType(format) == kAudioFormatMPEG4AAC {
+                            if let trim = CMGetAttachment(sample, key: kCMSampleBufferAttachmentKey_TrimDurationAtStart, attachmentModeOut: nil) {
+                                audioPriming = CMTimeAdd(audioPriming, CMTimeMakeFromDictionary(trim as! CFDictionary))
+                            }
+                            audioStarted = CMSampleBufferGetOutputDuration(sample) > .zero
+                        }
                         guard pair.1.append(sample) else { throw writer.error ?? SubtitleEmbeddingError.invalidOutput }
                         if index == 0 {
                             lastProgress = max(lastProgress, min(0.99, CMSampleBufferGetPresentationTimeStamp(sample).seconds / duration.seconds))
@@ -127,6 +143,9 @@ public enum SubtitleEmbeddingExporter {
             }
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? SubtitleEmbeddingError.invalidOutput }
+            if audioPriming > .zero {
+                try SubtitleEmbeddingAudioTiming.preserveImplicitPriming(audioPriming, from: bookmark.url, audioTrackID: audio.trackID, in: temporary)
+            }
             let result = AVURLAsset(url: temporary)
             let resultAudio = try await result.loadTracks(withMediaType: .audio)
             let resultVideo = try await result.loadTracks(withMediaType: .video)

@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
+import CryptoKit
 import Testing
 import VoxlineCore
 @testable import VoxlineMedia
@@ -7,6 +8,81 @@ import VoxlineCore
 @Suite("Native embedded subtitles", .serialized, .timeLimit(.minutes(2)))
 @MainActor
 struct SubtitleEmbeddingTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_EMBEDDING_TASK"] != nil))
+    func realReviewedTaskExportsEmbeddedSubtitles() async throws {
+        let taskURL = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["VOXLINE_EMBEDDING_TASK"]))
+        let source = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["VOXLINE_EMBEDDING_MEDIA"]))
+        let task = try TaskDocumentCodec.decode(Data(contentsOf: taskURL))
+        let item = try #require(task.items.first)
+        let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("tmp/embedding-validation")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let existingOutput = ProcessInfo.processInfo.environment["VOXLINE_EMBEDDING_OUTPUT"]
+        let output = existingOutput.map { URL(fileURLWithPath: $0) } ?? directory.appendingPathComponent("reviewed-bilingual.mp4")
+        if existingOutput == nil {
+            let store = LocalMediaStore(directory: directory.appendingPathComponent("bookmarks"))
+            try await store.save(projectID: item.id, identity: #require(item.media), url: source)
+            try await SubtitleEmbeddingExporter.export(item: item, kind: .bilingual,
+                to: output, languageTag: "zh-Hans", allowOverwrite: true, mediaStore: store)
+        }
+        let original = AVURLAsset(url: source)
+        let result = AVURLAsset(url: output)
+        for type in [AVMediaType.video, .audio] {
+            let beforeTrack = try #require(try await original.loadTracks(withMediaType: type).first {
+                type == .video || $0.trackID == item.media?.audioTrackID
+            })
+            let afterTrack = try #require(try await result.loadTracks(withMediaType: type).first)
+            let before = try compressedFingerprint(asset: original, track: beforeTrack)
+            let after = try compressedFingerprint(asset: result, track: afterTrack)
+            #expect(before.count == after.count)
+            #expect(before.bytes == after.bytes)
+            #expect(before.timing == after.timing)
+            let beforeRange = try await beforeTrack.load(.timeRange), afterRange = try await afterTrack.load(.timeRange)
+            #expect(abs(beforeRange.start.seconds - afterRange.start.seconds) < 0.001)
+            #expect(abs(beforeRange.end.seconds - afterRange.end.seconds) < 0.001)
+            print("EMBEDDED_REAL_MEDIA \(type.rawValue) packets=\(after.count) start=\(afterRange.start.seconds) end=\(afterRange.end.seconds) payloadAndTimingUnchanged=\(before.bytes == after.bytes && before.timing == after.timing)")
+        }
+        let subtitles = try #require(try await result.loadTracks(withMediaType: .subtitle).first)
+        let captions = try encodedSamples(asset: result, track: subtitles).filter { $0.0 != Data([0, 0]) }
+        #expect(captions.count == item.cues.count)
+        for (caption, cue) in zip(captions, item.cues) {
+            #expect(caption.1 == CMTime(value: cue.startMilliseconds, timescale: 1000))
+            #expect(caption.2 == CMTime(value: cue.endMilliseconds - cue.startMilliseconds, timescale: 1000))
+            let length = Int(caption.0[0]) * 256 + Int(caption.0[1])
+            #expect(String(data: caption.0.dropFirst(2).prefix(length), encoding: .utf8) == (try SubtitleExporter.subtitleText(for: cue, kind: .bilingual)))
+        }
+        #expect(try await result.loadMediaSelectionGroup(for: .legible)?.allowsEmptySelection == true)
+    }
+
+    private func compressedFingerprint(asset: AVAsset, track: AVAssetTrack) throws -> (count: Int, bytes: SHA256.Digest, timing: SHA256.Digest) {
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        reader.add(output)
+        guard reader.startReading() else { throw reader.error ?? SubtitleEmbeddingError.invalidOutput }
+        var bytes = SHA256(), timingHash = SHA256(), count = 0
+        while let sample = output.copyNextSampleBuffer() {
+            let sampleCount = CMSampleBufferGetNumSamples(sample)
+            if sampleCount == 0 { continue }
+            count += sampleCount
+            let block = try #require(CMSampleBufferGetDataBuffer(sample))
+            let length = CMBlockBufferGetDataLength(block)
+            var data = Data(count: length)
+            let status = data.withUnsafeMutableBytes {
+                CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: $0.baseAddress!)
+            }
+            #expect(status == noErr); bytes.update(data: data)
+            for index in 0..<sampleCount {
+                var timing = CMSampleTimingInfo()
+                #expect(CMSampleBufferGetSampleTimingInfo(sample, at: index, timingInfoOut: &timing) == noErr)
+                for time in [timing.presentationTimeStamp, timing.duration] {
+                    var value = CMTimeConvertScale(time, timescale: 600_000_000, method: .default).value.bigEndian
+                    timingHash.update(data: withUnsafeBytes(of: &value) { Data($0) })
+                }
+            }
+        }
+        #expect(reader.status == .completed)
+        return (count, bytes.finalize(), timingHash.finalize())
+    }
+
     private func fixture(_ directory: URL) async throws -> (TaskMediaItem, LocalMediaStore, URL) {
         let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/multi-audio.mov")
         let store = LocalMediaStore(directory: directory.appendingPathComponent("bookmarks"))
