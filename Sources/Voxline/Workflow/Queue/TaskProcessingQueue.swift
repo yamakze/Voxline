@@ -200,7 +200,7 @@ public final class TaskProcessingQueue {
         extractionFraction = nil
         let audio: [TranscriptionAudio]
         do {
-            audio = try await pipeline.extract(item: item) { progress in
+            let extracted = try await pipeline.extract(item: item) { progress in
                 Task { @MainActor in
                     guard self.progressID == extractionID else { return }
                     switch progress {
@@ -211,6 +211,7 @@ public final class TaskProcessingQueue {
                     }
                 }
             }
+            audio = try await pipeline.speechChunks(from: extracted, settings: parameters.transcription)
             try Task.checkCancellation()
         } catch {
             try updateMedia(taskID: taskID, mediaID: mediaID) {
@@ -239,26 +240,37 @@ public final class TaskProcessingQueue {
             }
             guard let chunks = library.task(for: taskID)?.items.first(where: { $0.id == mediaID })?.checkpoint?.chunks,
                   let index = chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
+            let savedRecognition: TranscriptionEvidence?
+            switch chunks[index].state {
+            case .failed(_, let evidence), .cancelled(let evidence):
+                savedRecognition = evidence?.cloudResult == nil ? nil : evidence
+            default: savedRecognition = nil
+            }
             let sourceID = try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.beginTranscriptionChunk(chunkID) }
             let decodingID = UUID()
             progressID = decodingID
             progressText = "转写块 \(index + 1)／\(chunks.count)"
             let evidence: TranscriptionEvidence
             do {
-                evidence = try await pipeline.transcribe(mediaID: mediaID, audio: audio[index], settings: parameters.transcription) { progress in
-                    Task { @MainActor in
-                        guard self.progressID == decodingID else { return }
-                        let detail: String
-                        switch progress {
-                        case .uploadingAudio(let sent, let total): detail = "上传音频 \(sent)／\(total) 字节"
-                        case .awaitingTranscription: detail = "等待转写服务"
-                        case .readingAudio: detail = "读取音频"
-                        case .loadingModel: detail = "加载模型"
-                        case .detectingLanguage: detail = "识别语言"
-                        case .decoding(let count): detail = "已解码 \(count) 个词元"
-                        case .completed(let count): detail = "已转写 \(count) 段，等待保存"
+                if let savedRecognition {
+                    evidence = try CloudTranscriptionAlignment.completedEvidence(from: savedRecognition)
+                } else {
+                    evidence = try await pipeline.transcribe(mediaID: mediaID, audio: audio[index], settings: parameters.transcription) { progress in
+                        Task { @MainActor in
+                            guard self.progressID == decodingID else { return }
+                            let detail: String
+                            switch progress {
+                            case .uploadingAudio(let sent, let total): detail = "上传音频 \(sent)／\(total) 字节"
+                            case .awaitingTranscription: detail = "等待转写服务"
+                            case .retryingAudio(let attempt, let delay): detail = "转写重试 \(attempt)／3，等待 \(Int(delay.rounded(.up))) 秒"
+                            case .readingAudio: detail = "读取音频"
+                            case .loadingModel: detail = "加载模型"
+                            case .detectingLanguage: detail = "识别语言"
+                            case .decoding(let count): detail = "已解码 \(count) 个词元"
+                            case .completed(let count): detail = "已转写 \(count) 段，等待保存"
+                            }
+                            self.progressText = "块 \(index + 1)／\(chunks.count)：\(detail)"
                         }
-                        self.progressText = "块 \(index + 1)／\(chunks.count)：\(detail)"
                     }
                 }
             } catch {
@@ -273,8 +285,10 @@ public final class TaskProcessingQueue {
                     return
                 }
                 try updateMedia(taskID: taskID, mediaID: mediaID) {
-                    try $0.recordTranscriptionFailure(chunkID, sourceID: sourceID, reason: error.localizedDescription, evidence: failure?.evidence)
+                    try $0.recordTranscriptionFailure(chunkID, sourceID: sourceID, reason: error.localizedDescription, evidence: failure?.evidence ?? savedRecognition)
                 }
+                if let failure, case .http(let status, _) = failure.cause as? CloudTranscriptionError,
+                   [429, 503].contains(status) { return }
                 continue
             }
             progressID = nil

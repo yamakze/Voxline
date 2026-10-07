@@ -105,9 +105,11 @@ public struct TranscriptionSettings: Codable, Equatable, Sendable {
             guard let cloud else { throw CloudTranscriptionError.invalidConfiguration }
             try cloud.validate()
             // This protocol requires verbose segment timestamps; newer text-only models use another protocol.
-            guard modelID == "whisper-1" else { throw CloudTranscriptionError.unsupportedModel }
+            if cloud.protocolKind == .audioTranscriptions, modelID != "whisper-1" {
+                throw CloudTranscriptionError.unsupportedModel
+            }
             if let languageCode {
-                guard languageCode.count == 2, languageCode.allSatisfy({ $0.isASCII && $0.isLetter }) else {
+                guard (cloud.protocolKind == .qwenAudioChat ? (2...3).contains(languageCode.count) : languageCode.count == 2), languageCode.allSatisfy({ $0.isASCII && $0.isLetter }) else {
                     throw ProjectValidationError.invalidSourceLanguage
                 }
             }

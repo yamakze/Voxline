@@ -7,16 +7,27 @@ public struct CloudTranscriptionServiceConfig: Identifiable, Codable, Equatable,
     public var name: String
     public var baseURL: URL
     public var modelID: String
+    public var protocolKind: CloudTranscriptionProtocol
 
-    public init(id: UUID = UUID(), name: String, baseURL: URL, modelID: String = "whisper-1") {
-        self.id = id; self.name = name; self.baseURL = baseURL; self.modelID = modelID
+    public init(id: UUID = UUID(), name: String, baseURL: URL, modelID: String = "whisper-1", protocolKind: CloudTranscriptionProtocol = .audioTranscriptions) {
+        self.id = id; self.name = name; self.baseURL = baseURL; self.modelID = modelID; self.protocolKind = protocolKind
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, baseURL, modelID, protocolKind }
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        baseURL = try values.decode(URL.self, forKey: .baseURL)
+        modelID = try values.decode(String.self, forKey: .modelID)
+        protocolKind = try values.decodeIfPresent(CloudTranscriptionProtocol.self, forKey: .protocolKind) ?? .audioTranscriptions
     }
 
     public func settings(languageCode: String? = nil) throws -> TranscriptionSettings {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw TranslationServiceError.emptyName }
         let settings = TranscriptionSettings(provider: .openAICompatible, modelID: modelID,
             languageMode: languageCode == nil ? .automatic : .specified, languageCode: languageCode,
-            cloud: .init(serviceID: id, baseURL: baseURL))
+            cloud: .init(serviceID: id, baseURL: baseURL, protocolKind: protocolKind))
         try settings.validate()
         return settings
     }
@@ -111,11 +122,11 @@ public final class CloudTranscriptionServiceStore {
         guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
         guard errorMessage == nil else { throw TranslationServiceError.configurationUnavailable }
         guard let service = services.first(where: { $0.id == cloud.serviceID }) else { throw CloudTranscriptionError.unconfiguredService }
-        guard service.baseURL == cloud.baseURL else { throw CloudTranscriptionError.changedEndpoint }
+        guard service.baseURL == cloud.baseURL && service.protocolKind == cloud.protocolKind else { throw CloudTranscriptionError.changedEndpoint }
         let key = try await vault.read(serviceID: cloud.serviceID)
         // Actor reentrancy must not attach an old credential to a newly changed destination.
         guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
-        guard let current = services.first(where: { $0.id == cloud.serviceID }), current.baseURL == cloud.baseURL else { throw CloudTranscriptionError.changedEndpoint }
+        guard let current = services.first(where: { $0.id == cloud.serviceID }), current.baseURL == cloud.baseURL, current.protocolKind == cloud.protocolKind else { throw CloudTranscriptionError.changedEndpoint }
         guard errorMessage == nil else { throw TranslationServiceError.configurationUnavailable }
         return key ?? ""
     }

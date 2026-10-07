@@ -158,8 +158,17 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
 
     func validateEvidence(_ evidence: TranscriptionEvidence, range: TranscriptionChunkRange) throws {
         guard evidence.sourceStartMilliseconds == range.sourceStartMilliseconds,
-              evidence.durationMilliseconds == range.durationMilliseconds,
-              evidence.settings == parameters.transcription else { throw CheckpointError.incompatibleContext }
+              evidence.durationMilliseconds == range.durationMilliseconds else { throw CheckpointError.incompatibleContext }
+        try evidence.settings.validate()
+        if evidence.settings != parameters.transcription {
+            // Explicit service rebinding keeps the original recognition provenance and range partition.
+            let current = parameters.transcription
+            guard current.provider == .openAICompatible, evidence.settings.provider == .openAICompatible,
+                  let oldCloud = evidence.settings.cloud, let newCloud = current.cloud,
+                  oldCloud.protocolKind.usesSpeechChunks == newCloud.protocolKind.usesSpeechChunks,
+                  evidence.settings.languageMode == current.languageMode,
+                  evidence.settings.languageCode == current.languageCode else { throw CheckpointError.incompatibleContext }
+        }
         if evidence.outcome == .failed {
             guard let reason = evidence.failureReason, !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw CheckpointError.invalidRecord

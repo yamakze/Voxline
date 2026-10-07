@@ -61,7 +61,8 @@ public struct TaskConfigurationView: View {
         _draftTitle = State(initialValue: value.title)
         _transcriptionProvider = State(initialValue: value.parameters.transcription.provider)
         _selectedCloudServiceID = State(initialValue: value.parameters.transcription.cloud?.serviceID)
-        _modelID = State(initialValue: value.parameters.transcription.modelID)
+        _modelID = State(initialValue: value.parameters.transcription.provider == .whisperKit
+            ? value.parameters.transcription.modelID : TranscriptionSettings.whisperKitBaseline.modelID)
         _languageMode = State(initialValue: value.parameters.transcription.languageMode)
         _languageCode = State(initialValue: value.parameters.transcription.languageCode ?? "en")
         if case .appleTranslation(let source) = value.parameters.translation?.engine {
@@ -234,12 +235,9 @@ public struct TaskConfigurationView: View {
         }
         .onChange(of: transcriptionProvider) { _, newProvider in
             if newProvider == .openAICompatible {
-                modelID = "whisper-1"
                 if selectedCloudServiceID == nil {
                     selectedCloudServiceID = cloudStore.services.first?.id
                 }
-            } else if modelID == "whisper-1" {
-                modelID = ModelManager.availableModels.first?.id ?? TranscriptionSettings.whisperKitBaseline.modelID
             }
         }
     }
@@ -665,7 +663,8 @@ public struct TaskConfigurationView: View {
                             HStack {
                                 Text("API 地址")
                                 Spacer()
-                                Text(service.baseURL.absoluteString)
+                                Text((originalTask.canChangeTranscription ? service.baseURL
+                                      : originalTask.parameters.transcription.cloud?.baseURL ?? service.baseURL).absoluteString)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
@@ -676,7 +675,10 @@ public struct TaskConfigurationView: View {
                     HStack {
                         Text("服务模型")
                         Spacer()
-                        Text("whisper-1")
+                        let serviceModel = originalTask.canChangeTranscription
+                            ? cloudStore.services.first(where: { $0.id == selectedCloudServiceID })?.modelID
+                            : originalTask.parameters.transcription.modelID
+                        Text(serviceModel ?? "未选择")
                             .foregroundStyle(.secondary)
                     }
 
@@ -852,17 +854,17 @@ public struct TaskConfigurationView: View {
                 return "媒体“\(candidate.url.lastPathComponent)”尚未选择音轨。"
             }
         }
-        if transcriptionProvider == .openAICompatible {
+        if originalTask.canChangeTranscription, transcriptionProvider == .openAICompatible {
             if cloudStore.isLoading || cloudStore.isSaving { return "云端转写服务配置正在读取或保存。" }
             if let error = cloudStore.errorMessage { return error }
             if !cloudStore.services.contains(where: { $0.id == selectedCloudServiceID }) {
                 return "开启云端转写需选择已配置的转写服务。"
             }
-            if languageMode == .specified {
-                let code = languageCode.trimmingCharacters(in: .whitespacesAndNewlines)
-                if code.count != 2 || !code.allSatisfy({ $0.isASCII && $0.isLetter }) {
-                    return "云端转写指定语言需为两位字母代码（如 zh、en）。"
-                }
+            if let service = cloudStore.services.first(where: { $0.id == selectedCloudServiceID }) {
+                do {
+                    _ = try service.settings(languageCode: languageMode == .specified
+                        ? languageCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() : nil)
+                } catch { return error.localizedDescription }
             }
         }
         if translates && translationEngine == .api {
@@ -885,7 +887,9 @@ public struct TaskConfigurationView: View {
 
         do {
             let transcription: TranscriptionSettings
-            if transcriptionProvider == .whisperKit {
+            if !originalTask.canChangeTranscription {
+                transcription = originalTask.parameters.transcription
+            } else if transcriptionProvider == .whisperKit {
                 transcription = TranscriptionSettings(
                     provider: .whisperKit,
                     modelID: modelID,

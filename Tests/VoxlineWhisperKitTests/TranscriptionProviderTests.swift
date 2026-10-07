@@ -31,6 +31,39 @@ struct TranscriptionProviderTests {
         #expect(throws: WhisperTranscriptionError.invalidAudio) { try WhisperModelStore.readPCMSamples(inconsistent) }
     }
 
+    @Test func speechChunksPreservePausesOffsetsAndPCM16WithBoundedContinuousSpeech() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("speech.wav")
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000 * 15))
+        buffer.frameLength = buffer.frameCapacity
+        let samples = try #require(buffer.floatChannelData?[0])
+        for index in 0..<Int(buffer.frameLength) {
+            let second = Double(index) / 16_000
+            samples[index] = (second >= 1 && second < 2) || (second >= 4 && second < 14) ? 0.25 : 0
+        }
+        do { let file = try AVAudioFile(forWriting: url, settings: format.settings); try file.write(from: buffer) }
+        let input = try TranscriptionAudio(localURL: url, sourceStartMilliseconds: 100_000, durationMilliseconds: 15_000)
+        let chunks = try SpeechAudioChunker.chunks(from: input)
+        #expect(chunks.count == 3)
+        #expect(chunks[0].sourceStartMilliseconds == 100_800)
+        #expect(chunks[0].durationMilliseconds == 1400)
+        #expect(chunks[1].sourceStartMilliseconds == 103_800)
+        #expect(chunks.allSatisfy { $0.durationMilliseconds <= 8000 })
+        #expect(chunks[2].sourceStartMilliseconds == 111_800)
+        let file = try AVAudioFile(forReading: chunks[0].localURL)
+        #expect(file.fileFormat.commonFormat == .pcmFormatInt16)
+        #expect(file.length == 1400 * 16)
+        #expect(try SpeechAudioChunker.chunks(from: input).map(\.localURL) == chunks.map(\.localURL))
+        for index in 0..<Int(buffer.frameLength) { samples[index] = 0 }
+        let silentURL = directory.appendingPathComponent("silent.wav")
+        do { let file = try AVAudioFile(forWriting: silentURL, settings: format.settings); try file.write(from: buffer) }
+        let silent = try SpeechAudioChunker.chunks(from: .init(localURL: silentURL, sourceStartMilliseconds: 100_000, durationMilliseconds: 15_000))
+        #expect(silent.count == 1 && silent[0].isSilent)
+    }
+
     @Test func usesRealFramesBeforeAlignmentAndKeepsRows() throws {
         let weights = try MLMultiArray(shape: [2, 1500], dataType: .float16)
         for row in 0..<2 {
@@ -211,7 +244,7 @@ struct TranscriptionProviderTests {
         let provider = try WhisperKitTranscriptionProvider(settings: settings, store: store, evidenceDirectory: root) { progress in
             states.withLock {
                 switch progress {
-                case .uploadingAudio, .awaitingTranscription: $0.append("unexpected-cloud-progress")
+                case .uploadingAudio, .awaitingTranscription, .retryingAudio: $0.append("unexpected-cloud-progress")
                 case .readingAudio: $0.append("reading")
                 case .loadingModel: $0.append("loading")
                 case .detectingLanguage: $0.append("detecting")

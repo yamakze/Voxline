@@ -56,6 +56,42 @@ struct TaskProcessingQueueTests {
         #expect(throws: QueueError.noWork) { try queue.start(taskID: task.id) }
     }
 
+    @Test func savedCloudRecognitionRealignsAfterRestartWithoutAnotherProviderRequest() async throws {
+        let (directory, library, initial) = try fixture(count: 1)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let config = CloudTranscriptionServiceConfig(name: "Qwen", baseURL: URL(string: "https://asr.example/v1")!,
+            modelID: "qwen3-asr-flash", protocolKind: .qwenAudioChat)
+        let parameters = TaskParameters(transcription: try config.settings(), srtOutputs: [.source])
+        var task = initial
+        try task.updateParameters(parameters)
+        try task.freezeParameters()
+        try task.items[0].initializeCheckpoint(parameters: parameters, ranges: [
+            .init(sourceStartMilliseconds: 0, durationMilliseconds: 2000),
+            .init(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)])
+        for chunk in try #require(task.items[0].checkpoint).chunks {
+            let sourceID = try task.items[0].beginTranscriptionChunk(chunk.id)
+            let audio = try TranscriptionAudio(localURL: directory.appendingPathComponent("audio.wav"),
+                sourceStartMilliseconds: chunk.range.sourceStartMilliseconds, durationMilliseconds: 2000)
+            var evidence = TranscriptionEvidence(settings: parameters.transcription, audio: audio)
+            evidence.cloudResult = .init(text: "Saved recognition.", segments: nil, timingSource: .audioRange)
+            evidence.failureReason = "Interrupted before alignment"
+            try task.items[0].recordTranscriptionFailure(chunk.id, sourceID: sourceID,
+                reason: evidence.failureReason!, evidence: evidence)
+        }
+        try library.save(task)
+        let reopened = TaskLibrary(tasksDirectory: directory)
+        let pipeline = ControlledPipeline()
+        let queue = TaskProcessingQueue(library: reopened, pipeline: pipeline, translationPipeline: TranslationNotExpected())
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        #expect(await pipeline.events == ["extract:\(task.items[0].id)"])
+        let saved = try #require(reopened.task(for: task.id))
+        #expect(saved.items[0].cues.count == 2)
+        #expect(saved.items[0].cues.allSatisfy { $0.requiresTimingReview == true })
+        #expect(saved.items[0].status == .needsReview)
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: reopened.defaultURL(for: task.id))) == saved)
+    }
+
     @Test func itemCancellationWaitsForOldInferenceAndContinuesOtherMedia() async throws {
         let (directory, library, task) = try fixture(count: 3)
         defer { try? FileManager.default.removeItem(at: directory) }

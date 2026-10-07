@@ -20,6 +20,40 @@ struct ProcessingCheckpointTests {
         return task
     }
 
+    @Test func explicitCloudServiceRebindingPreservesCompletedRecognitionAndManualEdits() throws {
+        let media = try MediaIdentity(fileName: "sample.mp4", byteCount: 123, sha256: String(repeating: "a", count: 64),
+            durationMilliseconds: 5000, audioTrackID: 1)
+        let first = TranscriptionSettings(provider: .openAICompatible, modelID: "gemini-test",
+            cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://first.example/v1")!, protocolKind: .geminiAudioChat))
+        var task = ProcessingTask(items: [.init(title: "Sample", kind: .video,
+            source: .localFile(fileName: media.fileName), media: media)], parameters: .init(transcription: first))
+        try task.freezeParameters()
+        try task.items[0].initializeCheckpoint(parameters: task.parameters, ranges: ranges)
+        let chunk = task.items[0].checkpoint!.chunks[0]
+        let sourceID = try task.items[0].beginTranscriptionChunk(chunk.id)
+        var evidence = TranscriptionEvidence(settings: first, audio: try .init(localURL: URL(fileURLWithPath: "/tmp/test.wav"),
+            sourceStartMilliseconds: 0, durationMilliseconds: 2000))
+        evidence.cloudResult = .init(text: "Original.", segments: nil, timingSource: .audioRange)
+        evidence = try CloudTranscriptionAlignment.completedEvidence(from: evidence)
+        try task.items[0].commitTranscriptionChunk(chunk.id,
+            result: SubtitleSegmenter.segment(evidence, sourceID: sourceID, mediaDurationMilliseconds: 5000))
+        let before = task.items[0].cues[0]
+        try task.items[0].editSubtitle(comparedTo: before, sourceText: "Manual.", translationText: "人工译文")
+        let cues = task.items[0].cues
+        let completed = task.items[0].checkpoint!.chunks[0]
+        let second = TranscriptionSettings(provider: .openAICompatible, modelID: "qwen3-asr-flash",
+            cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://second.example/v1")!, protocolKind: .qwenAudioChat))
+        try task.bindCloudTranscription(second)
+        #expect(task.items[0].cues == cues)
+        #expect(task.items[0].checkpoint!.chunks[0] == completed)
+        #expect(task.parameters.transcription == second)
+        #expect(task.items[0].checkpoint?.parameters.transcription == second)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)) == task)
+        let incompatible = TranscriptionSettings(provider: .openAICompatible, modelID: "whisper-1",
+            cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://third.example/v1")!))
+        #expect(throws: CheckpointError.incompatibleContext) { try task.bindCloudTranscription(incompatible) }
+    }
+
     @Test func explicitTranslationEditsPreserveASRAndManualEditsAndRequireApprovalForANewTarget() throws {
         var original = try task(translates: true)
         _ = try complete(&original, index: 0)

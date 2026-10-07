@@ -1,7 +1,7 @@
 import Foundation
 
 public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
-    public static let currentFormatVersion = 5
+    public static let currentFormatVersion = 6
     public let formatVersion: Int
     public let id: UUID
     public var title: String
@@ -32,7 +32,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .formatVersion)
-        guard version == 2 || version == 3 || version == 4 || version == Self.currentFormatVersion else {
+        guard version == 2 || version == 3 || version == 4 || version == 5 || version == Self.currentFormatVersion else {
             throw ProjectValidationError.unsupportedVersion(version)
         }
         formatVersion = Self.currentFormatVersion
@@ -83,6 +83,28 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
                 updated.items[index].status = parameters.translation == nil || item.cues.allSatisfy(\.hasCurrentTranslation)
                     ? item.completedProcessingStatus : .needsReview
             }
+        }
+        try updated.validate()
+        self = updated
+    }
+
+    /// An explicit cloud service change affects future requests; recognition and edited cues survive.
+    public mutating func bindCloudTranscription(_ settings: TranscriptionSettings) throws {
+        try settings.validate()
+        guard !items.contains(where: { if case .running = $0.status { true } else { false } }) else {
+            throw CheckpointError.workRunning
+        }
+        let previous = parameters.transcription
+        guard previous.provider == .openAICompatible, settings.provider == .openAICompatible,
+              let oldCloud = previous.cloud, let newCloud = settings.cloud,
+              oldCloud.protocolKind.usesSpeechChunks == newCloud.protocolKind.usesSpeechChunks,
+              previous.languageMode == settings.languageMode, previous.languageCode == settings.languageCode else {
+            throw CheckpointError.incompatibleContext
+        }
+        var updated = self
+        updated.parameters.transcription = settings
+        for index in updated.items.indices where updated.items[index].checkpoint != nil {
+            updated.items[index].checkpoint?.parameters.transcription = settings
         }
         try updated.validate()
         self = updated

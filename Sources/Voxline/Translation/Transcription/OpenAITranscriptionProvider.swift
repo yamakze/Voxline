@@ -13,7 +13,7 @@ public struct OpenAITranscriptionProvider: TranscriptionProvider {
                 evidenceDirectory: URL? = nil, mediaID: UUID = UUID(),
                 onProgress: @escaping @Sendable (TranscriptionProgress) -> Void = { _ in }) throws {
         try settings.validate()
-        guard settings.provider == .openAICompatible else { throw CloudTranscriptionError.invalidConfiguration }
+        guard settings.provider == .openAICompatible, settings.cloud?.protocolKind == .audioTranscriptions else { throw CloudTranscriptionError.invalidConfiguration }
         self.settings = settings; self.apiKey = apiKey; self.session = session; self.onProgress = onProgress
         self.evidenceDirectory = (evidenceDirectory ?? URL.cachesDirectory.appendingPathComponent("Voxline/Transcription"))
             .appendingPathComponent(mediaID.uuidString)
@@ -46,26 +46,21 @@ public struct OpenAITranscriptionProvider: TranscriptionProvider {
             let (data, response) = try await session.upload(for: request, fromFile: bodyURL, delegate: delegate)
             try FileManager.default.removeItem(at: bodyURL)
             uploadURL = nil
-            try Task.checkCancellation()
             guard let response = response as? HTTPURLResponse else { throw CloudTranscriptionError.invalidResponse }
             guard (200..<300).contains(response.statusCode) else {
                 // Never expose upstream bodies containing credentials or unrelated private data.
                 throw CloudTranscriptionError.http(status: response.statusCode, requestID: response.value(forHTTPHeaderField: "x-request-id"))
             }
+            try CloudTranscriptionEvidence.writeResponse(data, to: evidenceDirectory)
             let result = try JSONDecoder().decode(VerboseTranscription.self, from: data)
             evidence.partialDecodedText = result.text
-            guard !result.segments.isEmpty || result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw CloudTranscriptionError.invalidResponse
-            }
-            let offset = Double(audio.sourceStartMilliseconds) / 1000
-            evidence.segments = result.segments.map {
-                .init(startSeconds: $0.start + offset, endSeconds: $0.end + offset, text: $0.text,
-                      words: nil, averageLogProbability: $0.avg_logprob, noSpeechProbability: $0.no_speech_prob)
-            }
-            // No invented word probabilities or alignment. The existing segmenter validates raw segment times.
-            evidence.partialDecodedText = nil
-            evidence.outcome = .completed
-            _ = try persist(evidence)
+            evidence.cloudResult = .init(text: result.text, segments: result.segments.map {
+                .init(start: $0.start, end: $0.end, text: $0.text,
+                      averageLogProbability: $0.avg_logprob, noSpeechProbability: $0.no_speech_prob)
+            }, timingSource: .service)
+            try Task.checkCancellation()
+            evidence = try CloudTranscriptionAlignment.completedEvidence(from: evidence)
+            _ = try CloudTranscriptionEvidence.write(evidence, to: evidenceDirectory)
             onProgress(.completed(segmentCount: evidence.segments.count))
             return evidence
         } catch {
@@ -77,7 +72,7 @@ public struct OpenAITranscriptionProvider: TranscriptionProvider {
             evidence.outcome = Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled ? .cancelled : .failed
             evidence.failureReason = reason
             let evidenceURL: URL
-            do { evidenceURL = try persist(evidence) }
+            do { evidenceURL = try CloudTranscriptionEvidence.write(evidence, to: evidenceDirectory) }
             catch let storageError {
                 throw TranscriptionFailure(cause: error, evidence: evidence, evidenceURL: nil, storageError: storageError.localizedDescription)
             }
@@ -104,14 +99,6 @@ public struct OpenAITranscriptionProvider: TranscriptionProvider {
         try output.write(contentsOf: Data("\r\n--\(boundary)--\r\n".utf8))
     }
 
-    private func persist(_ evidence: TranscriptionEvidence) throws -> URL {
-        try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
-        let url = evidenceDirectory.appendingPathComponent("\(UUID()).json")
-        let encoder = JSONEncoder()
-        encoder.nonConformingFloatEncodingStrategy = .convertToString(positiveInfinity: "+Infinity", negativeInfinity: "-Infinity", nan: "NaN")
-        try encoder.encode(evidence).write(to: url, options: .atomic)
-        return url
-    }
 }
 
 private struct VerboseTranscription: Decodable {
@@ -126,7 +113,7 @@ private struct VerboseTranscription: Decodable {
     }
 }
 
-private final class AudioUploadProgress: NSObject, URLSessionTaskDelegate, Sendable {
+final class AudioUploadProgress: NSObject, URLSessionTaskDelegate, Sendable {
     let onProgress: @Sendable (TranscriptionProgress) -> Void
     init(onProgress: @escaping @Sendable (TranscriptionProgress) -> Void) { self.onProgress = onProgress }
     func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,

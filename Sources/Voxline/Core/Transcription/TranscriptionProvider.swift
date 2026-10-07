@@ -8,14 +8,16 @@ public struct TranscriptionAudio: Sendable {
     public let localURL: URL
     public let sourceStartMilliseconds: Int64
     public let durationMilliseconds: Int64
+    public let isSilent: Bool
 
-    public init(localURL: URL, sourceStartMilliseconds: Int64, durationMilliseconds: Int64) throws {
+    public init(localURL: URL, sourceStartMilliseconds: Int64, durationMilliseconds: Int64, isSilent: Bool = false) throws {
         guard localURL.isFileURL, sourceStartMilliseconds >= 0, durationMilliseconds > 0 else {
             throw TranscriptionInputError.invalidAudio
         }
         self.localURL = localURL
         self.sourceStartMilliseconds = sourceStartMilliseconds
         self.durationMilliseconds = durationMilliseconds
+        self.isSilent = isSilent
     }
 }
 
@@ -27,22 +29,24 @@ public struct RawTranscriptionSegment: Codable, Equatable, Sendable {
     public let words: [RawWordTiming]?
     public let averageLogProbability: Double?
     public let noSpeechProbability: Double?
+    public let timingSource: TranscriptionTimingSource?
 
     public init(startSeconds: Double, endSeconds: Double, text: String, words: [RawWordTiming]?,
-                averageLogProbability: Double? = nil, noSpeechProbability: Double? = nil) {
+                averageLogProbability: Double? = nil, noSpeechProbability: Double? = nil, timingSource: TranscriptionTimingSource? = nil) {
         self.startSeconds = startSeconds
         self.endSeconds = endSeconds
         self.text = text
         self.words = words
         self.averageLogProbability = averageLogProbability
         self.noSpeechProbability = noSpeechProbability
+        self.timingSource = timingSource
     }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
         evidenceNumberEqual(lhs.startSeconds, rhs.startSeconds) && evidenceNumberEqual(lhs.endSeconds, rhs.endSeconds) &&
         lhs.text == rhs.text && lhs.words == rhs.words &&
         evidenceNumberEqual(lhs.averageLogProbability, rhs.averageLogProbability) &&
-        evidenceNumberEqual(lhs.noSpeechProbability, rhs.noSpeechProbability)
+        evidenceNumberEqual(lhs.noSpeechProbability, rhs.noSpeechProbability) && lhs.timingSource == rhs.timingSource
     }
 }
 
@@ -76,6 +80,7 @@ public enum TranscriptionProgress: Sendable {
     case readingAudio, loadingModel, detectingLanguage
     case uploadingAudio(sentBytes: Int64, totalBytes: Int64)
     case awaitingTranscription
+    case retryingAudio(attempt: Int, delaySeconds: Double)
     case decoding(tokenCount: Int)
     case completed(segmentCount: Int)
 }
@@ -116,6 +121,7 @@ public struct TranscriptionEvidence: Codable, Equatable, Sendable {
     public var segments: [RawTranscriptionSegment]
     public var partialDecodedText: String?
     public var partialDecodedTokens: [Int]?
+    public var cloudResult: CloudTranscriptionResult?
     public var outcome: Outcome
     public var failureReason: String?
 

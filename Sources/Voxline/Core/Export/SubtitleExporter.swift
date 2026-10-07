@@ -33,21 +33,26 @@ public enum SubtitleExporter {
             guard missingCount == 0 else { throw SubtitleExportError.incompleteTranslations(missingCount) }
         }
 
-        // Blank lines delimit SRT records. Normalize line endings and remove blank body lines.
-        func bodyLines(_ text: String) -> String {
-            text.components(separatedBy: .newlines)
-                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-                .joined(separator: "\n")
-        }
-        let records = cues.enumerated().map { index, cue in
-            var text = kind == .translation ? "" : bodyLines(cue.sourceText)
-            if kind != .source, case .succeeded(let translation, _) = cue.translation {
-                if kind == .bilingual { text += "\n" }
-                text += bodyLines(translation)
-            }
+        let records = try cues.enumerated().map { index, cue in
+            let text = try subtitleText(for: cue, kind: kind)
             return "\(index + 1)\n\(formatSRTTimestamp(milliseconds: cue.startMilliseconds)) --> \(formatSRTTimestamp(milliseconds: cue.endMilliseconds))\n\(text)\n"
         }
         return records.joined(separator: "\n")
+    }
+
+    /// One text projection serves standalone SRT and embedded subtitle samples.
+    public static func subtitleText(for cue: SubtitleCue, kind: SRTOutputKind) throws -> String {
+        if kind != .source, !cue.hasCurrentTranslation { throw SubtitleExportError.incompleteTranslations(1) }
+        func bodyLines(_ text: String) -> String {
+            text.components(separatedBy: .newlines)
+                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: "\n")
+        }
+        var text = kind == .translation ? "" : bodyLines(cue.sourceText)
+        if kind != .source, case .succeeded(let translation, _) = cue.translation {
+            if kind == .bilingual { text += "\n" }
+            text += bodyLines(translation)
+        }
+        return text
     }
 
     public static func suggestedFileName(mediaTitle: String, kind: SRTOutputKind) -> String {

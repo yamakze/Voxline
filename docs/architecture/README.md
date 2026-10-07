@@ -42,7 +42,7 @@ graph TD
 
 Mac 新任务保存至应用本地 Application Support/Voxline/Tasks；导入已有文件后保存到原 URL，不保留额外副本。Workflow 的 TaskLibrary 由调用方传入目录，系统最近文档通过 Mac 接线提供；登记不写文件，保存先编码验证，再原子写入，成功后更新任务库。条目只能由任务库发布。两平台的媒体编辑共用 updateItem，对照最新媒体快照后保存；读写或目录错误明确显示，损坏任务保留错误条目，保存失败保留界面草稿与最后成功写入的成果。iOS 设备副本规则见“iOS 本地播放与校对”。
 
-版本 5 的 .voxline 根对象为 ProcessingTask。版本 2／3／4 迁移保持 Task、媒体、参数、字幕与状态，不虚构检查点；版本 1 的 SubtitleProject 保持原项目 ID 为媒体 ID，复用书签，已有字幕标记为待确认。打开只迁移内存结构，不主动改写原文件；明确保存才写版本 5。运行媒体及内部转写块／翻译批次转换为 interrupted，保留已提交成果。
+版本 6 的 .voxline 根对象为 ProcessingTask。版本 2／3／4／5 迁移保持 Task、媒体、参数、字幕与状态，不虚构检查点；版本 1 的 SubtitleProject 保持原项目 ID 为媒体 ID，复用书签，已有字幕标记为待确认。打开只迁移内存结构，不主动改写原文件；明确保存才写版本 6。运行媒体及内部转写块／翻译批次转换为 interrupted，保留已提交成果。
 
 Task 保存一份参数，有序媒体条目分别保存来源、身份、字幕与状态。整体状态和统计从条目计算。参数冻结要求至少一个可处理媒体，已失败或取消的输入不阻塞其余合法条目。冻结只固定参数，不调用 Provider 或生成成果。
 
@@ -178,7 +178,7 @@ iOS 任务列表通过 ForEach.onMove 接入原生长按排序，无需切换编
 
 原始 ASR 证据和可读字幕分开：RawTranscriptionSegment 保留原始对齐，转换为 SubtitleCue 前验证。切分及 Provider 不能排序、裁剪或丢弃文本来伪装成功。过期译文保留旧来源并显示待重译，新的自动处理不能覆盖较新的手工编辑。
 
-应用打包启用 App Sandbox、用户选择文件读写、应用范围书签和网络客户端。当前打包尚未配置 iCloud 文档容器与同步接线；同步和云端转写的后续范围见 [ADR-0019](../ADR/0019-icloud-and-cloud-transcription-scope.md)，实施后更新本页的实际存储与执行规则。YouTube／Bilibili 来源后续实施；产品只支持 macOS 与 iOS。
+应用打包启用 App Sandbox、用户选择文件读写、应用范围书签和网络客户端。iCloud 使用用户选择文件夹与原生文件协调，云端转写使用设备服务和 Keychain；不配置应用专属 iCloud 容器。范围选择见 [ADR-0019](../ADR/0019-icloud-and-cloud-transcription-scope.md)。YouTube／Bilibili 来源后续实施；产品只支持 macOS 与 iOS。
 
 ## 模型安装与加载
 
@@ -256,8 +256,22 @@ SharedTaskDocuments 使用 NSFileCoordinator 读写和 NSFileVersion 完整版�
 
 ## 云端转写
 
-TranscriptionSettings 的 openAICompatible 保存服务 ID、API 根地址、whisper-1 和原文语言；历史本地配置缺少 cloud 字段时保持 WhisperKit。地址和 Keychain 密钥仅在本设备服务库维护；任务保存冻结地址，设备服务改变地址后拒绝发送旧任务，须明确重新绑定。模型不支持段时间戳时不回退到纯文本或估算时间。
+Task v6 保存多协议、时间来源与独立识别成果；读取 v1–v5 时保留既有成果并升级，旧应用明确拒绝 v6，避免忽略字段后采用错误协议或重发识别。TranscriptionSettings 的 openAICompatible 保存服务 ID、API 根地址、模型、原文语言及 CloudTranscriptionProtocol 预设。历史云配置缺少 protocolKind 时按原 Audio Transcriptions 协议读取；历史本地配置缺少 cloud 时保持 WhisperKit。密钥由本设备 Keychain 维护；设备服务改变地址或协议后拒绝发送旧任务。已开始任务调整标题、翻译和输出时保留冻结转写配置，不从服务默认值重建。
 
-ConfiguredMediaTranscriptionPipeline 共用所选音轨、最多 120 秒的提取结果，按冻结 Provider 调用本地或云端。OpenAITranscriptionProvider 分块写 multipart 临时文件、上传 WAV，并发送 verbose_json 与 segment 参数；上传进度来自 URLSession，等待状态来自上传完成，不推算服务处理百分比。客户端取消只停止 HTTP 请求，服务端是否继续计费或处理由服务决定；失败不自动重发，恢复仅重试未提交块。
+ConfiguredMediaTranscriptionPipeline 共用所选音轨的最多 120 秒 PCM 提取。Audio Transcriptions 使用 whisper-1、WAV multipart、verbose_json 与 segment 时间戳；其他模型明确拒绝。音频聊天先由 VoxlineWhisperKit 的 SpeechAudioChunker 复用固定 SDK EnergyVAD，20 毫秒检测、200 毫秒语音边界扩展、合并相交区间，连续语音拆为最多 8 秒的 PCM16 WAV，保留源时间偏移及分块检查点。检测无活动的块记录空结果且不请求服务。能量 VAD 是粗粒度检测，噪声、低音量和语音边界的质量需实际校对，不声明词级精度。
 
-返回的段时间加提取范围偏移，保持绝对媒体时间；没有词概率时保留段时间，不虚构词对齐。成功与失败证据写入设备缓存后返回现有队列，SubtitleSegmenter 及检查点继续校验时间、原文、来源和提交。HTTP 错误仅展示状态码与请求 ID，不保存上游错误正文或密钥。路线选择和服务配置的页面布局独立于底层接入。
+AudioChatTranscriptionProvider 为 Gemini 构造裸 Base64 加 format 和固定 JSON 结果请求，为百炼构造音频 Data URL 与 asr_options；不把聊天兼容当作 Audio Transcriptions 兼容。限定短块、原始音频大小及完整 finish_reason，结果截断、格式或时间无效时明确失败。请求串行；仅 HTTP 429／503 最多重试三次，复用既有退避计算并遵守 Retry-After，等待可取消。耗尽后停止当前媒体剩余识别请求，已提交块和其他媒体保持既有恢复规则。超时和无响应不自动重发，避免未知处理结果下重复外发。
+
+CloudTranscriptionResult 保存完整文本、可选相对段时间及时间来源；RawTranscriptionSegment 记录 service、modelGenerated 或 audioRange，不伪造词时间或概率。模型生成时间通过范围、顺序和文本覆盖校验，纯文本对应实际语音区间；两者生成字幕均 requiresTimingReview。CloudTranscriptionAlignment 独立于 HTTP，队列恢复失败／取消块中的识别结果时只重做对齐，失败保留原结果。有效服务时间继续走原切分路径。
+
+ProcessingTask.bindCloudTranscription 是显式服务重绑定：只支持同一音频区间划分及同一原文语言，保留已完成块、原服务识别来源和人工字幕，后续请求使用新配置；聊天预设之间可切换。120 秒 Audio Transcriptions 与短语音块之间不可在已有检查点上切换，须新建任务。普通参数编辑继续锁定已有转写参数。
+
+上传进度来自 URLSession；等待来自上传完成，不推算服务处理百分比。客户端取消只停止请求和等待，不宣称服务端取消。成功／失败证据先写设备缓存；云端 2xx 响应原文也存设备缓存，用于解析和对齐失败定位。HTTP 错误只展示状态码和请求 ID，不保存上游错误正文、请求音频 JSON 或密钥。任务检查点保留识别成果及来源，远端执行 ID 不进入同步文档。百炼异步文件转写和专门词对齐是后续接入边界。
+
+## 内封软字幕
+
+SubtitleEmbeddingExporter 归属 VoxlineMedia，复用媒体书签、身份与音轨检查以及 SubtitleExporter 的字幕校验与文本投影。原生 AVAssetReader／AVAssetWriter 将源视频压缩样本和所选音轨封装为新 MP4，增加单一 tx3g 字幕轨；原文、译文、双语各作为一次输出选择。字幕采用 UTF-8、真实毫秒时间与空白间隔样本，可通过播放器字幕选择关闭；不改变画面或自动重新编码。
+
+输出使用独立临时文件，完成写入并核验音视频与字幕轨数量、音视频起止时间和总时长后原子发布。覆盖须明确选择，原文件、符号链接与硬链接不能作为输出；失败和取消保留已有成品并清理临时文件。writer 完成采用显式 completionHandler 与 continuation 连接，不使用当前系统出现崩溃的自动异步桥接。进度来自已封装视频样本，只有成品发布后为 100%。
+
+系统不支持的压缩格式或封装明确失败。播放器字体和样式由原生字幕轨及播放器决定；高级 ASS 样式保持独立范围。Mac 和 iOS 共用封装服务，界面入口与实际 VLC／Files 显示、切换、中文和音画同步需分别验收。硬字幕服务保持 Core Image 合成，不能通过软字幕声明完成 HDR 烧录能力。

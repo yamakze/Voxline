@@ -12,7 +12,7 @@ public struct CloudTranscriptionServicesSettingsView: View {
 
     public init(referencedSettings: TranscriptionSettings? = nil) {
         if let cloud = referencedSettings?.cloud {
-            referencedService = .init(id: cloud.serviceID, name: "云端转写", baseURL: cloud.baseURL, modelID: referencedSettings?.modelID ?? "whisper-1")
+            referencedService = .init(id: cloud.serviceID, name: "云端转写", baseURL: cloud.baseURL, modelID: referencedSettings?.modelID ?? "whisper-1", protocolKind: cloud.protocolKind)
         }
     }
 
@@ -136,7 +136,7 @@ public struct CloudTranscriptionServicesSettingsView: View {
                 HStack(spacing: 8) {
                     Text(service.name)
                         .font(.headline)
-                    Text("whisper-1")
+                    Text(service.modelID)
                         .font(.caption2.monospaced())
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -218,7 +218,7 @@ private struct CloudTranscriptionServiceEditorModal: View {
                     HStack {
                         Text("转写模型")
                         Spacer()
-                        Text("whisper-1")
+                        Text(original?.modelID ?? "whisper-1")
                             .foregroundStyle(.secondary)
                     }
                     if isLoadingKey {
@@ -284,7 +284,8 @@ private struct CloudTranscriptionServiceEditorModal: View {
             id: original?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             baseURL: url,
-            modelID: "whisper-1"
+            modelID: original?.modelID ?? "whisper-1",
+            protocolKind: original?.protocolKind ?? .audioTranscriptions
         )
         isSaving = true
         errorMessage = nil

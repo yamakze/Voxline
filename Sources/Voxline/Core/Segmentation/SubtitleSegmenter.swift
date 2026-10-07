@@ -98,7 +98,7 @@ public enum SubtitleSegmenter {
                 previousSpeechEnd = raw.endSeconds
                 var cue = try timedCue(sourceID: sourceID, segmentIndex: segmentIndex, wordIndex: nil,
                                        start: raw.startSeconds, end: raw.endSeconds, text: raw.text)
-                if recoveredWindows.contains(where: { $0.segmentsBeforeAlignment.contains(raw) }) {
+                if raw.timingSource == .modelGenerated || raw.timingSource == .audioRange || recoveredWindows.contains(where: { $0.segmentsBeforeAlignment.contains(raw) }) {
                     cue.requiresTimingReview = true
                 }
                 entries.append(SegmentedSubtitle(cue: cue, segmentIndex: segmentIndex, wordRange: nil,
