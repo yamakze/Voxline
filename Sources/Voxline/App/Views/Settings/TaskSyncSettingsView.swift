@@ -208,13 +208,6 @@ public struct TaskSyncSettingsView: View {
                 Text("启用 iCloud 文件夹同步")
                     .font(.headline)
                 Spacer()
-                Button("取消") {
-                    showMigrationSheet = false
-                    pendingFolderURL = nil
-                    pendingSummary = nil
-                }
-                .keyboardShortcut(.cancelAction)
-                .disabled(isProcessing)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -268,6 +261,7 @@ public struct TaskSyncSettingsView: View {
                     pendingFolderURL = nil
                     pendingSummary = nil
                 }
+                .keyboardShortcut(.cancelAction)
                 .disabled(isProcessing)
 
                 Button("迁移并启用") {

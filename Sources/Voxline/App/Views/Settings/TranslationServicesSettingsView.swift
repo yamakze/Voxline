@@ -268,12 +268,6 @@ private struct ServiceEditorModal: View {
                 Text(original == nil ? "添加翻译服务" : "编辑翻译服务")
                     .font(.headline)
                 Spacer()
-                Button("取消") {
-                    connectionTask?.cancel()
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-                .disabled(isSaving)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -384,12 +378,19 @@ private struct ServiceEditorModal: View {
 
                 if isTesting {
                     ProgressView().controlSize(.small)
-                    Button("取消") { connectionTask?.cancel() }
+                    Button("取消测试") { connectionTask?.cancel() }
                         .buttonStyle(.borderless)
                         .font(.caption)
                 }
 
                 Spacer()
+
+                Button("取消") {
+                    connectionTask?.cancel()
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+                .disabled(isSaving)
 
                 Button("保存") {
                     saveService()

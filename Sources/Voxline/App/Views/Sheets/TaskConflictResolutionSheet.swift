@@ -44,9 +44,6 @@ public struct TaskConflictResolutionSheet: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("关闭") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isResolving)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -126,6 +123,7 @@ public struct TaskConflictResolutionSheet: View {
                 Spacer()
 
                 Button("关闭") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                     .disabled(isResolving)
 
                 Button("保留选定版本") {

@@ -199,9 +199,6 @@ private struct CloudTranscriptionServiceEditorModal: View {
                 Text(original == nil ? "添加转写服务" : "编辑转写服务")
                     .font(.headline)
                 Spacer()
-                Button("取消") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isSaving)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -246,6 +243,7 @@ private struct CloudTranscriptionServiceEditorModal: View {
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                     .disabled(isSaving)
                 Button("保存") { save() }
                     .buttonStyle(.borderedProminent)

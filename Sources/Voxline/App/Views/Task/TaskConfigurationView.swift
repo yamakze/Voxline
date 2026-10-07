@@ -349,14 +349,6 @@ public struct TaskConfigurationView: View {
                 .font(.headline)
 
             Spacer()
-
-            Button("取消") {
-                importTask?.cancel()
-                saveTask?.cancel()
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
-            .disabled(isSaving)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
