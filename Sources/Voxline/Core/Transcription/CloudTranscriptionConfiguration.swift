@@ -4,6 +4,14 @@ public enum CloudTranscriptionProtocol: String, Codable, CaseIterable, Sendable 
     case audioTranscriptions, geminiAudioChat, qwenAudioChat
 
     public var usesSpeechChunks: Bool { self != .audioTranscriptions }
+
+    public var label: String {
+        switch self {
+        case .audioTranscriptions: "Audio Transcriptions"
+        case .geminiAudioChat: "Gemini 音频聊天"
+        case .qwenAudioChat: "百炼音频聊天"
+        }
+    }
 }
 
 /// Frozen destination; authentication belongs to the current device.

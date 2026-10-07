@@ -14,6 +14,7 @@ public struct TaskDetailView: View {
     @State private var errorMessage: String?
     @State private var noticeMessage: String?
     @State private var pendingCloudRetryItem: TaskMediaItem?
+    @State private var showChangeCloudService = false
 
     public init(task: ProcessingTask, isConfiguring: Binding<Bool>, selectedMediaID: Binding<UUID?>) {
         self.task = task
@@ -50,6 +51,12 @@ public struct TaskDetailView: View {
             TaskConflictResolutionSheet(taskID: task.id, draftTask: task) {
                 TaskLibrary.shared.refresh()
                 syncSettings.refresh()
+            }
+        }
+        .sheet(isPresented: $showChangeCloudService) {
+            ChangeCloudTranscriptionServiceSheet(task: task) { updated in
+                try TaskLibrary.shared.save(updated)
+                TaskLibrary.shared.refresh()
             }
         }
         .alert("提示", isPresented: Binding(
@@ -149,6 +156,15 @@ public struct TaskDetailView: View {
             }
 
             Spacer()
+
+            if task.parameters.transcription.provider == .openAICompatible {
+                Button("更换转写服务…") {
+                    showChangeCloudService = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(queue.taskID == task.id || task.items.contains(where: { if case .running = $0.status { true } else { false } }))
+            }
 
             if let state = fileState {
                 SyncFileStatusBadge(state: state)

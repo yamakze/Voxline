@@ -25,6 +25,7 @@ struct IOSMediaDetailView: View {
 
     // 导出与烧录
     @State private var sharingURL: URL?
+    @State private var showingEmbedding = false
     @State private var showingBurnIn = false
     @State private var editingParameters = false
 
@@ -107,6 +108,9 @@ struct IOSMediaDetailView: View {
                                                                  withinDuration: updated.media?.durationMilliseconds)
                     try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
                 }
+            }
+            .sheet(isPresented: $showingEmbedding) {
+                IOSSubtitleEmbeddingSheet(item: item, task: task)
             }
             .sheet(isPresented: $showingBurnIn) {
                 IOSSubtitleBurnInSheet(item: item)
@@ -547,6 +551,13 @@ struct IOSMediaDetailView: View {
 
                 if item.kind == .video {
                     Divider()
+                    Button {
+                        showingEmbedding = true
+                    } label: {
+                        Label("内封软字幕视频 (.mp4)…", systemImage: "captions.bubble")
+                    }
+                    .disabled(item.cues.isEmpty)
+
                     Button {
                         showingBurnIn = true
                     } label: {

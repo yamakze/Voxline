@@ -136,6 +136,11 @@ public struct CloudTranscriptionServicesSettingsView: View {
                 HStack(spacing: 8) {
                     Text(service.name)
                         .font(.headline)
+                    Text(service.protocolKind.label)
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.blue.opacity(0.12), in: .capsule)
                     Text(service.modelID)
                         .font(.caption2.monospaced())
                         .padding(.horizontal, 6)
@@ -181,8 +186,10 @@ private struct CloudTranscriptionServiceEditorModal: View {
     let store: CloudTranscriptionServiceStore
     @Environment(\.dismiss) private var dismiss
 
+    @State private var protocolKind: CloudTranscriptionProtocol
     @State private var name: String
     @State private var baseURLString: String
+    @State private var modelID: String
     @State private var apiKey: String
     @State private var errorMessage: String?
     @State private var isLoadingKey: Bool
@@ -192,10 +199,29 @@ private struct CloudTranscriptionServiceEditorModal: View {
     init(service: CloudTranscriptionServiceConfig?, store: CloudTranscriptionServiceStore) {
         self.original = service
         self.store = store
+        let proto = service?.protocolKind ?? .audioTranscriptions
+        _protocolKind = State(initialValue: proto)
         _name = State(initialValue: service?.name ?? "")
-        _baseURLString = State(initialValue: service?.baseURL.absoluteString ?? "https://api.openai.com/v1")
+        _baseURLString = State(initialValue: service?.baseURL.absoluteString ?? Self.defaultURL(for: proto))
+        _modelID = State(initialValue: service?.modelID ?? Self.defaultModel(for: proto))
         _apiKey = State(initialValue: "")
         _isLoadingKey = State(initialValue: service.map { s in store.services.contains(where: { $0.id == s.id }) } ?? false)
+    }
+
+    private static func defaultURL(for proto: CloudTranscriptionProtocol) -> String {
+        switch proto {
+        case .audioTranscriptions: "https://api.openai.com/v1"
+        case .geminiAudioChat: "https://generativelanguage.googleapis.com/v1beta/openai"
+        case .qwenAudioChat: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        }
+    }
+
+    private static func defaultModel(for proto: CloudTranscriptionProtocol) -> String {
+        switch proto {
+        case .audioTranscriptions: "whisper-1"
+        case .geminiAudioChat: "gemini-2.5-flash"
+        case .qwenAudioChat: "qwen3-asr-flash"
+        }
     }
 
     var body: some View {
@@ -213,14 +239,50 @@ private struct CloudTranscriptionServiceEditorModal: View {
 
             Form {
                 Section("服务接入") {
-                    TextField("名称", text: $name, prompt: Text("例如 OpenAI / 自建 Whisper"))
-                    TextField("API 根地址", text: $baseURLString, prompt: Text("https://api.openai.com/v1"))
-                    HStack {
-                        Text("转写模型")
-                        Spacer()
-                        Text(original?.modelID ?? "whisper-1")
-                            .foregroundStyle(.secondary)
+                    Picker("预设协议", selection: $protocolKind) {
+                        ForEach(CloudTranscriptionProtocol.allCases, id: \.self) { proto in
+                            Text(proto.label).tag(proto)
+                        }
                     }
+                    .onChange(of: protocolKind) { oldProto, newProto in
+                        guard oldProto != newProto else { return }
+                        switch newProto {
+                        case .audioTranscriptions:
+                            modelID = "whisper-1"
+                            if baseURLString.isEmpty || baseURLString == Self.defaultURL(for: .geminiAudioChat) || baseURLString == Self.defaultURL(for: .qwenAudioChat) {
+                                baseURLString = Self.defaultURL(for: .audioTranscriptions)
+                            }
+                        case .geminiAudioChat:
+                            if modelID == "whisper-1" || modelID.isEmpty || modelID == Self.defaultModel(for: .qwenAudioChat) {
+                                modelID = Self.defaultModel(for: .geminiAudioChat)
+                            }
+                            if baseURLString.isEmpty || baseURLString == Self.defaultURL(for: .audioTranscriptions) || baseURLString == Self.defaultURL(for: .qwenAudioChat) {
+                                baseURLString = Self.defaultURL(for: .geminiAudioChat)
+                            }
+                        case .qwenAudioChat:
+                            if modelID == "whisper-1" || modelID.isEmpty || modelID == Self.defaultModel(for: .geminiAudioChat) {
+                                modelID = Self.defaultModel(for: .qwenAudioChat)
+                            }
+                            if baseURLString.isEmpty || baseURLString == Self.defaultURL(for: .audioTranscriptions) || baseURLString == Self.defaultURL(for: .geminiAudioChat) {
+                                baseURLString = Self.defaultURL(for: .qwenAudioChat)
+                            }
+                        }
+                    }
+
+                    TextField("名称", text: $name, prompt: Text(placeholderName))
+                    TextField("API 根地址", text: $baseURLString, prompt: Text(Self.defaultURL(for: protocolKind)))
+
+                    if protocolKind == .audioTranscriptions {
+                        HStack {
+                            Text("转写模型")
+                            Spacer()
+                            Text("whisper-1")
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        TextField("转写模型", text: $modelID, prompt: Text(placeholderModel))
+                    }
+
                     if isLoadingKey {
                         ProgressView("正在从钥匙串安全读取密钥…")
                             .font(.caption)
@@ -253,13 +315,13 @@ private struct CloudTranscriptionServiceEditorModal: View {
                 Button("保存") { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isSaving || isLoadingKey || (keyReadFailed && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSaving || isLoadingKey || (keyReadFailed && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (protocolKind != .audioTranscriptions && modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
             .background(.regularMaterial)
         }
-        .frame(minWidth: 480, minHeight: 380)
+        .frame(minWidth: 480, minHeight: 400)
         .task {
             if let original, isLoadingKey {
                 do {
@@ -273,6 +335,22 @@ private struct CloudTranscriptionServiceEditorModal: View {
         }
     }
 
+    private var placeholderName: String {
+        switch protocolKind {
+        case .audioTranscriptions: "例如 OpenAI / 自建 Whisper"
+        case .geminiAudioChat: "例如 Google Gemini"
+        case .qwenAudioChat: "例如 阿里百炼 / 通义千问"
+        }
+    }
+
+    private var placeholderModel: String {
+        switch protocolKind {
+        case .audioTranscriptions: "whisper-1"
+        case .geminiAudioChat: "例如 gemini-2.5-flash"
+        case .qwenAudioChat: "例如 qwen3-asr-flash"
+        }
+    }
+
     private func save() {
         guard let url = URL(string: baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
@@ -280,13 +358,24 @@ private struct CloudTranscriptionServiceEditorModal: View {
             errorMessage = "请输入有效的 HTTP 或 HTTPS API 根地址。"
             return
         }
+        let finalModel = protocolKind == .audioTranscriptions ? "whisper-1" : modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !finalModel.isEmpty else {
+            errorMessage = "请输入转写模型 ID。"
+            return
+        }
         let config = CloudTranscriptionServiceConfig(
             id: original?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             baseURL: url,
-            modelID: original?.modelID ?? "whisper-1",
-            protocolKind: original?.protocolKind ?? .audioTranscriptions
+            modelID: finalModel,
+            protocolKind: protocolKind
         )
+        do {
+            _ = try config.settings()
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
         isSaving = true
         errorMessage = nil
         Task {

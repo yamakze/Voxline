@@ -661,6 +661,14 @@ public struct TaskConfigurationView: View {
 
                         if let serviceID = selectedCloudServiceID, let service = cloudStore.services.first(where: { $0.id == serviceID }) {
                             HStack {
+                                Text("协议")
+                                Spacer()
+                                Text(service.protocolKind.label)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.caption)
+
+                            HStack {
                                 Text("API 地址")
                                 Spacer()
                                 Text((originalTask.canChangeTranscription ? service.baseURL
@@ -688,7 +696,10 @@ public struct TaskConfigurationView: View {
                     }
 
                     if languageMode == .specified {
-                        LanguagePicker(title: "语言代码", selection: $languageCode)
+                        let selectedProtocol = selectedCloudServiceID.flatMap { id in cloudStore.services.first(where: { $0.id == id })?.protocolKind }
+                            ?? originalTask.parameters.transcription.cloud?.protocolKind
+                            ?? .audioTranscriptions
+                        LanguagePicker(title: "语言代码", selection: $languageCode, identifiers: cloudLanguageIdentifiers(for: selectedProtocol))
                     }
                 }
 
@@ -996,6 +1007,16 @@ public struct TaskConfigurationView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func cloudLanguageIdentifiers(for proto: CloudTranscriptionProtocol) -> [String] {
+        let allowedRange: ClosedRange<Int> = proto == .qwenAudioChat ? 2...3 : 2...2
+        let baseCodes = Locale.LanguageCode.isoLanguageCodes.map(\.identifier)
+        let extraCodes = proto == .qwenAudioChat ? ["yue", "fil"] : []
+        let filtered = (baseCodes + extraCodes).filter { code in
+            allowedRange.contains(code.count) && code.allSatisfy({ $0.isASCII && $0.isLetter })
+        }
+        return Array(Set(filtered)).sorted()
     }
 }
 

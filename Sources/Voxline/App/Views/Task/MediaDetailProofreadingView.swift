@@ -27,6 +27,7 @@ public struct MediaDetailProofreadingView: View {
     // Sheets
     @State private var showTimeOffsetSheet = false
     @State private var showSRTExportSheet = false
+    @State private var showEmbeddingSheet = false
     @State private var showBurnInSheet = false
     @State private var showRelinkSheet = false
 
@@ -115,6 +116,8 @@ public struct MediaDetailProofreadingView: View {
                 .disabled(item.cues.isEmpty || editingCueID != nil)
 
                 if item.kind == .video {
+                    Button("内封软字幕…", systemImage: "captions.bubble") { showEmbeddingSheet = true }
+                        .disabled(item.cues.isEmpty || editingCueID != nil)
                     Button("烧录字幕…", systemImage: "film.stack") { showBurnInSheet = true }
                         .disabled(item.cues.isEmpty || editingCueID != nil)
                 }
@@ -147,6 +150,9 @@ public struct MediaDetailProofreadingView: View {
                 mediaTitle: item.media?.fileName ?? item.title,
                 cues: item.cues, media: item.media, initialKind: initialOutputKind
             )
+        }
+        .sheet(isPresented: $showEmbeddingSheet) {
+            SubtitleEmbeddingSheet(item: item, task: TaskLibrary.shared.task(for: taskID))
         }
         .sheet(isPresented: $showBurnInSheet) { SubtitleBurnInSheet(item: item) }
         .sheet(isPresented: $showRelinkSheet, onDismiss: {

@@ -432,6 +432,7 @@ private struct IOSTaskDetailView: View {
     @State private var errorMessage: String?
     @State private var noticeMessage: String?
     @State private var sharingURL: URL?
+    @State private var changingCloudService = false
 
     private var fileState: TaskSyncSettings.FileState? {
         library.storage.url(for: taskID).flatMap { syncSettings.fileStates[$0.standardizedFileURL] }
@@ -541,6 +542,15 @@ private struct IOSTaskDetailView: View {
                             Label("调整参数…", systemImage: "slider.horizontal.3")
                         }
                         .disabled(library.queue.taskID == taskID)
+
+                        if task.parameters.transcription.provider == .openAICompatible {
+                            Button {
+                                changingCloudService = true
+                            } label: {
+                                Label("更换转写服务…", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .disabled(library.queue.taskID == taskID)
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -548,6 +558,12 @@ private struct IOSTaskDetailView: View {
             }
             .sheet(item: Binding(get: { sharingURL.map { SharePayload(url: $0) } }, set: { sharingURL = $0?.url })) { payload in
                 ShareActivitySheet(activityItems: [payload.url])
+            }
+            .sheet(isPresented: $changingCloudService) {
+                ChangeCloudTranscriptionServiceSheet(task: task) { updated in
+                    try library.save(updated)
+                    library.load()
+                }
             }
             .sheet(isPresented: $editingParameters) {
                 TaskTranslationParametersView(task: task) { updated, original in
