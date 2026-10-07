@@ -11,9 +11,9 @@ iOS 的 Core、Media、WhisperKit、Translation 与 Workflow 框架直接编译�
 - VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证、转写协议、原始证据、字幕切分与检查点。阶段状态和文本、SRT 生成与导出也在此模块；SRT 文件写入使用调用方传入的 URL，不管理设备目录。只依赖 Foundation，不保存设备路径、书签或密钥。
 - VoxlineWhisperKit：固定模型清单、下载与安装校验、本地占用、实例生命周期、有界输入 Provider 和 ModelManager 的可观察状态。SDK 类型只存在于该模块；应用接收真实下载、加载和推理状态。同一进程复用唯一已加载实例；删除或重新下载已加载模型时自动卸载内存挂载，收敛交互状态。
 - VoxlineMedia：AVFoundation 原生能力检查、流式 SHA-256、设备本地书签、有界 PCM 提取和共用播放器。字幕烧录的快照、合成、预览与导出在此模块，Mac 与 iOS 共享原生 Core Image 与 AVAssetExportSession 烧录服务。AVFoundation 类型不进入 Core 或 Task 文件。
-- VoxlineTranslation：聊天客户端、上下文批次、结果校验、HTTP 错误、设备服务元数据和异步 Keychain 凭据。依赖 Foundation、Observation、Security 与 Core，不依赖应用或 SwiftUI。
+- VoxlineTranslation：聊天／Audio Transcriptions 客户端、上下文批次、结果校验、HTTP 错误、设备服务元数据和异步 Keychain 凭据。依赖 Foundation、Observation、Security 与 Core，不依赖应用或 SwiftUI。
 - VoxlineWorkflow：TaskLibrary、单执行者 TaskProcessingQueue 与媒体／翻译外部调用边界。依赖 Core、Media、WhisperKit、Translation；组织实际操作、恢复与原子成果提交，不导入 AppKit、SwiftUI 或应用模块。翻译执行实例由应用接线传入。
-- VoxlineApp：两平台入口、主要页面、导航与原生适配。MacWorkflow 配置任务目录与系统最近文档；翻译引擎接线和 Apple Translation 视图会话共用，视图会话保持在稳定根页面。iOS 设备副本库适配同一 TaskLibrary 和 TaskProcessingQueue，通过同一 LocalMediaTranscriptionPipeline 执行本地媒体处理；已有完整转写成果的继续翻译保持独立入口与来源检查。UI 不导入第三方 WhisperKit SDK。
+- VoxlineApp：两平台入口、主要页面、导航与原生适配。MacWorkflow 配置任务目录与系统最近文档；翻译引擎接线和 Apple Translation 视图会话共用，视图会话保持在稳定根页面。iOS 设备副本库适配同一 TaskLibrary 和 TaskProcessingQueue，通过同一 ConfiguredMediaTranscriptionPipeline 执行本地媒体处理；已有完整转写成果的继续翻译保持独立入口与来源检查。UI 不导入第三方 WhisperKit SDK。
 
 Core 和字幕文档不依赖 UI、AVFoundation 或具体推理 SDK。JSON 是持久字幕权威来源，SRT 是导出物，内存任务库是界面状态。
 
@@ -222,7 +222,7 @@ OpenAI 兼容接口支持显式配置的 HTTPS 与 HTTP 地址，包括本地服
 
 媒体通过原生 Files 选择，MediaInspector 检查实际内容与音轨。检查失败保留原因并提供重新选择；读取、文件变化或取消后可明确重试检查，格式、内容或解码能力不支持时须重新选择文件。已有身份必须匹配原内容和所选音轨；未关联旧成果可明确选择音轨建立身份。媒体保持文件引用，iOS 使用 minimalBookmark 保存设备本地授权，Mac 继续使用只读 security-scoped bookmark。播放共用 MediaPlaybackController，缺失授权或内容变化显示重新关联入口；保存关联期间保持访问并禁止关闭面板。
 
-AVKit VideoPlayer 承载原生视频播放，音频提供专属波形卡片视图；播放控制条提供 Slider 拖拽 Seek、当前时间与总时长显示，字幕浮层和定位共用实际播放器时间。倍速由 MediaPlaybackController.setRate 设置和保存；暂停时切换倍速保持暂停，再次播放使用所选倍速，页面直接读取控制器状态。原文修改保留旧译文来源版本并显示待更新；编辑译文后绑定当前原文版本。整体偏移验证完整输入、全部字幕及媒体边界后一次保存，不部分调整。关闭详情释放播放器、书签访问和观察器。
+AVKit VideoPlayer 承载原生视频播放，音频提供专属波形卡片视图；播放控制条提供 Slider 拖拽 Seek、当前时间与总时长显示，字幕浮层和定位共用实际播放器时间。倍速由 MediaPlaybackController.setRate 设置和保存；暂停时切换倍速根据 AVPlayer.timeControlStatus 保持暂停，再次播放使用所选倍速；延迟状态回调读取当前原生状态，页面直接读取控制器状态。原文修改保留旧译文来源版本并显示待更新；编辑译文后绑定当前原文版本。整体偏移验证完整输入、全部字幕及媒体边界后一次保存，不部分调整。关闭详情释放播放器、书签访问和观察器。
 
 iOS 26 的原生导航及字幕浮层采用 Liquid Glass，旧系统采用 Material；减少透明度时字幕浮层使用不透明系统背景。选择理由见 [ADR-0014](../ADR/0014-ios-local-playback-and-proofreading.md)。
 
@@ -243,3 +243,21 @@ ConfiguredSubtitleTranslationPipeline 按冻结引擎选择唯一执行路径。
 macOS 15／iOS 18 会话只在稳定根视图 AppleTranslationSessionHost 的 translationTask 闭包中使用，不把会话保存到队列或跨视图持有。系统 26 对已安装语言可创建独立会话。翻译请求先核验安装状态，未安装立即失败并提示准备语言；翻译期间不等待下载。下载只在明确的语言准备操作中使用视图会话，页面显示等待系统许可与下载并提供取消。准备成功需再次确认系统安装状态，只表示语言可用，不产生字幕译文。取消前尚未执行的请求立即结束；SDK 已开始的请求等待实际返回，取消后的结果不提交。iOS 模拟器明确显示本机翻译不可用，实际语言下载和翻译在真机验证。
 
 每条请求用字幕 UUID 作为 clientIdentifier；响应拒绝缺少、重复、额外 ID 和空译文，按输入顺序还原后交给既有检查点验证。批次、原文版本、人工编辑保护、重启恢复与显式重译复用现有流程。Apple 接口接收每条原文，不提供聊天系统提示词；上下文翻译质量通过实际对白对照及人工校对验收。
+
+## 用户所选 iCloud Drive 文件夹
+
+TaskSyncSettings 保存设备本地的可写文件夹书签和原媒体选项；启用后共享文件夹的 Tasks/<Task ID>.voxline 为成果文档，新任务使用此目录。首次迁移保留本地文件，遇到同 ID 不同内容拒绝覆盖；关闭同步先保留完整本地文档，原有不同版本另存新 Task ID 的副本。原媒体和共享文档不会因关闭同步被删除。应用入口恢复已有授权，目录选择、迁移确认和冲突选择由原生页面接线。
+
+SharedTaskDocuments 使用 NSFileCoordinator 读写和 NSFileVersion 完整版本。成功读取并发布后记录磁盘内容；写入必须与该内容一致，未读取的新文件仅能写入不存在的目标。另一设备修改、删除或未解决冲突均拒绝覆盖，保留草稿；无效远端数据保留最后成功发布的任务及错误。NSFilePresenter 观察文件夹和子文档变化，NSMetadataQuery 的外部 ubiquitous 文档范围发现文件、下载占位符和状态变化；真实上传、下载和冲突状态来自 URL 资源值，缺少云状态仅表示文件可用。TaskLibrary 列表顺序、模型、凭据、设备书签、PCM 和诊断文件保持本地。
+
+队列仅在本设备占用时设置 protectedTaskID，原生通知不替换其内存快照；保存仍核验实际磁盘内容。远端 running 读取为 interrupted，不启动本机工作。参数、字幕草稿提交保持原有快照比较。恢复副本保留媒体 ID、字幕和检查点，生成新 Task ID 并中断执行状态。冲突选择先保留所有未选中的完整版本，再替换主文档并清除原生冲突标记；不按字幕合并。
+
+原媒体显式选择后复制至 Media/<SHA-256>.<源扩展名>，同内容及扩展名复用一份文件。复制使用原生文件协调与临时文件，失败清理未发布文件；设备关联前重新核对内容和所选音轨。新任务保存后按顺序复制原媒体，错误单独保存并可重试；更改同步策略须等待复制完成。下载请求由系统执行，未下载完成不伪造可播放状态。
+
+## 云端转写
+
+TranscriptionSettings 的 openAICompatible 保存服务 ID、API 根地址、whisper-1 和原文语言；历史本地配置缺少 cloud 字段时保持 WhisperKit。地址和 Keychain 密钥仅在本设备服务库维护；任务保存冻结地址，设备服务改变地址后拒绝发送旧任务，须明确重新绑定。模型不支持段时间戳时不回退到纯文本或估算时间。
+
+ConfiguredMediaTranscriptionPipeline 共用所选音轨、最多 120 秒的提取结果，按冻结 Provider 调用本地或云端。OpenAITranscriptionProvider 分块写 multipart 临时文件、上传 WAV，并发送 verbose_json 与 segment 参数；上传进度来自 URLSession，等待状态来自上传完成，不推算服务处理百分比。客户端取消只停止 HTTP 请求，服务端是否继续计费或处理由服务决定；失败不自动重发，恢复仅重试未提交块。
+
+返回的段时间加提取范围偏移，保持绝对媒体时间；没有词概率时保留段时间，不虚构词对齐。成功与失败证据写入设备缓存后返回现有队列，SubtitleSegmenter 及检查点继续校验时间、原文、来源和提交。HTTP 错误仅展示状态码与请求 ID，不保存上游错误正文或密钥。路线选择和服务配置的页面布局独立于底层接入。

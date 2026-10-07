@@ -18,7 +18,7 @@ final class IOSTaskLibrary {
         storage.entries.compactMap(\.task)
     }
 
-    init(directory: URL = .documentsDirectory, pipeline: any MediaTranscriptionPipeline = LocalMediaTranscriptionPipeline(),
+    init(directory: URL = .documentsDirectory, pipeline: any MediaTranscriptionPipeline = ConfiguredMediaTranscriptionPipeline(),
          resourceCleanup: TaskResourceCleanup = .init()) {
         let storage = TaskLibrary(tasksDirectory: directory, resourceCleanup: resourceCleanup)
         self.storage = storage
@@ -43,7 +43,7 @@ final class IOSTaskLibrary {
 
     func save(_ task: ProcessingTask) throws {
         guard queue.taskID != task.id else { throw QueueError.busy }
-        try storage.save(task, at: storage.defaultURL(for: task.id))
+        try storage.save(task)
     }
 
     func bindTranslationService(_ service: TranslationServiceConfig, taskID: UUID) throws {

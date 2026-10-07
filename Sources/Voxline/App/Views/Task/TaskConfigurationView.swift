@@ -788,9 +788,9 @@ public struct TaskConfigurationView: View {
 
         do {
             let transcription = TranscriptionSettings(
-                modelID: modelID,
+                provider: originalTask.parameters.transcription.provider, modelID: modelID,
                 languageMode: languageMode,
-                languageCode: languageMode == .specified ? languageCode : nil
+                languageCode: languageMode == .specified ? languageCode : nil, cloud: originalTask.parameters.transcription.cloud
             )
 
             var translation: TranslationSettings?

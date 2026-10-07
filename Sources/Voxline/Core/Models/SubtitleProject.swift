@@ -77,25 +77,41 @@ public struct MediaIdentity: Codable, Equatable, Sendable {
 }
 
 public struct TranscriptionSettings: Codable, Equatable, Sendable {
-    public enum Provider: String, Codable, Sendable { case whisperKit }
+    public enum Provider: String, Codable, Sendable { case whisperKit, openAICompatible }
     public enum LanguageMode: String, Codable, Sendable { case automatic, specified }
     public let provider: Provider
     public let modelID: String
     public let languageMode: LanguageMode
     public let languageCode: String?
+    public let cloud: CloudTranscriptionConfiguration?
 
     public init(provider: Provider = .whisperKit, modelID: String,
-                languageMode: LanguageMode = .automatic, languageCode: String? = nil) {
+                languageMode: LanguageMode = .automatic, languageCode: String? = nil, cloud: CloudTranscriptionConfiguration? = nil) {
         self.provider = provider
         self.modelID = modelID
         self.languageMode = languageMode
         self.languageCode = languageCode
+        self.cloud = cloud
     }
 
     public static let whisperKitBaseline = TranscriptionSettings(
         provider: .whisperKit, modelID: "openai_whisper-large-v3-v20240930_626MB", languageMode: .automatic)
 
     public func validate() throws {
+        switch provider {
+        case .whisperKit:
+            guard cloud == nil else { throw CloudTranscriptionError.invalidConfiguration }
+        case .openAICompatible:
+            guard let cloud else { throw CloudTranscriptionError.invalidConfiguration }
+            try cloud.validate()
+            // This protocol requires verbose segment timestamps; newer text-only models use another protocol.
+            guard modelID == "whisper-1" else { throw CloudTranscriptionError.unsupportedModel }
+            if let languageCode {
+                guard languageCode.count == 2, languageCode.allSatisfy({ $0.isASCII && $0.isLetter }) else {
+                    throw ProjectValidationError.invalidSourceLanguage
+                }
+            }
+        }
         guard !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ProjectValidationError.emptyModelID
         }

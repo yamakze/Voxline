@@ -74,6 +74,8 @@ public enum TranscriptionInputError: Error { case invalidAudio }
 
 public enum TranscriptionProgress: Sendable {
     case readingAudio, loadingModel, detectingLanguage
+    case uploadingAudio(sentBytes: Int64, totalBytes: Int64)
+    case awaitingTranscription
     case decoding(tokenCount: Int)
     case completed(segmentCount: Int)
 }

@@ -587,7 +587,7 @@ struct TaskProcessingQueueTests {
         try await bookmarks.save(projectID: task.items[1].id, identity: videoIdentity, url: video)
         try await bookmarks.save(projectID: task.items[2].id, identity: audioIdentity, url: audio)
         try library.save(task)
-        let pipeline = LocalMediaTranscriptionPipeline(mediaStore: bookmarks,
+        let pipeline = ConfiguredMediaTranscriptionPipeline(mediaStore: bookmarks,
             extractor: AudioExtractor(directory: directory.appendingPathComponent("audio")),
             modelStore: WhisperModelStore(directory: models))
         let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())

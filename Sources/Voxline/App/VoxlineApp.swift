@@ -1,4 +1,5 @@
 import SwiftUI
+import VoxlineWorkflow
 #if os(macOS)
 import AppKit
 
@@ -24,9 +25,11 @@ struct VoxlineApp: App {
             #if os(macOS)
             MainWindowView()
                 .tint(Color.voxlineAccent)
+                .task { TaskSyncSettings.shared.restore() }
             #elseif os(iOS)
             IOSTaskLibraryView()
                 .background(AppleTranslationSessionHost())
+                .task { TaskSyncSettings.shared.restore() }
             #endif
         }
         #if os(macOS)

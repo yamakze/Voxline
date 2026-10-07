@@ -27,7 +27,7 @@ public final class TaskProcessingQueue {
     public private(set) var translationRetryWait: TranslationRetryWait?
     @ObservationIgnored public var onFinish: (@MainActor () -> Void)?
 
-    public init(library: TaskLibrary, pipeline: any MediaTranscriptionPipeline = LocalMediaTranscriptionPipeline(),
+    public init(library: TaskLibrary, pipeline: any MediaTranscriptionPipeline = ConfiguredMediaTranscriptionPipeline(),
          translationPipeline: any SubtitleTranslationPipeline,
          retrySleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
          retryJitter: @escaping @Sendable () -> Double = { Double.random(in: 0...1) }) {
@@ -55,6 +55,7 @@ public final class TaskProcessingQueue {
             if current.startedAt == nil { try current.freezeParameters() }
         }
         self.taskID = taskID
+        library.protectedTaskID = taskID
         queuedIDs = ids
         cancelledIDs = []
         stopRequested = false
@@ -127,6 +128,7 @@ public final class TaskProcessingQueue {
             try batches.map { try current.prepareTranslationBatch(cueIDs: $0, replacingExistingTranslations: replacingExistingTranslations) }
         }
         self.taskID = taskID
+        library.protectedTaskID = taskID
         queuedIDs = [mediaID]
         cancelledIDs = []
         stopRequested = false
@@ -143,6 +145,7 @@ public final class TaskProcessingQueue {
             mediaWork = nil
             mediaID = nil
             self.taskID = nil
+            library.protectedTaskID = nil
             worker = nil
             isCancelling = false
             onFinish?()
@@ -247,6 +250,8 @@ public final class TaskProcessingQueue {
                         guard self.progressID == decodingID else { return }
                         let detail: String
                         switch progress {
+                        case .uploadingAudio(let sent, let total): detail = "上传音频 \(sent)／\(total) 字节"
+                        case .awaitingTranscription: detail = "等待转写服务"
                         case .readingAudio: detail = "读取音频"
                         case .loadingModel: detail = "加载模型"
                         case .detectingLanguage: detail = "识别语言"

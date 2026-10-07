@@ -211,6 +211,7 @@ struct TranscriptionProviderTests {
         let provider = try WhisperKitTranscriptionProvider(settings: settings, store: store, evidenceDirectory: root) { progress in
             states.withLock {
                 switch progress {
+                case .uploadingAudio, .awaitingTranscription: $0.append("unexpected-cloud-progress")
                 case .readingAudio: $0.append("reading")
                 case .loadingModel: $0.append("loading")
                 case .detectingLanguage: $0.append("detecting")

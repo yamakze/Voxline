@@ -188,7 +188,7 @@ struct TranslationServiceStoreTests {
     }
 }
 
-private actor TestCredentialVault: TranslationCredentialVault {
+actor TestCredentialVault: TranslationCredentialVault {
     private var values: [UUID: String] = [:]
     private var failingID: UUID?
     func failWrites(for id: UUID?) { failingID = id }

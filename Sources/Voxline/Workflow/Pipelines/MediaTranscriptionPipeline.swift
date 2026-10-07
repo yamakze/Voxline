@@ -2,6 +2,7 @@ import Foundation
 import VoxlineCore
 import VoxlineMedia
 import VoxlineWhisperKit
+import VoxlineTranslation
 
 /// The two external operations of a media run; checkpoints remain owned by the queue.
 public protocol MediaTranscriptionPipeline: Sendable {
@@ -10,7 +11,7 @@ public protocol MediaTranscriptionPipeline: Sendable {
                     progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> TranscriptionEvidence
 }
 
-public struct LocalMediaTranscriptionPipeline: MediaTranscriptionPipeline {
+public struct ConfiguredMediaTranscriptionPipeline: MediaTranscriptionPipeline {
     let mediaStore: LocalMediaStore
     let extractor: AudioExtractor
     let modelStore: WhisperModelStore
@@ -37,6 +38,12 @@ public struct LocalMediaTranscriptionPipeline: MediaTranscriptionPipeline {
 
     public func transcribe(mediaID: UUID, audio: TranscriptionAudio, settings: TranscriptionSettings,
                     progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> TranscriptionEvidence {
+        if settings.provider == .openAICompatible {
+            let key = try await CloudTranscriptionServiceStore.shared.apiKey(for: settings)
+            let provider = try OpenAITranscriptionProvider(settings: settings, apiKey: key,
+                evidenceDirectory: evidenceDirectory, mediaID: mediaID, onProgress: progress)
+            return try await provider.transcribeEvidence(audio: audio)
+        }
         let provider = try WhisperKitTranscriptionProvider(settings: settings, store: modelStore, evidenceDirectory: evidenceDirectory, mediaID: mediaID, onProgress: progress)
         return try await provider.transcribeEvidence(audio: audio)
     }

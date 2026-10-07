@@ -18,6 +18,15 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
         self.parameters = parameters
     }
 
+    /// A recovery copy keeps media and immutable evidence IDs, but never claims a local worker.
+    public func duplicated(title: String? = nil) throws -> ProcessingTask {
+        var copy = ProcessingTask(title: title ?? self.title + " 副本", items: items, parameters: parameters)
+        copy.startedAt = startedAt
+        copy.interruptRunningItems()
+        try copy.validate()
+        return copy
+    }
+
     private enum CodingKeys: String, CodingKey { case formatVersion, id, title, items, parameters, startedAt }
 
     public init(from decoder: any Decoder) throws {

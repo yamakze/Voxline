@@ -17,7 +17,7 @@ struct IOSProcessingTests {
         let media = try MediaIdentity(fileName: "missing.wav", byteCount: 42, sha256: String(repeating: "a", count: 64),
             durationMilliseconds: 1000, audioTrackID: 1)
         let library = IOSTaskLibrary(directory: root.appendingPathComponent("tasks"),
-            pipeline: LocalMediaTranscriptionPipeline(mediaStore: LocalMediaStore(directory: root.appendingPathComponent("bookmarks"))))
+            pipeline: ConfiguredMediaTranscriptionPipeline(mediaStore: LocalMediaStore(directory: root.appendingPathComponent("bookmarks"))))
         let task = ProcessingTask(items: [.init(title: "Missing local media", kind: .audio,
             source: .localFile(fileName: media.fileName), media: media)])
         try library.save(task)
@@ -76,7 +76,7 @@ struct IOSProcessingTests {
         let bookmarks = LocalMediaStore(directory: support.appendingPathComponent("Voxline/MediaAssociations"))
         let modelStore = WhisperModelStore(directory: root.appendingPathComponent("missing-model"))
         let evidenceRoot = caches.appendingPathComponent("Voxline/Transcription")
-        let pipeline = LocalMediaTranscriptionPipeline(mediaStore: bookmarks, extractor: extractor,
+        let pipeline = ConfiguredMediaTranscriptionPipeline(mediaStore: bookmarks, extractor: extractor,
             modelStore: modelStore, evidenceDirectory: evidenceRoot)
         let parameters = TaskParameters(transcription: .init(modelID: TranscriptionSettings.whisperKitBaseline.modelID,
             languageMode: .specified, languageCode: "en"))
@@ -148,7 +148,7 @@ struct IOSRealSampleTests {
         let audioTrack = try #require(audioInspection.audioTracks.first { $0.isDecodable })
         let videoIdentity = try videoInspection.identity(audioTrackID: videoTrack.id)
         let audioIdentity = try audioInspection.identity(audioTrackID: audioTrack.id)
-        let pipeline = LocalMediaTranscriptionPipeline(mediaStore: bookmarks,
+        let pipeline = ConfiguredMediaTranscriptionPipeline(mediaStore: bookmarks,
             extractor: AudioExtractor(directory: root.appendingPathComponent("audio")),
             modelStore: WhisperModelStore(directory: models), evidenceDirectory: root.appendingPathComponent("evidence"))
         let library = IOSTaskLibrary(directory: root.appendingPathComponent("tasks"), pipeline: pipeline)

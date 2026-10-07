@@ -12,6 +12,7 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
     public init(settings: TranscriptionSettings, store: WhisperModelStore = .shared, evidenceDirectory: URL? = nil, mediaID: UUID? = nil,
                 onProgress: @escaping @Sendable (VoxlineCore.TranscriptionProgress) -> Void = { _ in }) throws {
         try settings.validate()
+        guard settings.provider == .whisperKit else { throw CloudTranscriptionError.invalidConfiguration }
         guard settings.modelID == TranscriptionSettings.whisperKitBaseline.modelID else { throw WhisperModelError.unknownModel }
         if let code = settings.languageCode, !Constants.languageCodes.contains(code) {
             throw WhisperTranscriptionError.unsupportedLanguage(code)

@@ -18,6 +18,10 @@ public final class TaskLibrary {
         public var title: String { task?.title ?? url?.deletingPathExtension().lastPathComponent ?? "未命名任务" }
     }
 
+    public private(set) var sharedDocuments: SharedTaskDocuments?
+    public var protectedTaskID: UUID?
+    public var onMediaSourcesSaved: (@MainActor (ProcessingTask) -> Void)?
+
     public let tasksDirectory: URL
     private var orderedURLs: [URL] = []
     private var orderURL: URL { tasksDirectory.appendingPathComponent("task-order.json") }
@@ -51,7 +55,7 @@ public final class TaskLibrary {
 
     public func register(_ task: ProcessingTask, at url: URL?) {
         let fileURL = url ?? defaultURL(for: task.id)
-        if openTasks[task.id]?.url != fileURL {
+        if sharedDocuments?.contains(fileURL) != true, openTasks[task.id]?.url != fileURL {
             noteRecentDocument(fileURL)
         }
         let entry = Entry(id: task.id.uuidString, taskID: task.id, url: fileURL, task: task, error: nil)
@@ -62,13 +66,15 @@ public final class TaskLibrary {
     }
 
     public func defaultURL(for taskID: UUID) -> URL {
-        tasksDirectory.appendingPathComponent(taskID.uuidString).appendingPathExtension("voxline")
+        (sharedDocuments?.directory ?? tasksDirectory).appendingPathComponent(taskID.uuidString).appendingPathExtension("voxline")
     }
 
     public func save(_ task: ProcessingTask, at url: URL? = nil) throws {
         let targetURL = url ?? self.url(for: task.id) ?? defaultURL(for: task.id)
+        let previousMedia = self.task(for: task.id)?.items.map(\.media)
         try persist(task, to: targetURL)
         register(task, at: targetURL)
+        if previousMedia != task.items.map(\.media) { onMediaSourcesSaved?(task) }
     }
 
     /// Editing views keep their draft until this validated, atomic save succeeds.
@@ -95,7 +101,8 @@ public final class TaskLibrary {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: url, options: .atomic)
+        if let sharedDocuments, sharedDocuments.contains(url) { try sharedDocuments.write(data, to: url) }
+        else { try data.write(to: url, options: .atomic) }
     }
 
     public func delete(taskID: UUID) throws {
@@ -110,13 +117,19 @@ public final class TaskLibrary {
         guard entry.task?.status != .running else { throw CheckpointError.workRunning }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
+        if let sharedDocuments, sharedDocuments.contains(url), let task = entry.task {
+            var current = try TaskDocumentCodec.decode(sharedDocuments.read(url, recordSnapshot: false))
+            current.interruptRunningItems()
+            guard current == task else { throw SharedDocumentError.changed }
+        }
         if let task = entry.task {
             // Enumerate known files as well as published entries: two copies can have the same Task ID.
             let localFiles = try FileManager.default.contentsOfDirectory(at: tasksDirectory, includingPropertiesForKeys: nil)
                 .filter { $0.pathExtension == "voxline" }
             let deletedURL = url.resolvingSymlinksInPath().standardizedFileURL
             // Canonical paths identify duplicates; file access must keep the original scoped URL.
-            let urls = entries.compactMap(\.url) + recentDocumentURLs() + localFiles
+            let sharedFiles = try sharedDocuments.map { try FileManager.default.contentsOfDirectory(at: $0.directory, includingPropertiesForKeys: nil).filter { $0.pathExtension == "voxline" } } ?? []
+            let urls = entries.compactMap(\.url) + recentDocumentURLs() + localFiles + sharedFiles
             var checkedURLs: Set<URL> = [deletedURL]
             var retainedTasks: [ProcessingTask] = []
             for otherURL in urls {
@@ -125,7 +138,7 @@ public final class TaskLibrary {
                 let access = otherURL.startAccessingSecurityScopedResource()
                 defer { if access { otherURL.stopAccessingSecurityScopedResource() } }
                 do {
-                    let persisted = try TaskDocumentCodec.decode(Data(contentsOf: otherURL))
+                    let persisted = try TaskDocumentCodec.decode(sharedDocuments?.contains(otherURL) == true ? sharedDocuments!.read(otherURL, recordSnapshot: false) : Data(contentsOf: otherURL))
                     retainedTasks.append(persisted)
                     if let published = entries.first(where: { $0.url?.resolvingSymlinksInPath().standardizedFileURL == canonicalURL })?.task {
                         retainedTasks.append(published)
@@ -139,7 +152,8 @@ public final class TaskLibrary {
         }
         let remainingOrder = orderedURLs.filter { $0 != url }
         try JSONEncoder().encode(remainingOrder).write(to: orderURL, options: .atomic)
-        try FileManager.default.removeItem(at: url)
+        if let sharedDocuments, sharedDocuments.contains(url) { try sharedDocuments.remove(url) }
+        else { try FileManager.default.removeItem(at: url) }
         orderedURLs = remainingOrder
         openTasks[entry.taskID] = nil
         entries.removeAll { $0.id == entryID }
@@ -169,6 +183,35 @@ public final class TaskLibrary {
         entries = reordered
     }
 
+    @discardableResult
+    public func saveRecoveryCopy(_ draft: ProcessingTask) throws -> ProcessingTask {
+        let copy = try draft.duplicated()
+        try save(copy, at: defaultURL(for: copy.id))
+        return copy
+    }
+
+    public func conflictVersions(taskID: UUID) throws -> [SharedTaskDocuments.Version] {
+        guard protectedTaskID != taskID else { throw SharedDocumentError.busy }
+        guard let documents = sharedDocuments, let url = url(for: taskID), documents.contains(url) else { throw SharedDocumentError.missingFolder }
+        return try documents.versions(at: url)
+    }
+
+    public func keepConflictVersion(_ versionID: UUID, taskID: UUID) throws {
+        guard protectedTaskID != taskID else { throw SharedDocumentError.busy }
+        guard let documents = sharedDocuments, let url = url(for: taskID), documents.contains(url) else { throw SharedDocumentError.missingFolder }
+        let task = try documents.keepVersion(versionID, at: url)
+        register(task, at: url)
+        refresh()
+    }
+
+    public func connectSharedDocuments(_ documents: SharedTaskDocuments?) {
+        if let previous = sharedDocuments {
+            openTasks = openTasks.filter { $0.value.url.map { !previous.contains($0) } ?? true }
+        }
+        sharedDocuments = documents
+        refresh()
+    }
+
     public func refresh() {
         errorMessage = nil
         do {
@@ -178,8 +221,38 @@ public final class TaskLibrary {
         var foundEntries: [Entry] = []
         var seenIDs = Set<UUID>()
 
+        // Shared documents are reread on native change notifications; a local worker keeps its snapshot.
+        if let sharedDocuments {
+            let previousEntries = entries
+            openTasks = openTasks.filter { id, entry in
+                id == protectedTaskID || entry.url.map { !sharedDocuments.contains($0) } ?? true
+            }
+            do {
+                let files = try FileManager.default.contentsOfDirectory(at: sharedDocuments.directory, includingPropertiesForKeys: nil)
+                for url in Set(files + sharedDocuments.discoveredURLs) where url.pathExtension == "voxline" {
+                    if let protected = openTasks.values.first(where: { $0.url?.standardizedFileURL == url.standardizedFileURL && $0.taskID == protectedTaskID }) {
+                        seenIDs.insert(protected.taskID); foundEntries.append(protected); continue
+                    }
+                    do {
+                        var task = try TaskDocumentCodec.decode(sharedDocuments.read(url))
+                        task.interruptRunningItems()
+                        openTasks[task.id] = nil
+                        guard seenIDs.insert(task.id).inserted else { continue }
+                        foundEntries.append(Entry(id: task.id.uuidString, taskID: task.id, url: url, task: task, error: nil))
+                    } catch {
+                        let previous = previousEntries.first { $0.url?.standardizedFileURL == url.standardizedFileURL }
+                        let id = previous?.taskID ?? UUID()
+                        seenIDs.insert(id)
+                        foundEntries.append(Entry(id: previous?.id ?? url.absoluteString, taskID: id, url: url,
+                            task: previous?.task, error: error.localizedDescription))
+                    }
+                }
+            } catch { errorMessage = error.localizedDescription }
+        }
+
         // 1. In-memory open tasks
         for (id, entry) in openTasks {
+            guard !seenIDs.contains(id) else { continue }
             seenIDs.insert(id)
             foundEntries.append(entry)
         }
