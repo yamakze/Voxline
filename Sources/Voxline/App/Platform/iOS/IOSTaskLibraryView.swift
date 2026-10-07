@@ -186,26 +186,16 @@ struct IOSTaskLibraryView: View {
                     }
                     .disabled(library.queue.taskID == task.id)
                 }
-                .draggable(task.id.uuidString)
-                .dropDestination(for: String.self) { items, _ in
-                    guard let item = items.first, let fromID = UUID(uuidString: item) else { return false }
-                    moveTask(fromID: fromID, toID: task.id)
-                    return true
+            }
+            .onMove { source, destination in
+                do {
+                    try library.moveTasks(fromOffsets: source, toOffset: destination)
+                } catch {
+                    library.errorMessage = error.localizedDescription
                 }
             }
         }
         .listStyle(.insetGrouped)
-    }
-
-    private func moveTask(fromID: UUID, toID: UUID) {
-        guard fromID != toID else { return }
-        withAnimation {
-            do {
-                try library.move(taskID: fromID, to: toID)
-            } catch {
-                library.errorMessage = error.localizedDescription
-            }
-        }
     }
 
     private func taskCard(_ task: ProcessingTask) -> some View {

@@ -185,6 +185,21 @@ public struct TaskLibraryView: View {
                 onSelectTask?(task)
             }
         }
+        .focusable(entry.task != nil, interactions: .activate)
+        .onKeyPress(keys: [.space, .return]) { _ in
+            guard let task = entry.task else { return .ignored }
+            onSelectTask?(task)
+            return .handled
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(entry.title)
+        .accessibilityValue(entry.error ?? "")
+        .accessibilityAddTraits(entry.task == nil ? [] : .isButton)
+        .accessibilityAction {
+            if let task = entry.task {
+                onSelectTask?(task)
+            }
+        }
         .contextMenu {
             Button("删除", systemImage: "trash", role: .destructive) { deletingEntry = entry }
                 .disabled(TaskProcessingQueue.shared.taskID == entry.taskID)

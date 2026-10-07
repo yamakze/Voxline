@@ -9,6 +9,51 @@ import VoxlineWorkflow
 
 @Suite("iOS local capability integration") @MainActor
 struct IOSCapabilityTests {
+    @Test func nativeListMovePreservesHiddenDocumentsAndResultsAcrossRestartAndWriteFailure() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let library = IOSTaskLibrary(directory: directory)
+        let tasks = [ProcessingTask(title: "A"), ProcessingTask(title: "B"), ProcessingTask(title: "C")]
+        for task in tasks { try library.save(task) }
+        let invalidURL = directory.appendingPathComponent("invalid.voxline")
+        let invalidBytes = Data("Invalid document".utf8)
+        try invalidBytes.write(to: invalidURL)
+        library.load()
+        let invalid = try #require(library.storage.entries.first { $0.url == invalidURL })
+        let ids = tasks.map { $0.id.uuidString }
+        try library.storage.reorder(entryIDs: [ids[0], invalid.id, ids[1], ids[2]])
+        let originalBytes = try tasks.map { try Data(contentsOf: library.storage.defaultURL(for: $0.id)) }
+
+        // onMove's destination is an insertion offset, including the end of the list.
+        try library.moveTasks(fromOffsets: [0], toOffset: 3)
+        #expect(library.tasks.map(\.id) == [tasks[1].id, tasks[2].id, tasks[0].id])
+        #expect(library.storage.entries[1].id == invalid.id)
+        let reopened = IOSTaskLibrary(directory: directory)
+        #expect(reopened.tasks == library.tasks)
+        #expect(reopened.storage.entries[1].id == invalid.id)
+        try reopened.moveTasks(fromOffsets: [2], toOffset: 0)
+        #expect(reopened.tasks == tasks)
+        try reopened.moveTasks(fromOffsets: [0, 2], toOffset: 3)
+        #expect(reopened.tasks == [tasks[1], tasks[0], tasks[2]])
+
+        // A real filesystem failure must leave the last published order and documents intact.
+        let orderURL = directory.appendingPathComponent("task-order.json")
+        let savedOrder = try Data(contentsOf: orderURL)
+        let savedIDs = reopened.storage.entries.map(\.id)
+        try FileManager.default.removeItem(at: orderURL)
+        try FileManager.default.createDirectory(at: orderURL, withIntermediateDirectories: false)
+        #expect(throws: (any Error).self) { try reopened.moveTasks(fromOffsets: [0], toOffset: 3) }
+        #expect(reopened.storage.entries.map(\.id) == savedIDs)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: orderURL.path).isEmpty)
+        for (task, bytes) in zip(tasks, originalBytes) {
+            #expect(try Data(contentsOf: reopened.storage.defaultURL(for: task.id)) == bytes)
+        }
+        #expect(try Data(contentsOf: invalidURL) == invalidBytes)
+        try FileManager.default.removeItem(at: orderURL)
+        try savedOrder.write(to: orderURL)
+        #expect(IOSTaskLibrary(directory: directory).tasks == reopened.tasks)
+    }
+
     @Test func frameworkResourceProvidesPinnedModelInventory() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let inventory = try await WhisperModelStore(directory: directory).inventory(modelID: TranscriptionSettings.whisperKitBaseline.modelID)
