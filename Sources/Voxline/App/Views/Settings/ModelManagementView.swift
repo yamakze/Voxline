@@ -39,6 +39,19 @@ public struct ModelManagementView: View {
                         Text(mb >= 1000 ? String(format: "已用 %.2f GB", mb / 1000.0) : String(format: "已用 %.0f MB", mb))
                             .font(.subheadline.monospacedDigit().bold())
                             .foregroundStyle(.secondary)
+
+                        #if os(macOS)
+                        Button {
+                            if let dir = modelManager.modelDirectories.values.first ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("huggingface/models") {
+                                NSWorkspace.shared.open(dir)
+                            }
+                        } label: {
+                            Label("打开目录", systemImage: "folder")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .help("在访达中打开模型存储目录")
+                        #endif
                     }
 
                     StorageBreakdownBar(
@@ -68,20 +81,6 @@ public struct ModelManagementView: View {
             }
             .padding(24)
         }
-        #if os(macOS)
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    if let dir = modelManager.modelDirectories.values.first ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("huggingface/models") {
-                        NSWorkspace.shared.open(dir)
-                    }
-                } label: {
-                    Image(systemName: "folder")
-                }
-                .help("在访达中打开模型存储目录")
-            }
-        }
-        #endif
         #if os(iOS)
         .navigationTitle("模型管理")
         #endif

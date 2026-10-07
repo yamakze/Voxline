@@ -49,14 +49,37 @@ public struct CloudTranscriptionServicesSettingsView: View {
                 }
 
                 if store.services.isEmpty {
-                    ContentUnavailableView(
-                        "尚未配置云端转写服务",
-                        systemImage: "waveform.badge.mic",
-                        description: Text("添加兼容接口以启用云端转写")
-                    )
+                    ContentUnavailableView {
+                        Label("尚未配置云端转写服务", systemImage: "waveform.badge.mic")
+                    } description: {
+                        Text("添加兼容接口以启用云端转写")
+                    } actions: {
+                        Button {
+                            isAddingService = true
+                        } label: {
+                            Label("添加转写服务", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(store.isLoading || store.isSaving)
+                    }
                     .padding(.vertical, 60)
                     .frame(maxWidth: .infinity)
                 } else {
+                    HStack {
+                        Text("已配置服务")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            isAddingService = true
+                        } label: {
+                            Label("添加服务", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(store.isLoading || store.isSaving)
+                    }
+
                     VStack(spacing: 12) {
                         ForEach(store.services) { service in
                             serviceCard(service: service)
@@ -65,17 +88,6 @@ public struct CloudTranscriptionServicesSettingsView: View {
                 }
             }
             .padding(24)
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    isAddingService = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .help("添加转写服务…")
-                .disabled(store.isLoading || store.isSaving)
-            }
         }
         #if os(iOS)
         .navigationTitle("云端转写服务")
@@ -154,9 +166,9 @@ public struct CloudTranscriptionServicesSettingsView: View {
                     .controlSize(.small)
 
                 Button("删除", role: .destructive) { deletingService = service }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.red)
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .tint(.red)
             }
         }
         .padding(14)

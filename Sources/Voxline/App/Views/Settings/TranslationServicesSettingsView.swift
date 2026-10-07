@@ -55,14 +55,37 @@ public struct TranslationServicesSettingsView: View {
 
                 // Inset Grouped Service Cards
                 if store.services.isEmpty {
-                    ContentUnavailableView(
-                        "尚未配置翻译服务",
-                        systemImage: "character.bubble",
-                        description: Text("配置 OpenAI 兼容接口或本地模型服务以启用字幕翻译。")
-                    )
+                    ContentUnavailableView {
+                        Label("尚未配置翻译服务", systemImage: "character.bubble")
+                    } description: {
+                        Text("配置 OpenAI 兼容接口或本地模型服务以启用字幕翻译。")
+                    } actions: {
+                        Button {
+                            isAddingService = true
+                        } label: {
+                            Label("添加翻译服务", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(store.isLoading || store.isSaving)
+                    }
                     .padding(.vertical, 60)
                     .frame(maxWidth: .infinity)
                 } else {
+                    HStack {
+                        Text("已配置服务")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            isAddingService = true
+                        } label: {
+                            Label("添加服务", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(store.isLoading || store.isSaving)
+                    }
+
                     VStack(spacing: 12) {
                         ForEach(store.services) { service in
                             serviceCard(service: service)
@@ -71,17 +94,6 @@ public struct TranslationServicesSettingsView: View {
                 }
             }
             .padding(24)
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    isAddingService = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .help("添加翻译服务…")
-                .disabled(store.isLoading || store.isSaving)
-            }
         }
         #if os(iOS)
         .navigationTitle("翻译服务")
@@ -183,10 +195,12 @@ public struct TranslationServicesSettingsView: View {
 
                 Button("编辑") { editingService = service }
                     .buttonStyle(.bordered)
+                    .controlSize(.small)
 
                 Button("删除", role: .destructive) { deletingService = service }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.red)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(.red)
             }
         }
         .padding(14)
@@ -267,7 +281,7 @@ private struct ServiceEditorModal: View {
 
                     if isAdvancedExpanded {
                         LabeledContent("每批字幕数") {
-                            TextField("每批字幕数", text: $batchSizeText)
+                            TextField("", text: $batchSizeText)
                                 .multilineTextAlignment(.trailing)
                                 #if os(iOS)
                                 .keyboardType(.numberPad)
