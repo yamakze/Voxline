@@ -129,7 +129,7 @@ public struct TaskConfigurationView: View {
         }
         .sheet(isPresented: $showCloudTranscriptionSettings) {
             NavigationStack {
-                CloudTranscriptionServicesSettingsView()
+                CloudTranscriptionServicesSettingsView(referencedSettings: originalTask.parameters.transcription)
                     .navigationTitle("云端转写服务")
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
@@ -855,7 +855,7 @@ public struct TaskConfigurationView: View {
         if transcriptionProvider == .openAICompatible {
             if cloudStore.isLoading || cloudStore.isSaving { return "云端转写服务配置正在读取或保存。" }
             if let error = cloudStore.errorMessage { return error }
-            if selectedCloudServiceID == nil || cloudStore.services.isEmpty {
+            if !cloudStore.services.contains(where: { $0.id == selectedCloudServiceID }) {
                 return "开启云端转写需选择已配置的转写服务。"
             }
             if languageMode == .specified {

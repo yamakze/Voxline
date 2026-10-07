@@ -70,13 +70,8 @@ final class IOSTaskLibrary {
 
     func moveTasks(fromOffsets source: IndexSet, toOffset destination: Int) throws {
         var entries = storage.entries
-        // The list displays readable tasks; keep unreadable documents in their existing slots.
-        let taskIndices = entries.indices.filter { entries[$0].task != nil }
-        var movedEntries = taskIndices.map { entries[$0] }
-        movedEntries.move(fromOffsets: source, toOffset: destination)
-        for (index, entry) in zip(taskIndices, movedEntries) {
-            entries[index] = entry
-        }
+        // SwiftUI offsets refer to every displayed entry, including cloud placeholders.
+        entries.move(fromOffsets: source, toOffset: destination)
         try storage.reorder(entryIDs: entries.map(\.id))
     }
 

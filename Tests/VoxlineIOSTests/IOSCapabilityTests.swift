@@ -9,7 +9,7 @@ import VoxlineWorkflow
 
 @Suite("iOS local capability integration") @MainActor
 struct IOSCapabilityTests {
-    @Test func nativeListMovePreservesHiddenDocumentsAndResultsAcrossRestartAndWriteFailure() throws {
+    @Test func nativeListMoveIncludesPlaceholderOffsetsAndPreservesResultsAcrossRestartAndWriteFailure() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let library = IOSTaskLibrary(directory: directory)
@@ -25,16 +25,17 @@ struct IOSCapabilityTests {
         let originalBytes = try tasks.map { try Data(contentsOf: library.storage.defaultURL(for: $0.id)) }
 
         // onMove's destination is an insertion offset, including the end of the list.
-        try library.moveTasks(fromOffsets: [0], toOffset: 3)
+        try library.moveTasks(fromOffsets: [0], toOffset: 4)
         #expect(library.tasks.map(\.id) == [tasks[1].id, tasks[2].id, tasks[0].id])
-        #expect(library.storage.entries[1].id == invalid.id)
+        #expect(library.storage.entries[0].id == invalid.id)
         let reopened = IOSTaskLibrary(directory: directory)
         #expect(reopened.tasks == library.tasks)
-        #expect(reopened.storage.entries[1].id == invalid.id)
-        try reopened.moveTasks(fromOffsets: [2], toOffset: 0)
+        #expect(reopened.storage.entries[0].id == invalid.id)
+        try reopened.moveTasks(fromOffsets: [3], toOffset: 0)
         #expect(reopened.tasks == tasks)
-        try reopened.moveTasks(fromOffsets: [0, 2], toOffset: 3)
+        try reopened.moveTasks(fromOffsets: [0, 3], toOffset: 4)
         #expect(reopened.tasks == [tasks[1], tasks[0], tasks[2]])
+        #expect(reopened.storage.entries[0].id == invalid.id)
 
         // A real filesystem failure must leave the last published order and documents intact.
         let orderURL = directory.appendingPathComponent("task-order.json")

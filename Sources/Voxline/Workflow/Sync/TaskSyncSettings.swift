@@ -350,6 +350,11 @@ public final class TaskSyncSettings {
         }
     }
 
+    public func originalMediaState(for item: TaskMediaItem) -> FileState? {
+        guard let folderURL, let identity = item.media else { return nil }
+        return fileStates[originalURL(identity, folder: folderURL).standardizedFileURL]
+    }
+
     public func originalMediaURL(for identity: MediaIdentity) throws -> URL {
         guard let folderURL else { throw SharedDocumentError.missingFolder }
         return originalURL(identity, folder: folderURL)

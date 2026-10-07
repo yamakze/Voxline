@@ -246,7 +246,7 @@ public struct TaskDetailView: View {
 
                                 // In-line Action Buttons
                                 HStack(spacing: 6) {
-                                    if item.media == nil, syncSettings.isEnabled {
+                                    if syncSettings.originalMediaState(for: item) != nil {
                                         Button("关联云端媒体", systemImage: "icloud.and.arrow.down") {
                                             associateCloudOriginal(for: item)
                                         }

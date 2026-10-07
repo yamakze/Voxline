@@ -253,7 +253,7 @@ private struct CloudTranscriptionServiceEditorModal: View {
                 Button("保存") { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isSaving || isLoadingKey || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSaving || isLoadingKey || (keyReadFailed && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)

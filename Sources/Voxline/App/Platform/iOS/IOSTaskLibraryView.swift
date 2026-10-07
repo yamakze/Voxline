@@ -487,7 +487,7 @@ private struct IOSTaskDetailView: View {
                                 mediaItemCard(item: item, task: task)
                             }
                             .contextMenu {
-                                if item.media == nil, syncSettings.isEnabled {
+                                if syncSettings.originalMediaState(for: item) != nil {
                                     Button {
                                         associateCloudOriginal(for: item)
                                     } label: {
@@ -780,7 +780,7 @@ private struct IOSTaskDetailView: View {
 
                 Spacer()
 
-                if item.media == nil, syncSettings.isEnabled {
+                if syncSettings.originalMediaState(for: item) != nil {
                     Button {
                         associateCloudOriginal(for: item)
                     } label: {
