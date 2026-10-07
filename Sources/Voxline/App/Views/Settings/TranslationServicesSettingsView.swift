@@ -9,6 +9,7 @@ public struct TranslationServicesSettingsView: View {
     @State private var errorMessage: String?
     @State private var connectionTask: Task<Void, Never>?
     @State private var bindingService: TranslationServiceConfig?
+    @State private var deletingService: TranslationServiceConfig?
     private var onBindService: ((TranslationServiceConfig) throws -> Void)?
     private var referencedService: TranslationServiceConfig?
 
@@ -117,6 +118,23 @@ public struct TranslationServicesSettingsView: View {
         } message: {
             Text("本次任务将使用所选服务地址和模型，保留原目标语言、批量数量、提示词与已有译文。\n\(bindingService?.name ?? "") · \(bindingService?.modelID ?? "")\n\(bindingService?.baseURL.absoluteString ?? "")")
         }
+        .confirmationDialog("删除翻译服务？", isPresented: Binding(
+            get: { deletingService != nil }, set: { if !$0 { deletingService = nil } }), titleVisibility: .visible) {
+            Button("删除服务与本地密钥", role: .destructive) {
+                guard let service = deletingService else { return }
+                Task {
+                    do {
+                        try await store.remove(id: service.id)
+                        deletingService = nil
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                }
+            }
+            Button("取消", role: .cancel) { deletingService = nil }
+        } message: {
+            Text("将从本设备删除该服务配置及钥匙串密钥。")
+        }
         .alert("服务配置未修改", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("好", role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
@@ -128,47 +146,41 @@ public struct TranslationServicesSettingsView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.teal.opacity(0.12))
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                 Image(systemName: "character.book.closed")
-                    .font(.system(size: 18))
+                    .font(.system(size: 20))
                     .foregroundStyle(.teal)
             }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(service.name)
                         .font(.headline)
-
-                    if let result = store.testResult[service.id] {
-                        switch result {
-                        case .success:
-                            Circle().fill(Color.green).frame(width: 8, height: 8)
-                                .help("连接正常")
-                        case .failure:
-                            Circle().fill(Color.red).frame(width: 8, height: 8)
-                                .help("连接失败")
-                        }
-                    }
+                    Text(service.modelID)
+                        .font(.caption2.monospaced())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.12), in: .capsule)
                 }
 
+                Text(service.baseURL.absoluteString)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
                 HStack(spacing: 6) {
-                    Text(service.modelID)
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-
-                    Text("•")
+                    Image(systemName: store.credentialPresence[service.id] == true ? "key.fill" : "key.slash")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
-
-                    Text(service.baseURL.host ?? service.baseURL.absoluteString)
-                        .font(.caption)
+                        .foregroundStyle(store.credentialPresence[service.id] == true ? .green : .secondary)
+                    Text(store.credentialPresence[service.id] == true ? "已存入钥匙串" : "无密钥")
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
 
             Spacer()
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 if onBindService != nil {
                     Button(referencedService?.id == service.id ? "已绑定" : "使用") {
                         bindingService = service
@@ -178,51 +190,16 @@ public struct TranslationServicesSettingsView: View {
                     .disabled(referencedService?.id == service.id || store.isLoading || store.isSaving)
                 }
 
-                if store.testingServiceID == service.id {
-                    HStack(spacing: 4) {
-                        ProgressView().controlSize(.small)
-                        Text("测试中…").font(.caption2).foregroundStyle(.secondary)
-                    }
-                } else {
-                    Button("测试") {
-                        connectionTask = Task {
-                            defer { connectionTask = nil }
-                            do { _ = try await store.testConnection(service: service) }
-                            catch { errorMessage = error.localizedDescription }
-                        }
-                    }
+                Button("编辑") { editingService = service }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(store.testingServiceID != nil || store.isLoading || store.isSaving)
-                }
 
-                Menu {
-                    Button {
-                        editingService = service
-                    } label: {
-                        Label("编辑…", systemImage: "pencil")
-                    }
-
-                    Divider()
-
-                    Button(role: .destructive) {
-                        Task {
-                            do { try await store.remove(id: service.id) }
-                            catch { errorMessage = error.localizedDescription }
-                        }
-                    } label: {
-                        Label("删除", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.body)
-                }
-                .menuStyle(.borderlessButton)
-                .frame(width: 24, height: 24)
+                Button("删除", role: .destructive) { deletingService = service }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.red)
             }
         }
         .padding(14)
-        .liquidGlassSurface(cornerRadius: 12)
+        .liquidGlassSurface()
     }
 }
 
