@@ -86,7 +86,7 @@ public struct TaskDetailView: View {
                 let transcription = task.parameters.transcription
                 let destination = transcription.cloud?.baseURL.absoluteString ?? "未配置服务"
                 let lang = transcription.languageMode == .specified ? (transcription.languageCode ?? "指定语言") : "自动识别"
-                Text("媒体：\(item.title)\n目的服务：\(destination)\n模型：\(transcription.modelID)\n原文语言：\(lang)\n音频外发：所选音轨提取音频，按最多 120 秒分块上传。\n转写费用依具体服务提供商计费。")
+                Text("媒体：\(item.title)\n服务：\(destination)\n模型：\(transcription.modelID) · 语言：\(lang)\n将提取音轨并上传至该服务进行云端转写。")
             }
         }
     }
@@ -100,7 +100,7 @@ public struct TaskDetailView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("此任务存在云端冲突版本")
                     .font(.subheadline.bold())
-                Text("另一设备在离线期间保存了不同内容，请选择保留版本或保存当前草稿副本。")
+                Text("检测到其他设备保存的冲突文档，请选择保留版本或保存草稿副本。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

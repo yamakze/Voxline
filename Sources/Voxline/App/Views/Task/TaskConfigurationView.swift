@@ -691,7 +691,7 @@ public struct TaskConfigurationView: View {
                     }
 
                     if languageMode == .specified {
-                        LanguagePicker(title: "语言 (ISO 639-1)", selection: $languageCode)
+                        LanguagePicker(title: "语言代码", selection: $languageCode)
                     }
                 }
 
@@ -866,7 +866,7 @@ public struct TaskConfigurationView: View {
             if languageMode == .specified {
                 let code = languageCode.trimmingCharacters(in: .whitespacesAndNewlines)
                 if code.count != 2 || !code.allSatisfy({ $0.isASCII && $0.isLetter }) {
-                    return "云端转写指定语言需为有效的两字母 ISO 639-1 代码（如 en、zh）。"
+                    return "云端转写指定语言需为两位字母代码（如 zh、en）。"
                 }
             }
         }

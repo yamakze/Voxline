@@ -52,7 +52,7 @@ public struct CloudTranscriptionServicesSettingsView: View {
                     ContentUnavailableView(
                         "尚未配置云端转写服务",
                         systemImage: "waveform.badge.mic",
-                        description: Text("配置 OpenAI Audio Transcriptions 兼容接口以启用云端转写。")
+                        description: Text("添加兼容接口以启用云端转写")
                     )
                     .padding(.vertical, 60)
                     .frame(maxWidth: .infinity)
@@ -108,7 +108,7 @@ public struct CloudTranscriptionServicesSettingsView: View {
             }
             Button("取消", role: .cancel) { deletingService = nil }
         } message: {
-            Text("将从本设备删除该服务配置及钥匙串密钥，已完成的任务不受影响。")
+            Text("将从本设备删除该服务配置及钥匙串密钥。")
         }
         .alert("服务操作失败", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("好", role: .cancel) { errorMessage = nil }
@@ -226,15 +226,9 @@ private struct CloudTranscriptionServiceEditorModal: View {
                         PasswordVisibilityField("API 密钥（选填）", text: $apiKey)
                     }
                     if keyReadFailed {
-                        Text("读取钥匙串密钥失败，如需更新请重新输入。")
+                        Text("未能读取已存密钥，可重新输入更新。")
                             .font(.caption2).foregroundStyle(.orange)
                     }
-                }
-
-                Section {
-                    Text("当前协议固定 whisper-1、verbose_json 与 segment 时间戳，单次分块上限 120 秒 / 25 MB。密钥仅保存在本机钥匙串。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
 
                 if let errorMessage {

@@ -583,7 +583,7 @@ private struct IOSTaskDetailView: View {
                 let transcription = task.parameters.transcription
                 let destination = transcription.cloud?.baseURL.absoluteString ?? "未配置服务"
                 let lang = transcription.languageMode == .specified ? (transcription.languageCode ?? "指定语言") : "自动识别"
-                Text("目的服务：\(destination)\n模型：\(transcription.modelID)\n原文语言：\(lang)\n音频外发：所选音轨提取音频，按最多 120 秒分块上传。\n转写费用依具体服务提供商计费。")
+                Text("服务：\(destination)\n模型：\(transcription.modelID) · 语言：\(lang)\n将提取音轨并上传至该服务进行云端转写。")
             }
             .confirmationDialog("确认开始云端转写？", isPresented: Binding(
                 get: { pendingCloudRetryItem != nil },
@@ -602,7 +602,7 @@ private struct IOSTaskDetailView: View {
                     let transcription = task.parameters.transcription
                     let destination = transcription.cloud?.baseURL.absoluteString ?? "未配置服务"
                     let lang = transcription.languageMode == .specified ? (transcription.languageCode ?? "指定语言") : "自动识别"
-                    Text("媒体：\(item.title)\n目的服务：\(destination)\n模型：\(transcription.modelID)\n原文语言：\(lang)\n音频外发：所选音轨提取音频，按最多 120 秒分块上传。\n转写费用依具体服务提供商计费。")
+                    Text("媒体：\(item.title)\n服务：\(destination)\n模型：\(transcription.modelID) · 语言：\(lang)\n将提取音轨并上传至该服务进行云端转写。")
                 }
             }
             .alert("操作异常", isPresented: Binding(

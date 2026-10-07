@@ -29,7 +29,7 @@ public struct TaskSyncSettingsView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                         } else {
-                            Text("选择 Mac 与 iOS 共用的 iCloud Drive 文件夹以同步任务成果与字幕。")
+                            Text("选择 iCloud Drive 文件夹以跨设备同步任务与字幕。")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -89,7 +89,7 @@ public struct TaskSyncSettingsView: View {
                                 .foregroundStyle(.blue)
                         }
                     } else {
-                        Text("关闭时源音视频仅保存在本机，远端设备可浏览字幕并按需重新关联或下载。")
+                        Text("关闭时仅在本机保留原视频，云端仅同步字幕与任务进度。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -175,7 +175,7 @@ public struct TaskSyncSettingsView: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("关闭前将保存完整的本地成果到本设备，云端文件与原音视频均不会被删除。\n若存在未下载或冲突任务，需先处理后方可关闭。")
+            Text("关闭后任务将仅保存在本机，云端现有文件不会被删除。")
         }
         .alert("操作失败", isPresented: Binding(
             get: { localError != nil },
@@ -252,7 +252,7 @@ public struct TaskSyncSettingsView: View {
 
                 Section("原媒体同步选项") {
                     Toggle("同时复制并同步原音视频文件", isOn: $syncOriginalsInMigration)
-                    Text("默认关闭。开启后将在本地保留的基础上复制原文件到云端 Media 目录，供其他设备直接下载；文件较大时可能需要较长上传时间。")
+                    Text("同时将源音视频上传至云端供其他设备直接下载（需要较多存储与网络带宽）。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
