@@ -35,9 +35,6 @@ public struct TaskDetailView: View {
                 // Compact Metrics Bar
                 compactMetricsBar
 
-                // Parameters summary line
-                parametersSummaryBar
-
                 // Media processing queue
                 mediaQueue
             }
@@ -117,56 +114,6 @@ public struct TaskDetailView: View {
         .background(Color.orange.opacity(0.12), in: .rect(cornerRadius: 10))
     }
 
-    private var parametersSummaryBar: some View {
-        HStack(spacing: 14) {
-            let transcription = task.parameters.transcription
-            HStack(spacing: 6) {
-                Image(systemName: transcription.provider == .openAICompatible ? "waveform.badge.mic" : "cpu")
-                    .foregroundStyle(.secondary)
-                if transcription.provider == .openAICompatible {
-                    Text("云端转写：\(transcription.modelID)")
-                        .font(.caption.weight(.medium))
-                    if let baseURL = transcription.cloud?.baseURL {
-                        Text("(\(baseURL.host ?? baseURL.absoluteString))")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text("本地转写：\(transcription.modelID)")
-                        .font(.caption.weight(.medium))
-                }
-            }
-
-            Text("•").foregroundStyle(.secondary)
-
-            HStack(spacing: 4) {
-                Text("语言：")
-                    .foregroundStyle(.secondary)
-                Text(transcription.languageMode == .specified ? (transcription.languageCode ?? "指定") : "自动识别")
-                    .font(.caption.weight(.medium))
-            }
-
-            if let translation = task.parameters.translation {
-                Text("•").foregroundStyle(.secondary)
-                HStack(spacing: 4) {
-                    Text("翻译：")
-                        .foregroundStyle(.secondary)
-                    Text(translation.targetLanguage)
-                        .font(.caption.weight(.medium))
-                }
-            }
-
-            if let state = fileState {
-                Spacer()
-                SyncFileStatusBadge(state: state)
-            }
-        }
-        .font(.caption)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.35), in: .rect(cornerRadius: 8))
-    }
-
     // MARK: - Compact Metrics Bar
     private var compactMetricsBar: some View {
         HStack(spacing: 20) {
@@ -202,6 +149,10 @@ public struct TaskDetailView: View {
             }
 
             Spacer()
+
+            if let state = fileState {
+                SyncFileStatusBadge(state: state)
+            }
 
             if !task.items.isEmpty {
                 let progress = Double(task.completedCount) / Double(task.items.count)

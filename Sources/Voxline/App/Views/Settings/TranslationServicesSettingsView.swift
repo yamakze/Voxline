@@ -198,9 +198,9 @@ public struct TranslationServicesSettingsView: View {
                     .controlSize(.small)
 
                 Button("删除", role: .destructive) { deletingService = service }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.red)
                     .controlSize(.small)
-                    .tint(.red)
             }
         }
         .padding(14)
