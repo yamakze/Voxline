@@ -10,11 +10,11 @@ struct IOSSettingsView: View {
                 NavigationLink { IOSAppleLanguagesView() } label: { Label("Apple 本机翻译", systemImage: "character.book.closed") }
             }
             Section("同步") {
-                NavigationLink { TaskSyncSettingsView() } label: { Label("iCloud 文件夹同步", systemImage: "arrow.triangle.2.circlepath") }
+                NavigationLink { TaskSyncSettingsView() } label: { Label("iCloud 同步", systemImage: "arrow.triangle.2.circlepath") }
             }
             Section("云端服务") {
-                NavigationLink { CloudTranscriptionServicesSettingsView() } label: { Label("云端转写 (OpenAI 兼容)", systemImage: "waveform.badge.mic") }
-                NavigationLink { TranslationServicesSettingsView() } label: { Label("翻译服务 (OpenAI 兼容)", systemImage: "network") }
+                NavigationLink { CloudTranscriptionServicesSettingsView() } label: { Label("云端转写服务", systemImage: "waveform.badge.mic") }
+                NavigationLink { TranslationServicesSettingsView() } label: { Label("翻译服务", systemImage: "character.book.closed") }
             }
         }
         .navigationTitle("设置")

@@ -21,22 +21,27 @@ struct VoxlineApp: App {
     #endif
 
     var body: some Scene {
+        #if os(macOS)
         WindowGroup {
-            #if os(macOS)
             MainWindowView()
                 .tint(Color.voxlineAccent)
                 .task { TaskSyncSettings.shared.restore() }
-            #elseif os(iOS)
-            IOSTaskLibraryView()
-                .background(AppleTranslationSessionHost())
-                .task { TaskSyncSettings.shared.restore() }
-            #endif
         }
-        #if os(macOS)
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1140, height: 740)
         .commands {
             TaskNavigationCommands()
+        }
+
+        Settings {
+            AppSettingsView()
+                .frame(minWidth: 720, minHeight: 520)
+        }
+        #elseif os(iOS)
+        WindowGroup {
+            IOSTaskLibraryView()
+                .background(AppleTranslationSessionHost())
+                .task { TaskSyncSettings.shared.restore() }
         }
         #endif
     }

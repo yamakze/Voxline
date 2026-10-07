@@ -20,9 +20,6 @@ public struct MainWindowView: View {
     public enum NavigationItem: Hashable {
         case allTasks
         case task(UUID)
-        case models
-        case sync
-        case cloudTranscription
         case settings
     }
 
@@ -122,20 +119,8 @@ public struct MainWindowView: View {
             }
 
             Section("系统") {
-                NavigationLink(value: NavigationItem.models) {
-                    Label("模型管理", systemImage: "cpu")
-                }
-
-                NavigationLink(value: NavigationItem.sync) {
-                    Label("iCloud 文件夹同步", systemImage: "arrow.triangle.2.circlepath")
-                }
-
-                NavigationLink(value: NavigationItem.cloudTranscription) {
-                    Label("云端转写服务", systemImage: "waveform.badge.mic")
-                }
-
                 NavigationLink(value: NavigationItem.settings) {
-                    Label("翻译服务", systemImage: "character.book.closed")
+                    Label("设置", systemImage: "gearshape")
                 }
             }
         }
@@ -194,17 +179,8 @@ public struct MainWindowView: View {
                 ContentUnavailableView("任务未找到", systemImage: "exclamationmark.triangle")
             }
 
-        case .models:
-            ModelManagementView()
-
-        case .sync:
-            TaskSyncSettingsView()
-
-        case .cloudTranscription:
-            CloudTranscriptionServicesSettingsView()
-
         case .settings:
-            TranslationServicesSettingsView()
+            AppSettingsView()
         }
     }
 
