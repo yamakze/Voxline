@@ -31,7 +31,6 @@ public struct SRTExportSheet: View {
             HStack {
                 Text("导出 SRT 字幕").font(.headline)
                 Spacer()
-                Button("完成") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             VStack(alignment: .leading, spacing: 16) {
                 Picker("导出类型", selection: $selectedKind) {
@@ -67,6 +66,7 @@ public struct SRTExportSheet: View {
             HStack {
                 Text("\(cues.count) 条字幕 · UTF-8 编码").font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("导出") { export(allowOverwrite: false) }
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                     .disabled(targetDirectory == nil || cues.isEmpty || (selectedKind != .source && missingTranslationCount > 0))

@@ -54,9 +54,6 @@ public struct SubtitleEmbeddingSheet: View {
             HStack {
                 Text("内封软字幕视频").font(.headline)
                 Spacer()
-                Button("完成") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isExporting)
             }
 
             VStack(alignment: .leading, spacing: 16) {
@@ -149,10 +146,13 @@ public struct SubtitleEmbeddingSheet: View {
             .liquidGlassSurface()
 
             HStack {
-                Text("\(itemSnapshot.cues.count) 条字幕 · 语言：\(selectedLanguageTag)")
+                Text("\(itemSnapshot.cues.count) 条字幕")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                Button("取消") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(isExporting)
                 Button("导出软字幕") {
                     startExport(allowOverwrite: false)
                 }

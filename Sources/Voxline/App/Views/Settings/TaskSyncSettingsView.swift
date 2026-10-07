@@ -2,6 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VoxlineCore
 import VoxlineWorkflow
+#if os(macOS)
+import AppKit
+#endif
 
 public struct TaskSyncSettingsView: View {
     @State private var settings = TaskSyncSettings.shared
@@ -17,135 +20,33 @@ public struct TaskSyncSettingsView: View {
     public init() {}
 
     public var body: some View {
-        Form {
-            Section("iCloud 文件夹同步") {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(settings.isEnabled ? "同步已启用" : "未启用同步")
-                            .font(.headline)
-                        if let folder = settings.folderURL {
-                            Text(folder.path)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                        } else {
-                            Text("选择 iCloud Drive 文件夹以跨设备同步任务与字幕。")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Spacer()
-
-                    if settings.isChanging || isProcessing {
-                        ProgressView().controlSize(.small)
-                    } else if settings.isEnabled {
-                        Button("关闭同步", role: .destructive) {
-                            showDisableConfirmation = true
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    } else {
-                        Button("选择文件夹…") {
-                            isSelectingFolder = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                    }
-                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                // 1. Hero Status Card
+                heroStatusCard
 
                 if settings.isEnabled {
-                    Button("更换同步文件夹…") {
-                        isSelectingFolder = true
-                    }
-                    .font(.caption)
-                    .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
+                    // 2. Folder Location & Management Card
+                    folderLocationCard
+
+                    // 3. Media Sync Policy Card
+                    mediaSyncPolicyCard
+
+                    // 4. Live Sync Monitor & Health Stats Card
+                    liveMonitorCard
+                } else {
+                    // Unconfigured Onboarding / Benefits Card
+                    onboardingCard
+                }
+
+                if let error = settings.errorMessage ?? localError {
+                    errorBanner(error)
                 }
             }
-
-            if settings.isEnabled {
-                Section("原媒体同步") {
-                    Toggle("同步源音视频文件", isOn: Binding(
-                        get: { settings.syncOriginalMedia },
-                        set: { newValue in
-                            Task {
-                                isProcessing = true
-                                defer { isProcessing = false }
-                                do {
-                                    try await settings.setOriginalMediaSync(newValue)
-                                } catch {
-                                    localError = error.localizedDescription
-                                }
-                            }
-                        }
-                    ))
-                    .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
-
-                    if settings.isCopyingOriginalMedia {
-                        HStack(spacing: 8) {
-                            ProgressView().controlSize(.small)
-                            Text("正在复制并上传原音视频到云端…")
-                                .font(.caption)
-                                .foregroundStyle(.blue)
-                        }
-                    } else {
-                        Text("关闭时仅在本机保留原视频，云端仅同步字幕与任务进度。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if settings.syncOriginalMedia {
-                        Button("重试原媒体上传") {
-                            Task {
-                                isProcessing = true
-                                defer { isProcessing = false }
-                                do {
-                                    try await settings.retryOriginalMediaUpload()
-                                } catch {
-                                    localError = error.localizedDescription
-                                }
-                            }
-                        }
-                        .font(.caption)
-                        .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
-                    }
-                }
-
-                Section("同步状态") {
-                    HStack {
-                        Text("当前监控文件")
-                        Spacer()
-                        Text("\(settings.fileStates.count) 个")
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Button("刷新状态") {
-                        settings.refresh()
-                    }
-                    .font(.caption)
-                    .disabled(settings.isChanging || isProcessing)
-                }
-            }
-
-            if let error = settings.errorMessage ?? localError {
-                Section {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .textSelection(.enabled)
-                    }
-                    Button("重试 / 刷新") {
-                        localError = nil
-                        settings.refresh()
-                    }
-                    .font(.caption)
-                }
-            }
+            .padding(24)
+            .frame(maxWidth: 680)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
-        .formStyle(.grouped)
         #if os(iOS)
         .navigationTitle("iCloud 文件夹同步")
         #endif
@@ -189,6 +90,369 @@ public struct TaskSyncSettingsView: View {
         }
     }
 
+    // MARK: - 1. Hero Status Card
+    private var heroStatusCard: some View {
+        HStack(alignment: .top, spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(settings.isEnabled
+                        ? LinearGradient(colors: [Color.blue.opacity(0.85), Color.cyan.opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        : LinearGradient(colors: [Color.secondary.opacity(0.3), Color.secondary.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 48, height: 48)
+                Image(systemName: settings.isEnabled ? "icloud.fill" : "icloud.slash.fill")
+                    .font(.title2)
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text("iCloud 文件夹同步")
+                        .font(.title3.bold())
+                    if settings.isChanging || isProcessing {
+                        ProgressView().controlSize(.mini)
+                        Text("正在处理…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if settings.isEnabled {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.green).frame(width: 7, height: 7)
+                            Text("同步运行中")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.green)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.green.opacity(0.12), in: .capsule)
+                    } else {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.secondary).frame(width: 7, height: 7)
+                            Text("未启用")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.secondary.opacity(0.12), in: .capsule)
+                    }
+                }
+
+                Text(settings.isEnabled
+                    ? "已关联 iCloud Drive 专用目录，实时同步任务文档与字幕校对成果。"
+                    : "通过 iCloud Drive 目录跨设备同步您的任务项目与字幕成果。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if settings.isEnabled {
+                Button(role: .destructive) {
+                    showDisableConfirmation = true
+                } label: {
+                    Text("关闭同步")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .disabled(settings.isChanging || isProcessing)
+            } else {
+                Button {
+                    isSelectingFolder = true
+                } label: {
+                    Label("选择文件夹…", systemImage: "folder.badge.plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(settings.isChanging || isProcessing)
+            }
+        }
+        .padding(18)
+        .liquidGlassSurface(cornerRadius: 14)
+    }
+
+    // MARK: - 2. Folder Location & Management Card
+    private var folderLocationCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("同步存储位置", systemImage: "folder.badge.gearshape")
+                .font(.headline)
+
+            if let folder = settings.folderURL {
+                HStack(alignment: .center, spacing: 14) {
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(Color.blue)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(folder.lastPathComponent)
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(folder.path)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 8) {
+                        #if os(macOS)
+                        Button("在访达中显示") {
+                            NSWorkspace.shared.activateFileViewerSelecting([folder])
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        #endif
+
+                        Button("更换文件夹…") {
+                            isSelectingFolder = true
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
+                    }
+                }
+                .padding(14)
+                .background(Color.voxlineControlBackground.opacity(0.4), in: .rect(cornerRadius: 10))
+            }
+        }
+        .padding(18)
+        .liquidGlassSurface(cornerRadius: 14)
+    }
+
+    // MARK: - 3. Media Sync Policy Card
+    private var mediaSyncPolicyCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("原音视频媒体同步", systemImage: "film.stack")
+                    .font(.headline)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { settings.syncOriginalMedia },
+                    set: { newValue in
+                        Task {
+                            isProcessing = true
+                            defer { isProcessing = false }
+                            do {
+                                try await settings.setOriginalMediaSync(newValue)
+                            } catch {
+                                localError = error.localizedDescription
+                            }
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
+            }
+
+            if settings.syncOriginalMedia {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
+                            .foregroundStyle(.blue)
+                            .font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("完整镜像模式（已开启原媒体同步）")
+                                .font(.subheadline.bold())
+                            Text("音视频文件将镜像上传至 iCloud Drive (Media/) 目录，其他登录同一 Apple 账户的设备可直接同步并播放原文件。注意：将消耗较多 iCloud 储存空间与网络流量。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if settings.isCopyingOriginalMedia {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("正在复制并上传原音视频到云端…")
+                                .font(.caption.bold())
+                                .foregroundStyle(.blue)
+                        }
+                        .padding(.top, 4)
+                    } else {
+                        HStack {
+                            Spacer()
+                            Button("重试原媒体上传", systemImage: "arrow.clockwise") {
+                                Task {
+                                    isProcessing = true
+                                    defer { isProcessing = false }
+                                    do {
+                                        try await settings.retryOriginalMediaUpload()
+                                    } catch {
+                                        localError = error.localizedDescription
+                                    }
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color.blue.opacity(0.08), in: .rect(cornerRadius: 10))
+            } else {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "leaf.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.title3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("轻量节省模式（默认推荐）")
+                            .font(.subheadline.bold())
+                        Text("仅在云端同步任务清单、转写与已校对字幕。原始大文件音视频保留在本地磁盘，节省大量 iCloud 云盘容量。如需在另一台设备上播放或内封，可随时在校对页重新关联对应本地文件。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(12)
+                .background(Color.green.opacity(0.08), in: .rect(cornerRadius: 10))
+            }
+        }
+        .padding(18)
+        .liquidGlassSurface(cornerRadius: 14)
+    }
+
+    // MARK: - 4. Live Sync Monitor Card
+    private var liveMonitorCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("实时同步状态与统计", systemImage: "waveform.badge.magnifyingglass")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    settings.refresh()
+                } label: {
+                    Label("刷新", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(settings.isChanging || isProcessing)
+            }
+
+            let taskCount = settings.fileStates.keys.filter { $0.pathExtension == "voxline" }.count
+            let mediaCount = settings.fileStates.keys.filter { $0.pathExtension != "voxline" }.count
+            let conflictCount = settings.fileStates.values.filter { $0 == .conflict }.count
+            let uploadingCount = settings.fileStates.values.filter { $0 == .uploading || $0 == .waitingForUpload }.count
+            let downloadingCount = settings.fileStates.values.filter { $0 == .downloading || $0 == .notDownloaded }.count
+
+            HStack(spacing: 12) {
+                statTile(title: "任务文档", count: taskCount, icon: "doc.text.fill", color: .blue)
+                statTile(title: "原媒体文件", count: mediaCount, icon: "film.fill", color: .purple)
+                statTile(title: "传输中", count: uploadingCount + downloadingCount, icon: "arrow.up.arrow.down", color: .orange)
+                if conflictCount > 0 {
+                    statTile(title: "冲突待解", count: conflictCount, icon: "exclamationmark.triangle.fill", color: .red)
+                }
+            }
+
+            if conflictCount > 0 {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    Text("检测到 \(conflictCount) 个版本冲突文档，可在任务列表中点击“解决冲突”进行合并。")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                .padding(10)
+                .background(Color.red.opacity(0.08), in: .rect(cornerRadius: 8))
+            }
+        }
+        .padding(18)
+        .liquidGlassSurface(cornerRadius: 14)
+    }
+
+    private func statTile(title: String, count: Int, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(color)
+                Spacer()
+                Text("\(count)")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+            }
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.voxlineControlBackground.opacity(0.4), in: .rect(cornerRadius: 10))
+    }
+
+    // MARK: - Onboarding Card (when disabled)
+    private var onboardingCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("关于 iCloud 文件夹同步")
+                .font(.headline)
+
+            VStack(spacing: 12) {
+                featureBullet(
+                    icon: "macbook.and.iphone",
+                    title: "多设备无缝接力",
+                    description: "在 Mac 上大批量转写并自动翻译，出门后用 iPhone 或 iPad 继续校对和微调字幕。"
+                )
+                featureBullet(
+                    icon: "leaf.fill",
+                    title: "按需存储，节省空间",
+                    description: "默认仅同步轻量的任务结构与字幕文字，不占用庞大的 iCloud 视频存储空间。"
+                )
+                featureBullet(
+                    icon: "lock.shield.fill",
+                    title: "安全私密，无需注册",
+                    description: "基于 Apple 原生 iCloud Drive 文件协调系统，数据仅在您个人的 iCloud 沙盒内流转。"
+                )
+            }
+        }
+        .padding(18)
+        .liquidGlassSurface(cornerRadius: 14)
+    }
+
+    private func featureBullet(icon: String, title: String, description: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(Color.voxlineAccent)
+                .frame(width: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.bold())
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(10)
+        .background(Color.voxlineControlBackground.opacity(0.3), in: .rect(cornerRadius: 10))
+    }
+
+    // MARK: - Error Banner
+    private func errorBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.octagon.fill")
+                .foregroundStyle(.red)
+                .font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("同步异常")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.red)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            Spacer()
+            Button("重试 / 刷新") {
+                localError = nil
+                settings.refresh()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(14)
+        .background(Color.red.opacity(0.08), in: .rect(cornerRadius: 12))
+    }
+
+    // MARK: - Migration Sheet & Helpers
     private func prepareMigration(for folder: URL) {
         let access = folder.startAccessingSecurityScopedResource()
         defer { if access { folder.stopAccessingSecurityScopedResource() } }

@@ -67,6 +67,19 @@ struct IOSMediaDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
+                    let pendingReviewCount = item.cues.filter { $0.requiresTimingReview == true }.count
+                    if pendingReviewCount > 0 {
+                        Button {
+                            do {
+                                var updated = item
+                                try updated.confirmAllTimingReviews()
+                                try library.storage.updateItem(updated, taskID: taskID, comparedTo: item)
+                            } catch { errorMessage = error.localizedDescription }
+                        } label: {
+                            Label("一键校对 (\(pendingReviewCount))", systemImage: "checkmark.seal.fill")
+                        }
+                    }
+
                     if !item.cues.isEmpty {
                         Button(isSelecting ? "完成" : "选择") {
                             withAnimation(.easeInOut(duration: 0.2)) {

@@ -16,7 +16,6 @@ struct TaskTranslationParametersView: View {
     @State private var target: String
     @State private var batchSize: Int
     @State private var prompt: String
-    @State private var outputs: Set<SRTOutputKind>
     @State private var errorMessage: String?
     @State private var replacement = false
     @State private var isSaving = false
@@ -37,7 +36,6 @@ struct TaskTranslationParametersView: View {
         _target = State(initialValue: task.parameters.translation?.targetLanguage ?? "zh-Hans")
         _batchSize = State(initialValue: task.parameters.translation?.batchSize ?? TranslationSettings.defaultBatchSize)
         _prompt = State(initialValue: task.parameters.translation?.api?.systemPrompt ?? TranslationSettings.defaultSystemPrompt)
-        _outputs = State(initialValue: Set(task.parameters.srtOutputs))
     }
 
     var body: some View {
@@ -84,23 +82,15 @@ struct TaskTranslationParametersView: View {
                         }
                     }
                 }
-                Section("SRT 输出") {
-                    ForEach([SRTOutputKind.source, .translation, .bilingual], id: \.self) { output in
-                        Toggle(output.label, isOn: Binding(get: { outputs.contains(output) }, set: {
-                            if $0 { outputs.insert(output) } else { outputs.remove(output) }
-                        })).disabled(output != .source && !enabled)
-                    }
-                }
                 if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red) } }
             }
-            .navigationTitle("调整翻译与输出")
+            .navigationTitle("调整翻译参数")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") { save() }.disabled(isSaving || store.isLoading || store.isSaving)
                 }
             }
-            .onChange(of: enabled) { _, enabled in if !enabled { outputs = [.source] } }
             .onChange(of: serviceID) { _, id in
                 if let service = store.services.first(where: { $0.id == id }) {
                     model = service.modelID
@@ -129,7 +119,7 @@ struct TaskTranslationParametersView: View {
                 parameters.translation = try TranslationSettings(baseURL: service.baseURL, modelID: model,
                     targetLanguage: target, serviceID: service.id, batchSize: batchSize, systemPrompt: prompt)
             }
-            parameters.srtOutputs = [.source, .translation, .bilingual].filter { outputs.contains($0) }
+            parameters.srtOutputs = enabled ? [.bilingual, .source, .translation] : [.source]
             var updated = original
             try updated.updateParameters(parameters, discardingTranslations: discardingTranslations)
             try onCommit(updated, original)

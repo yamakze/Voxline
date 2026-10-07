@@ -13,8 +13,6 @@ public struct MainWindowView: View {
     @State private var newTaskDraft: ProcessingTask?
     @State private var errorMessage: String?
 
-    @State private var pendingCloudConfirmationTask: ProcessingTask?
-
     public init() {}
 
     public enum NavigationItem: Hashable {
@@ -70,32 +68,6 @@ public struct MainWindowView: View {
         )) {
             Button("好", role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
-        .confirmationDialog(
-            "确认开始云端转写？",
-            isPresented: Binding(
-                get: { pendingCloudConfirmationTask != nil },
-                set: { if !$0 { pendingCloudConfirmationTask = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("确认并开始") {
-                if let task = pendingCloudConfirmationTask {
-                    pendingCloudConfirmationTask = nil
-                    do { try TaskProcessingQueue.shared.start(taskID: task.id) }
-                    catch { errorMessage = error.localizedDescription }
-                }
-            }
-            Button("取消", role: .cancel) {
-                pendingCloudConfirmationTask = nil
-            }
-        } message: {
-            if let task = pendingCloudConfirmationTask {
-                let transcription = task.parameters.transcription
-                let destination = transcription.cloud?.baseURL.absoluteString ?? "未配置服务"
-                let lang = transcription.languageMode == .specified ? (transcription.languageCode ?? "指定语言") : "自动识别"
-                Text("服务：\(destination)\n模型：\(transcription.modelID) · 语言：\(lang)\n将提取音轨并上传至该服务进行云端转写。")
-            }
-        }
         .onAppear {
             library.refresh()
         }
@@ -227,12 +199,6 @@ public struct MainWindowView: View {
                     }
 
                     ToolbarItemGroup(placement: .primaryAction) {
-                        if TaskProcessingQueue.shared.taskID != task.id {
-                            Button("调整参数", systemImage: "slider.horizontal.3") {
-                                configurationTask = task
-                            }
-                        }
-
                         if TaskProcessingQueue.shared.taskID == task.id {
                             Button(TaskProcessingQueue.shared.isCancelling ? "正在取消…" : "取消任务", systemImage: "stop.fill") {
                                 do { try TaskProcessingQueue.shared.cancel() }
@@ -241,15 +207,17 @@ public struct MainWindowView: View {
                             .disabled(TaskProcessingQueue.shared.isCancelling)
                         } else {
                             Button(task.startedAt == nil ? "开始处理" : "继续处理", systemImage: "play.fill") {
-                                if task.parameters.transcription.provider == .openAICompatible {
-                                    pendingCloudConfirmationTask = task
-                                } else {
-                                    do { try TaskProcessingQueue.shared.start(taskID: task.id) }
-                                    catch { errorMessage = error.localizedDescription }
-                                }
+                                do { try TaskProcessingQueue.shared.start(taskID: task.id) }
+                                catch { errorMessage = error.localizedDescription }
                             }
                             .buttonStyle(.borderedProminent)
                             .disabled(TaskProcessingQueue.shared.taskID != nil || task.items.isEmpty || task.status == .completed)
+                        }
+
+                        if TaskProcessingQueue.shared.taskID != task.id {
+                            Button("调整参数", systemImage: "slider.horizontal.3") {
+                                configurationTask = task
+                            }
                         }
                     }
                 }

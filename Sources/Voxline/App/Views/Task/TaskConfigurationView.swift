@@ -27,7 +27,6 @@ public struct TaskConfigurationView: View {
     @State private var translationBatchSize: Int
     @State private var translationSystemPrompt: String
     @State private var showAdvancedTranslationOptions = false
-    @State private var outputs: Set<SRTOutputKind>
 
     @State private var existingItems: [TaskMediaItem]
     @State private var candidates: [ImportCandidate] = []
@@ -80,7 +79,6 @@ public struct TaskConfigurationView: View {
         _targetLanguage = State(initialValue: value.parameters.translation?.targetLanguage ?? "zh-Hans")
         _translationBatchSize = State(initialValue: value.parameters.translation?.batchSize ?? TranslationSettings.defaultBatchSize)
         _translationSystemPrompt = State(initialValue: value.parameters.translation?.api?.systemPrompt ?? TranslationSettings.defaultSystemPrompt)
-        _outputs = State(initialValue: Set(value.parameters.srtOutputs))
         _existingItems = State(initialValue: value.items)
     }
 
@@ -193,9 +191,7 @@ public struct TaskConfigurationView: View {
             }
         }
         .onChange(of: translates) { _, enabled in
-            if !enabled {
-                outputs = [.source]
-            } else if selectedServiceID == nil, let first = serviceStore.services.first {
+            if enabled, selectedServiceID == nil, let first = serviceStore.services.first {
                 selectedServiceID = first.id
                 translationModel = first.modelID
             }
@@ -795,25 +791,6 @@ public struct TaskConfigurationView: View {
                     }
                 }
             }
-
-            Section("导出选项") {
-                Toggle("导出原文字幕 (.source.srt)", isOn: Binding(
-                    get: { outputs.contains(.source) },
-                    set: { if $0 { outputs.insert(.source) } else { outputs.remove(.source) } }
-                ))
-
-                Toggle("导出译文字幕 (.translation.srt)", isOn: Binding(
-                    get: { outputs.contains(.translation) },
-                    set: { if $0 { outputs.insert(.translation) } else { outputs.remove(.translation) } }
-                ))
-                .disabled(!translates)
-
-                Toggle("导出双语字幕 (.bilingual.srt)", isOn: Binding(
-                    get: { outputs.contains(.bilingual) },
-                    set: { if $0 { outputs.insert(.bilingual) } else { outputs.remove(.bilingual) } }
-                ))
-                .disabled(!translates)
-            }
         }
         .formStyle(.grouped)
     }
@@ -972,10 +949,10 @@ public struct TaskConfigurationView: View {
             }
 
             updated.items = newItems
-            let effectiveOutputs: [SRTOutputKind] = translation == nil ? [.source] : [.source, .translation, .bilingual].filter { outputs.contains($0) }
+            let effectiveOutputs: [SRTOutputKind] = translation == nil ? [.source] : [.bilingual, .source, .translation]
             try updated.updateParameters(TaskParameters(
                 transcription: transcription, translation: translation,
-                srtOutputs: effectiveOutputs.isEmpty ? [.source] : effectiveOutputs
+                srtOutputs: effectiveOutputs
             ), discardingTranslations: discardingTranslations)
             try updated.validate()
 

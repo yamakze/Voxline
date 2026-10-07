@@ -427,8 +427,6 @@ private struct IOSTaskDetailView: View {
     @State private var editingParameters = false
     @State private var configuringTask = false
     @State private var showConflictSheet = false
-    @State private var pendingCloudStartConfirmation = false
-    @State private var pendingCloudRetryItem: TaskMediaItem?
     @State private var errorMessage: String?
     @State private var noticeMessage: String?
     @State private var sharingURL: URL?
@@ -488,13 +486,6 @@ private struct IOSTaskDetailView: View {
                                 mediaItemCard(item: item, task: task)
                             }
                             .contextMenu {
-                                if syncSettings.originalMediaState(for: item) != nil {
-                                    Button {
-                                        associateCloudOriginal(for: item)
-                                    } label: {
-                                        Label("从云端下载并关联媒体", systemImage: "icloud.and.arrow.down")
-                                    }
-                                }
                                 if item.status.isRetryable && item.canResumeProcessing {
                                     Button(item.status.isTranslationPaused ? "继续翻译" : "重试", systemImage: "arrow.clockwise") {
                                         handleRetryItem(item: item, in: task)
@@ -587,38 +578,6 @@ private struct IOSTaskDetailView: View {
                 TaskConflictResolutionSheet(taskID: taskID, draftTask: task) {
                     library.load()
                     syncSettings.refresh()
-                }
-            }
-            .confirmationDialog("确认开始云端转写？", isPresented: $pendingCloudStartConfirmation, titleVisibility: .visible) {
-                Button("确认并开始") {
-                    do { try library.queue.start(taskID: taskID) }
-                    catch { errorMessage = error.localizedDescription }
-                }
-                Button("取消", role: .cancel) {}
-            } message: {
-                let transcription = task.parameters.transcription
-                let destination = transcription.cloud?.baseURL.absoluteString ?? "未配置服务"
-                let lang = transcription.languageMode == .specified ? (transcription.languageCode ?? "指定语言") : "自动识别"
-                Text("服务：\(destination)\n模型：\(transcription.modelID) · 语言：\(lang)\n将提取音轨并上传至该服务进行云端转写。")
-            }
-            .confirmationDialog("确认开始云端转写？", isPresented: Binding(
-                get: { pendingCloudRetryItem != nil },
-                set: { if !$0 { pendingCloudRetryItem = nil } }
-            ), titleVisibility: .visible) {
-                Button("确认并重试") {
-                    if let item = pendingCloudRetryItem {
-                        pendingCloudRetryItem = nil
-                        do { try library.queue.start(taskID: task.id, mediaID: item.id) }
-                        catch { errorMessage = error.localizedDescription }
-                    }
-                }
-                Button("取消", role: .cancel) { pendingCloudRetryItem = nil }
-            } message: {
-                if let item = pendingCloudRetryItem {
-                    let transcription = task.parameters.transcription
-                    let destination = transcription.cloud?.baseURL.absoluteString ?? "未配置服务"
-                    let lang = transcription.languageMode == .specified ? (transcription.languageCode ?? "指定语言") : "自动识别"
-                    Text("媒体：\(item.title)\n服务：\(destination)\n模型：\(transcription.modelID) · 语言：\(lang)\n将提取音轨并上传至该服务进行云端转写。")
                 }
             }
             .alert("操作异常", isPresented: Binding(
@@ -796,17 +755,6 @@ private struct IOSTaskDetailView: View {
 
                 Spacer()
 
-                if syncSettings.originalMediaState(for: item) != nil {
-                    Button {
-                        associateCloudOriginal(for: item)
-                    } label: {
-                        Label("关联媒体", systemImage: "icloud.and.arrow.down")
-                            .font(.caption2)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
-                }
-
                 itemStatusTag(item.status)
             }
 
@@ -865,38 +813,13 @@ private struct IOSTaskDetailView: View {
     }
 
     private func handleStartTask(task: ProcessingTask) {
-        if task.parameters.transcription.provider == .openAICompatible {
-            let needsTranscription = task.items.contains { !$0.hasCompletedTranscription && $0.canResumeProcessing }
-            if needsTranscription {
-                pendingCloudStartConfirmation = true
-                return
-            }
-        }
         do { try library.queue.start(taskID: taskID) }
         catch { errorMessage = error.localizedDescription }
     }
 
     private func handleRetryItem(item: TaskMediaItem, in task: ProcessingTask) {
-        if task.parameters.transcription.provider == .openAICompatible, !item.hasCompletedTranscription, !item.status.isTranslationPaused {
-            pendingCloudRetryItem = item
-        } else {
-            do { try library.queue.start(taskID: task.id, mediaID: item.id) }
-            catch { errorMessage = error.localizedDescription }
-        }
-    }
-
-    private func associateCloudOriginal(for item: TaskMediaItem) {
-        Task {
-            do {
-                try await syncSettings.associateOriginal(for: item)
-                library.load()
-                noticeMessage = "原媒体已成功下载并关联"
-            } catch SharedDocumentError.downloadRequired {
-                noticeMessage = "已请求系统下载原媒体，请稍候下载完成后再次关联"
-            } catch {
-                errorMessage = "关联原媒体失败：\(error.localizedDescription)"
-            }
-        }
+        do { try library.queue.start(taskID: task.id, mediaID: item.id) }
+        catch { errorMessage = error.localizedDescription }
     }
 
     @ViewBuilder

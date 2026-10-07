@@ -46,6 +46,10 @@ public struct MediaDetailProofreadingView: View {
         _previewMode = State(initialValue: hasTranslation ? .bilingual : .source)
     }
 
+    private var pendingReviewCuesCount: Int {
+        item.cues.filter { $0.requiresTimingReview == true }.count
+    }
+
     private var filteredCues: [SubtitleCue] {
         if searchQuery.isEmpty { return item.cues }
         let q = searchQuery.lowercased()
@@ -105,22 +109,57 @@ public struct MediaDetailProofreadingView: View {
                     }
                 }
 
+                if pendingReviewCuesCount > 0 {
+                    Button {
+                        do {
+                            var updated = item
+                            try updated.confirmAllTimingReviews()
+                            try onCommit(updated, item)
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
+                    } label: {
+                        Label("一键校对 (\(pendingReviewCuesCount))", systemImage: "checkmark.seal.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .help("批量确认并清除全部待校对标记（共 \(pendingReviewCuesCount) 处）")
+                }
+
                 Button("偏移行…", systemImage: "timer") {
                     showTimeOffsetSheet = true
                 }
                 .disabled(item.cues.isEmpty || editingCueID != nil)
 
-                Button("导出 SRT…", systemImage: "square.and.arrow.up") {
-                    showSRTExportSheet = true
+                Menu {
+                    Section("外挂字幕") {
+                        Button {
+                            showSRTExportSheet = true
+                        } label: {
+                            Label("导出字幕文件…", systemImage: "doc.text")
+                        }
+                    }
+
+                    if item.kind == .video {
+                        Section("视频内嵌") {
+                            Button {
+                                showEmbeddingSheet = true
+                            } label: {
+                                Label("内封软字幕…", systemImage: "captions.bubble")
+                            }
+
+                            Button {
+                                showBurnInSheet = true
+                            } label: {
+                                Label("烧录硬字幕…", systemImage: "film.stack")
+                            }
+                        }
+                    }
+                } label: {
+                    Label("导出", systemImage: "square.and.arrow.up")
                 }
                 .disabled(item.cues.isEmpty || editingCueID != nil)
-
-                if item.kind == .video {
-                    Button("内封软字幕…", systemImage: "captions.bubble") { showEmbeddingSheet = true }
-                        .disabled(item.cues.isEmpty || editingCueID != nil)
-                    Button("烧录字幕…", systemImage: "film.stack") { showBurnInSheet = true }
-                        .disabled(item.cues.isEmpty || editingCueID != nil)
-                }
+                .help("导出字幕或包含字幕的媒体文件")
             }
         }
         .alert("无法完成操作", isPresented: Binding(

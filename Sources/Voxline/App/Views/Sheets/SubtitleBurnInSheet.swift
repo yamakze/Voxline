@@ -39,7 +39,6 @@ struct SubtitleBurnInSheet: View {
             HStack {
                 Text("烧录字幕视频").font(.headline)
                 Spacer()
-                Button("完成") { dismiss() }.disabled(isPreparing || isExporting)
             }
             HStack(alignment: .top, spacing: 20) {
                 VStack(spacing: 10) {
@@ -99,10 +98,13 @@ struct SubtitleBurnInSheet: View {
             }
             HStack {
                 if isPreparing || isExporting {
-                    Button("取消") { operation?.cancel() }
+                    Button("停止") { operation?.cancel() }
                     Text(isExporting ? "正在烧录 \(Int(progress * 100))%" : "正在准备画面…").font(.caption)
                 }
                 Spacer()
+                Button("取消") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(isPreparing || isExporting)
                 Button("烧录并导出") { startExport(allowOverwrite: false) }
                     .buttonStyle(.borderedProminent)
                     .disabled(plan == nil || previewImage == nil || targetDirectory == nil || isPreparing || isExporting)

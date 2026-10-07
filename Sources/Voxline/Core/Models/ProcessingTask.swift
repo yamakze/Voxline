@@ -296,6 +296,16 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
         self = updated
     }
 
+    public mutating func confirmAllTimingReviews() throws {
+        var updated = self
+        for index in updated.cues.indices {
+            updated.cues[index].requiresTimingReview = nil
+        }
+        updated.updateProofreadingStatus()
+        try updated.validate()
+        self = updated
+    }
+
     public func validate() throws {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TaskValidationError.emptyMediaTitle(id)
