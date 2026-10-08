@@ -92,13 +92,13 @@ public actor WhisperModelStore {
         let hub = HubApiWrapper(downloadBase: root)
         let modelRoot = try await hub.snapshot(from: .init(id: manifest.modelRepository),
             revision: manifest.modelRevision, matching: ["\(modelID)/*"]) { progress in
-                onProgress(.files(component: "权重", fraction: progress.fractionCompleted))
+                onProgress(.files(component: String(localized: "权重", bundle: voxlineLocalizationBundle), fraction: progress.fractionCompleted))
             }
         // The pinned SDK may return partial files instead of throwing when cancelled.
         try Task.checkCancellation()
         let tokenizer = try await hub.snapshot(from: .init(id: manifest.tokenizerRepository),
             revision: manifest.tokenizerRevision, matching: manifest.tokenizerFiles.map(\.path)) { progress in
-                onProgress(.files(component: "分词器", fraction: progress.fractionCompleted))
+                onProgress(.files(component: String(localized: "分词器", bundle: voxlineLocalizationBundle), fraction: progress.fractionCompleted))
             }
         try Task.checkCancellation()
         onProgress(.checking)

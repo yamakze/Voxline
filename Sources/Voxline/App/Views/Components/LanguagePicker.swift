@@ -8,7 +8,7 @@ struct LanguagePicker: View {
     var body: some View {
         Picker(title, selection: $selection) {
             if !identifiers.contains(selection) {
-                Text("未识别的语言：\(selection)").tag(selection)
+                Text(String(localized: "未识别的语言：\(selection)", bundle: appLocalizationBundle)).tag(selection)
             }
             ForEach(Array(Set(identifiers)).sorted {
                 Self.name($0).localizedStandardCompare(Self.name($1)) == .orderedAscending
@@ -20,8 +20,8 @@ struct LanguagePicker: View {
 
     static func name(_ identifier: String) -> String {
         switch identifier {
-        case "zh-Hans": "简体中文"
-        case "zh-Hant": "繁体中文"
+        case "zh-Hans": String(localized: "简体中文", bundle: appLocalizationBundle)
+        case "zh-Hant": String(localized: "繁体中文", bundle: appLocalizationBundle)
         default: Locale.current.localizedString(forIdentifier: identifier) ?? identifier
         }
     }

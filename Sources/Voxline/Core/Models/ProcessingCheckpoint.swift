@@ -287,7 +287,7 @@ public extension TaskMediaItem {
             batch.inputs.contains { cueIDs.contains($0.cueID) }
         }) else { throw CheckpointError.workRunning }
         for index in record.translationBatches.indices where plan.outdatedTranslationBatchIDs.contains(record.translationBatches[index].id) {
-            record.translationBatches[index].state = .failed(reason: "原文或译文已修改，请使用当前内容建立新批次。")
+            record.translationBatches[index].state = .failed(reason: String(localized: "原文或译文已修改，请使用当前内容建立新批次。", bundle: voxlineLocalizationBundle))
         }
         let batchID = UUID()
         record.translationBatches.append(.init(id: batchID, inputs: inputs, state: .pending))
@@ -404,19 +404,19 @@ public enum CheckpointError: Error, LocalizedError, Equatable {
     case existingResults, alreadyCommitted, workRunning, staleResult, editedCue, invalidTranslationResult, incompleteWork
     public var errorDescription: String? {
         switch self {
-        case .missingCheckpoint: "媒体没有处理检查点。"
-        case .incompatibleContext: "媒体、音轨或本次参数与检查点不一致，请明确重跑或新建任务。"
-        case .invalidRange: "转写块范围无效或超出媒体。"
-        case .invalidRecord: "处理检查点损坏或与字幕成果不一致。"
-        case .unknownWork: "找不到对应的处理块、批次或字幕。"
-        case .taskUnavailable: "任务已关闭、删除或无法读取，未提交处理结果。"
-        case .existingResults: "已有字幕成果或当前译文，请明确选择重跑或重译。"
-        case .alreadyCommitted: "该工作已提交，不能用不同结果替换已有成果。"
-        case .workRunning: "已有处理或翻译批次占用这些输入。"
-        case .staleResult: "结果不属于当前运行，未提交。"
-        case .editedCue: "处理期间原文或译文已修改，保留校对内容，请重新建立翻译批次。"
-        case .invalidTranslationResult: "翻译批次必须完整匹配字幕 ID，且每条译文非空。"
-        case .incompleteWork: "处理尚未完整提交，不能开始翻译或标记完成。"
+        case .missingCheckpoint: String(localized: "媒体没有处理检查点。", bundle: voxlineLocalizationBundle)
+        case .incompatibleContext: String(localized: "媒体、音轨或本次参数与检查点不一致，请明确重跑或新建任务。", bundle: voxlineLocalizationBundle)
+        case .invalidRange: String(localized: "转写块范围无效或超出媒体。", bundle: voxlineLocalizationBundle)
+        case .invalidRecord: String(localized: "处理检查点损坏或与字幕成果不一致。", bundle: voxlineLocalizationBundle)
+        case .unknownWork: String(localized: "找不到对应的处理块、批次或字幕。", bundle: voxlineLocalizationBundle)
+        case .taskUnavailable: String(localized: "任务已关闭、删除或无法读取，未提交处理结果。", bundle: voxlineLocalizationBundle)
+        case .existingResults: String(localized: "已有字幕成果或当前译文，请明确选择重跑或重译。", bundle: voxlineLocalizationBundle)
+        case .alreadyCommitted: String(localized: "该工作已提交，不能用不同结果替换已有成果。", bundle: voxlineLocalizationBundle)
+        case .workRunning: String(localized: "已有处理或翻译批次占用这些输入。", bundle: voxlineLocalizationBundle)
+        case .staleResult: String(localized: "结果不属于当前运行，未提交。", bundle: voxlineLocalizationBundle)
+        case .editedCue: String(localized: "处理期间原文或译文已修改，保留校对内容，请重新建立翻译批次。", bundle: voxlineLocalizationBundle)
+        case .invalidTranslationResult: String(localized: "翻译批次必须完整匹配字幕 ID，且每条译文非空。", bundle: voxlineLocalizationBundle)
+        case .incompleteWork: String(localized: "处理尚未完整提交，不能开始翻译或标记完成。", bundle: voxlineLocalizationBundle)
         }
     }
 }

@@ -13,7 +13,7 @@ public struct SubtitleProject: Codable, Equatable, Sendable {
     public init() {
         formatVersion = Self.currentFormatVersion
         id = UUID()
-        title = "未命名项目"
+        title = String(localized: "未命名项目", bundle: voxlineLocalizationBundle)
         media = nil
         transcription = .whisperKitBaseline
         translation = nil
@@ -240,21 +240,21 @@ public enum ProjectValidationError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .unsupportedVersion(let version): "不支持项目格式版本 \(version)，请使用兼容版本的 Voxline。"
-        case .emptyTitle: "项目名称不能为空。"
-        case .invalidMediaIdentity: "媒体身份无效，请检查文件信息、哈希、时长和所选音轨。"
-        case .emptyModelID: "转写模型不能为空。"
-        case .invalidSourceLanguage: "请选择自动识别或明确的原文语言。"
-        case .invalidTranslationBatchSize: "每批字幕数量必须是正整数。"
-        case .emptyTranslationSystemPrompt: "系统提示词不能为空。"
-        case .invalidTranslationSettings: "翻译设置无效。服务地址不能包含账户、密码、查询参数或片段。"
-        case .invalidCue: "字幕包含空白原文、无效时间或无效原文版本。"
-        case .invalidTranslation: "译文内容、原文版本或错误原因无效。"
-        case .sourceRevisionOverflow: "原文版本已达到上限，无法继续修改。"
-        case .duplicateCue: "项目包含重复的字幕 ID。"
-        case .overlappingOrUnorderedCue: "字幕时间重叠或顺序错误，请校正后保存。"
-        case .cueOutsideMedia: "字幕时间超出媒体范围。"
-        case .differentMedia: "媒体内容或音轨与当前条目不一致，请选择原媒体；其他媒体需添加新条目。"
+        case .unsupportedVersion(let version): String(localized: "不支持项目格式版本 \(version)，请使用兼容版本的 Voxline。", bundle: voxlineLocalizationBundle)
+        case .emptyTitle: String(localized: "项目名称不能为空。", bundle: voxlineLocalizationBundle)
+        case .invalidMediaIdentity: String(localized: "媒体身份无效，请检查文件信息、哈希、时长和所选音轨。", bundle: voxlineLocalizationBundle)
+        case .emptyModelID: String(localized: "转写模型不能为空。", bundle: voxlineLocalizationBundle)
+        case .invalidSourceLanguage: String(localized: "请选择自动识别或明确的原文语言。", bundle: voxlineLocalizationBundle)
+        case .invalidTranslationBatchSize: String(localized: "每批字幕数量必须是正整数。", bundle: voxlineLocalizationBundle)
+        case .emptyTranslationSystemPrompt: String(localized: "系统提示词不能为空。", bundle: voxlineLocalizationBundle)
+        case .invalidTranslationSettings: String(localized: "翻译设置无效。服务地址不能包含账户、密码、查询参数或片段。", bundle: voxlineLocalizationBundle)
+        case .invalidCue: String(localized: "字幕包含空白原文、无效时间或无效原文版本。", bundle: voxlineLocalizationBundle)
+        case .invalidTranslation: String(localized: "译文内容、原文版本或错误原因无效。", bundle: voxlineLocalizationBundle)
+        case .sourceRevisionOverflow: String(localized: "原文版本已达到上限，无法继续修改。", bundle: voxlineLocalizationBundle)
+        case .duplicateCue: String(localized: "项目包含重复的字幕 ID。", bundle: voxlineLocalizationBundle)
+        case .overlappingOrUnorderedCue: String(localized: "字幕时间重叠或顺序错误，请校正后保存。", bundle: voxlineLocalizationBundle)
+        case .cueOutsideMedia: String(localized: "字幕时间超出媒体范围。", bundle: voxlineLocalizationBundle)
+        case .differentMedia: String(localized: "媒体内容或音轨与当前条目不一致，请选择原媒体；其他媒体需添加新条目。", bundle: voxlineLocalizationBundle)
         }
     }
 }

@@ -16,7 +16,7 @@ enum IOSExportHelper {
     static func prepareTaskArchive(for task: ProcessingTask) throws -> URL {
         let data = try TaskDocumentCodec.encode(task)
         let safeTitle = task.title.replacingOccurrences(of: "/", with: "-")
-        let fileName = "\(safeTitle.isEmpty ? "任务" : safeTitle).voxline"
+        let fileName = "\(safeTitle.isEmpty ? String(localized: "任务", bundle: appLocalizationBundle) : safeTitle).voxline"
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
         try data.write(to: destination, options: .atomic)
         return destination

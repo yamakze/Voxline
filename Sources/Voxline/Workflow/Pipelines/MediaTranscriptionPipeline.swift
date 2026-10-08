@@ -33,7 +33,7 @@ public struct ConfiguredMediaTranscriptionPipeline: MediaTranscriptionPipeline {
     public func extract(item: TaskMediaItem, progress: @escaping @Sendable (AudioExtractionProgress) -> Void) async throws -> [TranscriptionAudio] {
         guard let media = item.media else { throw TaskValidationError.unassociatedMedia(item.id) }
         guard let bookmark = try await mediaStore.resolve(projectID: item.id, identity: media) else {
-            throw QueueError.unavailable("找不到本机媒体文件，请在详情中重新关联。")
+            throw QueueError.unavailable(String(localized: "找不到本机媒体文件，请在详情中重新关联。", bundle: voxlineLocalizationBundle))
         }
         // Extraction verifies the selected track and content before reusing or producing PCM.
         let result = try await extractor.extract(mediaURL: bookmark.url, mediaID: item.id, identity: media, onProgress: progress)

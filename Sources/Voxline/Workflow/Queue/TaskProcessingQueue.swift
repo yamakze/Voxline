@@ -42,7 +42,7 @@ public final class TaskProcessingQueue {
     public func start(taskID: UUID, mediaID: UUID? = nil) throws {
         guard worker == nil else { throw QueueError.busy }
         guard let task = library.task(for: taskID) else { throw CheckpointError.taskUnavailable }
-        guard !task.items.isEmpty else { throw QueueError.unavailable("请先添加本地音视频。") }
+        guard !task.items.isEmpty else { throw QueueError.unavailable(String(localized: "请先添加本地音视频。", bundle: voxlineLocalizationBundle)) }
         let candidates = task.items.filter { item in
             (mediaID == nil || item.id == mediaID) && item.canResumeProcessing
         }
@@ -95,7 +95,7 @@ public final class TaskProcessingQueue {
                     }
                 }
             } catch {
-                errorMessage = "取消状态保存失败：\(error.localizedDescription)"
+                errorMessage = String(localized: "取消状态保存失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)
                 throw error
             }
         }
@@ -108,14 +108,14 @@ public final class TaskProcessingQueue {
         guard let task = library.task(for: taskID),
               let item = task.items.first(where: { $0.id == mediaID }),
               let settings = task.parameters.translation else {
-            throw QueueError.unavailable("本次任务未配置翻译服务，请使用启用翻译的任务。")
+            throw QueueError.unavailable(String(localized: "本次任务未配置翻译服务，请使用启用翻译的任务。", bundle: voxlineLocalizationBundle))
         }
         guard let checkpoint = item.checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted) else {
-            throw QueueError.unavailable("请先完成本次任务的转写，再重译字幕。")
+            throw QueueError.unavailable(String(localized: "请先完成本次任务的转写，再重译字幕。", bundle: voxlineLocalizationBundle))
         }
         let recovery = try item.recoveryPlan(media: checkpoint.media, parameters: task.parameters, ranges: checkpoint.chunks.map(\.range))
         guard recovery.translationBatchIDs.isEmpty else {
-            throw QueueError.unavailable("存在未完成的翻译批次，请先在队列中继续或重试。")
+            throw QueueError.unavailable(String(localized: "存在未完成的翻译批次，请先在队列中继续或重试。", bundle: voxlineLocalizationBundle))
         }
         let selected = Set(cueIDs)
         guard !selected.isEmpty, selected.count == cueIDs.count,
@@ -159,7 +159,7 @@ public final class TaskProcessingQueue {
             isCancelling = false
             let operation = Task {
                 if let translationBatchIDs {
-                    guard let settings = parameters.translation else { throw QueueError.unavailable("本次任务未配置翻译服务。") }
+                    guard let settings = parameters.translation else { throw QueueError.unavailable(String(localized: "本次任务未配置翻译服务。", bundle: voxlineLocalizationBundle)) }
                     try await self.translateBatches(taskID: taskID, mediaID: id, settings: settings, batchIDs: translationBatchIDs)
                 } else if let settings = parameters.translation,
                           self.library.task(for: taskID)?.items.first(where: { $0.id == id })?
@@ -174,14 +174,14 @@ public final class TaskProcessingQueue {
             catch {
                 // Provider failures are persisted inside transcribeMedia. An escaped failure is a
                 // checkpoint/storage error: stop scheduling, preserve edits, and expose recovery.
-                let stoppedReason = "队列停止，未提交的工作需要恢复：\(error.localizedDescription)"
+                let stoppedReason = String(localized: "队列停止，未提交的工作需要恢复：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)
                 errorMessage = stoppedReason
                 if var interrupted = library.task(for: taskID) {
                     interrupted.interruptRunningItems()
                     library.register(interrupted, at: library.url(for: taskID))
                     do { try library.save(interrupted) }
                     catch {
-                        errorMessage = stoppedReason + " 中断状态仅保留在内存，保存失败：\(error.localizedDescription)"
+                        errorMessage = stoppedReason + String(localized: " 中断状态仅保留在内存，保存失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)
                     }
                 }
                 break
@@ -197,7 +197,7 @@ public final class TaskProcessingQueue {
         try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .running(stage: .audioExtraction) }
         let extractionID = UUID()
         progressID = extractionID
-        progressText = "正在检查与提取音频"
+        progressText = String(localized: "正在检查与提取音频", bundle: voxlineLocalizationBundle)
         extractionFraction = nil
         let audio: [TranscriptionAudio]
         do {
@@ -207,8 +207,8 @@ public final class TaskProcessingQueue {
                     switch progress {
                     case .extracting(let fraction):
                         self.extractionFraction = fraction
-                        self.progressText = "正在提取音频"
-                    case .cacheInvalidated(let reason): self.progressText = "音频缓存失效，重新提取：\(reason)"
+                        self.progressText = String(localized: "正在提取音频", bundle: voxlineLocalizationBundle)
+                    case .cacheInvalidated(let reason): self.progressText = String(localized: "音频缓存失效，重新提取：\(reason)", bundle: voxlineLocalizationBundle)
                     }
                 }
             }
@@ -252,7 +252,7 @@ public final class TaskProcessingQueue {
             let sourceID = try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.beginTranscriptionChunk(chunkID) }
             let decodingID = UUID()
             progressID = decodingID
-            progressText = "转写块 \(index + 1)／\(chunks.count)"
+            progressText = String(localized: "转写块 \(index + 1)／\(chunks.count)", bundle: voxlineLocalizationBundle)
             let evidence: TranscriptionEvidence
             do {
                 if let savedRecognition {
@@ -265,16 +265,16 @@ public final class TaskProcessingQueue {
                             guard self.progressID == decodingID else { return }
                             let detail: String
                             switch progress {
-                            case .uploadingAudio(let sent, let total): detail = "上传音频 \(sent)／\(total) 字节"
-                            case .awaitingTranscription: detail = "等待转写服务"
-                            case .retryingAudio(let attempt, let delay): detail = "转写重试 \(attempt)／3，等待 \(Int(delay.rounded(.up))) 秒"
-                            case .readingAudio: detail = "读取音频"
-                            case .loadingModel: detail = "加载模型"
-                            case .detectingLanguage: detail = "识别语言"
-                            case .decoding(let count): detail = "已解码 \(count) 个词元"
-                            case .completed(let count): detail = "已转写 \(count) 段，等待保存"
+                            case .uploadingAudio(let sent, let total): detail = String(localized: "上传音频 \(sent)／\(total) 字节", bundle: voxlineLocalizationBundle)
+                            case .awaitingTranscription: detail = String(localized: "等待转写服务", bundle: voxlineLocalizationBundle)
+                            case .retryingAudio(let attempt, let delay): detail = String(localized: "转写重试 \(attempt)／3，等待 \(Int(delay.rounded(.up))) 秒", bundle: voxlineLocalizationBundle)
+                            case .readingAudio: detail = String(localized: "读取音频", bundle: voxlineLocalizationBundle)
+                            case .loadingModel: detail = String(localized: "加载模型", bundle: voxlineLocalizationBundle)
+                            case .detectingLanguage: detail = String(localized: "识别语言", bundle: voxlineLocalizationBundle)
+                            case .decoding(let count): detail = String(localized: "已解码 \(count) 个词元", bundle: voxlineLocalizationBundle)
+                            case .completed(let count): detail = String(localized: "已转写 \(count) 段，等待保存", bundle: voxlineLocalizationBundle)
                             }
-                            self.progressText = "块 \(index + 1)／\(chunks.count)：\(detail)"
+                            self.progressText = String(localized: "块 \(index + 1)／\(chunks.count)：\(detail)", bundle: voxlineLocalizationBundle)
                         }
                     }
                 }
@@ -300,7 +300,7 @@ public final class TaskProcessingQueue {
             if Task.isCancelled {
                 var cancelledEvidence = evidence
                 cancelledEvidence.outcome = .cancelled
-                cancelledEvidence.failureReason = "处理已取消，保留未提交的转写证据。"
+                cancelledEvidence.failureReason = String(localized: "处理已取消，保留未提交的转写证据。", bundle: voxlineLocalizationBundle)
                 try updateMedia(taskID: taskID, mediaID: mediaID) {
                     try $0.recordTranscriptionCancellation(chunkID, sourceID: sourceID, evidence: cancelledEvidence)
                 }
@@ -391,7 +391,7 @@ public final class TaskProcessingQueue {
             guard let current = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }),
                   let batches = current.checkpoint?.translationBatches,
                   let batchIndex = batches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
-            progressText = "已译 \(current.cues.filter(\.hasCurrentTranslation).count)／\(current.cues.count) 句，翻译批次 \(batchIndex + 1)／\(batches.count)"
+            progressText = String(localized: "已译 \(current.cues.filter(\.hasCurrentTranslation).count)／\(current.cues.count) 句，翻译批次 \(batchIndex + 1)／\(batches.count)", bundle: voxlineLocalizationBundle)
             var outputs: [TranslationBatchOutput]?
             var retries = 0
             while outputs == nil {
@@ -460,7 +460,7 @@ public struct TranslationRetryWait {
 
     public func label(at date: Date) -> String {
         let seconds = max(0, ceil(deadline.timeIntervalSince(date)))
-        return "\(reason) \(seconds.formatted(.number.precision(.fractionLength(0)))) 秒后自动重试（\(attempt)／3）"
+        return String(localized: "\(reason) \(seconds.formatted(.number.precision(.fractionLength(0)))) 秒后自动重试（\(attempt)／3）", bundle: voxlineLocalizationBundle)
     }
 }
 
@@ -468,8 +468,8 @@ public enum QueueError: Error, LocalizedError, Equatable {
     case busy, noWork, unavailable(String)
     public var errorDescription: String? {
         switch self {
-        case .busy: "已有任务处理中，请等待处理或取消结束后再开始。"
-        case .noWork: "没有可处理的媒体；已完成成果与已有校对字幕不会重跑。"
+        case .busy: String(localized: "已有任务处理中，请等待处理或取消结束后再开始。", bundle: voxlineLocalizationBundle)
+        case .noWork: String(localized: "没有可处理的媒体；已完成成果与已有校对字幕不会重跑。", bundle: voxlineLocalizationBundle)
         case .unavailable(let reason): reason
         }
     }

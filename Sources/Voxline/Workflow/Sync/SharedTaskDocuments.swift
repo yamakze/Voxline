@@ -5,11 +5,11 @@ public enum SharedDocumentError: Error, LocalizedError {
     case changed, conflict, downloadRequired, missingFolder, busy
     public var errorDescription: String? {
         switch self {
-        case .changed: "任务已在另一设备修改，请保留当前草稿并重新读取或另存副本。"
-        case .conflict: "任务存在冲突版本，请先选择保留版本。"
-        case .downloadRequired: "文件尚未下载，请先下载后重试。"
-        case .missingFolder: "同步文件夹不可用，请重新选择。"
-        case .busy: "任务正在处理，请停止后调整同步设置。"
+        case .changed: String(localized: "任务已在另一设备修改，请保留当前草稿并重新读取或另存副本。", bundle: voxlineLocalizationBundle)
+        case .conflict: String(localized: "任务存在冲突版本，请先选择保留版本。", bundle: voxlineLocalizationBundle)
+        case .downloadRequired: String(localized: "文件尚未下载，请先下载后重试。", bundle: voxlineLocalizationBundle)
+        case .missingFolder: String(localized: "同步文件夹不可用，请重新选择。", bundle: voxlineLocalizationBundle)
+        case .busy: String(localized: "任务正在处理，请停止后调整同步设置。", bundle: voxlineLocalizationBundle)
         }
     }
 }

@@ -60,7 +60,7 @@ public final class TaskSyncSettings {
             let url = try URL(resolvingBookmarkData: stored.folderBookmark, options: options, bookmarkDataIsStale: &stale)
             try activate(url, originals: stored.syncOriginalMedia)
             if stale { try persist(folder: url, originals: stored.syncOriginalMedia) }
-        } catch { errorMessage = "同步恢复失败：\(error.localizedDescription)" }
+        } catch { errorMessage = String(localized: "同步恢复失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle) }
     }
 
     public func migrationSummary() throws -> MigrationSummary {
@@ -282,7 +282,7 @@ public final class TaskSyncSettings {
                 }
             }
             do { try await self.uploadOriginals([task], folder: folderURL); self.refresh() }
-            catch { self.errorMessage = "原媒体同步失败：\(error.localizedDescription)" }
+            catch { self.errorMessage = String(localized: "原媒体同步失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle) }
         }
         originalMediaWork = (id, work)
     }

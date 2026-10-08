@@ -9,11 +9,11 @@ public enum SubtitleExportError: LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .emptyCues: "当前媒体没有字幕，无法导出。"
-        case .incompleteTranslations(let count): "有 \(count) 条字幕缺少有效译文。请完成翻译或校对后导出，或选择原文 SRT。"
-        case .invalidFileName: "请输入不含路径的 .srt 文件名。"
-        case .writeFailed(let reason): "导出失败：\(reason)"
-        case .fileAlreadyExists: "目标文件已存在。"
+        case .emptyCues: String(localized: "当前媒体没有字幕，无法导出。", bundle: voxlineLocalizationBundle)
+        case .incompleteTranslations(let count): String(localized: "有 \(count) 条字幕缺少有效译文。请完成翻译或校对后导出，或选择原文 SRT。", bundle: voxlineLocalizationBundle)
+        case .invalidFileName: String(localized: "请输入不含路径的 .srt 文件名。", bundle: voxlineLocalizationBundle)
+        case .writeFailed(let reason): String(localized: "导出失败：\(reason)", bundle: voxlineLocalizationBundle)
+        case .fileAlreadyExists: String(localized: "目标文件已存在。", bundle: voxlineLocalizationBundle)
         }
     }
 }

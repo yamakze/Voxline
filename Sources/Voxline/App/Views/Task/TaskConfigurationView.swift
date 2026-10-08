@@ -102,10 +102,10 @@ public struct TaskConfigurationView: View {
         .sheet(isPresented: $showModelManager) {
             NavigationStack {
                 ModelManagementView()
-                    .navigationTitle("模型管理")
+                    .navigationTitle(String(localized: "模型管理", bundle: appLocalizationBundle))
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("完成") { showModelManager = false }
+                            Button(String(localized: "完成", bundle: appLocalizationBundle)) { showModelManager = false }
                         }
                     }
             }
@@ -113,10 +113,10 @@ public struct TaskConfigurationView: View {
         .sheet(isPresented: $showTranslationSettings) {
             NavigationStack {
                 TranslationServicesSettingsView()
-                    .navigationTitle("翻译服务")
+                    .navigationTitle(String(localized: "翻译服务", bundle: appLocalizationBundle))
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("完成") {
+                            Button(String(localized: "完成", bundle: appLocalizationBundle)) {
                                 showTranslationSettings = false
                                 if selectedServiceID == nil, let first = serviceStore.services.first {
                                     selectedServiceID = first.id
@@ -129,10 +129,10 @@ public struct TaskConfigurationView: View {
         .sheet(isPresented: $showCloudTranscriptionSettings) {
             NavigationStack {
                 CloudTranscriptionServicesSettingsView(referencedSettings: originalTask.parameters.transcription)
-                    .navigationTitle("云端转写服务")
+                    .navigationTitle(String(localized: "云端转写服务", bundle: appLocalizationBundle))
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("完成") {
+                            Button(String(localized: "完成", bundle: appLocalizationBundle)) {
                                 showCloudTranscriptionSettings = false
                                 if selectedCloudServiceID == nil, let first = cloudStore.services.first {
                                     selectedCloudServiceID = first.id
@@ -209,13 +209,13 @@ public struct TaskConfigurationView: View {
                 translationSystemPrompt = service.systemPrompt
             }
         }
-        .confirmationDialog("更换目标语言？", isPresented: $confirmTranslationReplacement, titleVisibility: .visible) {
-            Button("清除现有译文并保存", role: .destructive) {
+        .confirmationDialog(String(localized: "更换目标语言？", bundle: appLocalizationBundle), isPresented: $confirmTranslationReplacement, titleVisibility: .visible) {
+            Button(String(localized: "清除现有译文并保存", bundle: appLocalizationBundle), role: .destructive) {
                 saveTask = Task { await commitTask(discardingTranslations: true) }
             }
-            Button("取消", role: .cancel) {}
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
         } message: {
-            Text("现有译文将清除，原文、时间、转写成果和待校对标记保持。保存后可继续翻译。")
+            Text(String(localized: "现有译文将清除，原文、时间、转写成果和待校对标记保持。保存后可继续翻译。", bundle: appLocalizationBundle))
         }
         .onDisappear {
             importTask?.cancel()
@@ -295,8 +295,8 @@ public struct TaskConfigurationView: View {
                     VStack(spacing: 0) {
                         let totalCount = existingItems.count + candidates.count
                         Picker("", selection: $iosActiveTab) {
-                            Text("媒体 (\(totalCount))").tag(0)
-                            Text("参数").tag(1)
+                            Text(String(localized: "媒体 (\(totalCount))", bundle: appLocalizationBundle)).tag(0)
+                            Text(String(localized: "参数", bundle: appLocalizationBundle)).tag(1)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal, 16)
@@ -312,11 +312,11 @@ public struct TaskConfigurationView: View {
                     }
                 }
             }
-            .navigationTitle(originalTask.items.isEmpty ? "新建任务" : "任务准备")
+            .navigationTitle(originalTask.items.isEmpty ? String(localized: "新建任务", bundle: appLocalizationBundle) : String(localized: "任务准备", bundle: appLocalizationBundle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") {
+                    Button(String(localized: "取消", bundle: appLocalizationBundle)) {
                         importTask?.cancel()
                         saveTask?.cancel()
                         dismiss()
@@ -324,7 +324,7 @@ public struct TaskConfigurationView: View {
                     .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(originalTask.startedAt == nil ? "保存任务" : "保存参数") {
+                    Button(originalTask.startedAt == nil ? String(localized: "保存任务", bundle: appLocalizationBundle) : String(localized: "保存参数", bundle: appLocalizationBundle)) {
                         saveTask = Task { await commitTask() }
                     }
                     .bold()
@@ -342,7 +342,7 @@ public struct TaskConfigurationView: View {
                 .font(.title3)
                 .foregroundStyle(.tint)
 
-            Text(originalTask.items.isEmpty ? "新建任务" : "任务准备")
+            Text(originalTask.items.isEmpty ? String(localized: "新建任务", bundle: appLocalizationBundle) : String(localized: "任务准备", bundle: appLocalizationBundle))
                 .font(.headline)
 
             Spacer()
@@ -358,7 +358,7 @@ public struct TaskConfigurationView: View {
             // Pane Sub-header
             HStack {
                 let totalCount = existingItems.count + candidates.count
-                Text("媒体列表")
+                Text(String(localized: "媒体列表", bundle: appLocalizationBundle))
                     .font(.subheadline.bold())
                 if totalCount > 0 {
                     Text("(\(totalCount))")
@@ -371,7 +371,7 @@ public struct TaskConfigurationView: View {
                 Button {
                     showMediaImporter = true
                 } label: {
-                    Label("添加…", systemImage: "plus")
+                    Label(String(localized: "添加…", bundle: appLocalizationBundle), systemImage: "plus")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -391,9 +391,9 @@ public struct TaskConfigurationView: View {
                             Image(systemName: "arrow.down.doc")
                                 .font(.system(size: 28))
                                 .foregroundStyle(.secondary)
-                            Text("添加音视频媒体文件")
+                            Text(String(localized: "添加音视频媒体文件", bundle: appLocalizationBundle))
                                 .font(.callout.weight(.medium))
-                            Text("支持 MP4, MOV, M4V, M4A, MP3, WAV")
+                            Text(String(localized: "支持 MP4, MOV, M4V, M4A, MP3, WAV", bundle: appLocalizationBundle))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -416,7 +416,7 @@ public struct TaskConfigurationView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.title).font(.system(size: 13, weight: .semibold))
-                                Text(item.media == nil ? "未关联" : item.status.label)
+                                Text(item.media == nil ? String(localized: "未关联", bundle: appLocalizationBundle) : item.status.label)
                                     .font(.caption2).foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -440,7 +440,7 @@ public struct TaskConfigurationView: View {
                     if isInspecting {
                         HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text("正在读取轨道信息…").font(.caption).foregroundStyle(.secondary)
+                            Text(String(localized: "正在读取轨道信息…", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.secondary)
                         }
                         .padding(.vertical, 8)
                     }
@@ -472,7 +472,7 @@ public struct TaskConfigurationView: View {
 
                     if let inspection = cand.inspection {
                         HStack(spacing: 6) {
-                            Text(cand.kind == .video ? "视频" : "音频")
+                            Text(cand.kind == .video ? String(localized: "视频", bundle: appLocalizationBundle) : String(localized: "音频", bundle: appLocalizationBundle))
                                 .font(.system(size: 10, weight: .bold))
                                 .padding(.horizontal, 4).padding(.vertical, 1)
                                 .background(Color.secondary.opacity(0.12), in: .capsule)
@@ -487,7 +487,7 @@ public struct TaskConfigurationView: View {
                     } else if let error = cand.error {
                         Text(error).font(.caption2).foregroundStyle(.red)
                     } else {
-                        Text("解析中…").font(.caption2).foregroundStyle(.secondary)
+                        Text(String(localized: "解析中…", bundle: appLocalizationBundle)).font(.caption2).foregroundStyle(.secondary)
                     }
                 }
 
@@ -521,7 +521,7 @@ public struct TaskConfigurationView: View {
             if let inspection = cand.inspection {
                 if inspection.audioTracks.count > 1 {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("选择转写音轨：")
+                        Text(String(localized: "选择转写音轨：", bundle: appLocalizationBundle))
                             .font(.caption2.bold())
                             .foregroundStyle(.secondary)
 
@@ -537,15 +537,15 @@ public struct TaskConfigurationView: View {
                                         .font(.caption)
                                         .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
 
-                                    Text("音轨 \(track.id)")
+                                    Text(String(localized: "音轨 \(track.id)", bundle: appLocalizationBundle))
                                         .font(.caption.monospacedDigit().bold())
 
-                                    Text(track.language ?? "未知语言")
+                                    Text(track.language ?? String(localized: "未知语言", bundle: appLocalizationBundle))
                                         .font(.caption)
 
                                     Spacer()
 
-                                    Text(track.isDecodable ? "可解码" : "无法解码")
+                                    Text(track.isDecodable ? String(localized: "可解码", bundle: appLocalizationBundle) : String(localized: "无法解码", bundle: appLocalizationBundle))
                                         .font(.caption2)
                                         .foregroundStyle(track.isDecodable ? Color.secondary : .red)
                                 }
@@ -562,7 +562,7 @@ public struct TaskConfigurationView: View {
                 }
 
                 if cand.trackID == nil {
-                    Text("请选择转写音轨")
+                    Text(String(localized: "请选择转写音轨", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.orange)
                 }
@@ -575,20 +575,20 @@ public struct TaskConfigurationView: View {
     // MARK: - Right: Parameters Form
     private var pagesParametersPane: some View {
         Form {
-            Section("基本信息") {
-                TextField("任务名称", text: $draftTitle, prompt: Text("输入任务名称"))
+            Section(String(localized: "基本信息", bundle: appLocalizationBundle)) {
+                TextField(String(localized: "任务名称", bundle: appLocalizationBundle), text: $draftTitle, prompt: Text(String(localized: "输入任务名称", bundle: appLocalizationBundle)))
             }
 
-            Section("语音转写") {
-                Picker("转写方式", selection: $transcriptionProvider) {
-                    Text("本地 WhisperKit").tag(TranscriptionSettings.Provider.whisperKit)
-                    Text("云端 OpenAI 兼容").tag(TranscriptionSettings.Provider.openAICompatible)
+            Section(String(localized: "语音转写", bundle: appLocalizationBundle)) {
+                Picker(String(localized: "转写方式", bundle: appLocalizationBundle), selection: $transcriptionProvider) {
+                    Text(String(localized: "本地 WhisperKit", bundle: appLocalizationBundle)).tag(TranscriptionSettings.Provider.whisperKit)
+                    Text(String(localized: "云端 OpenAI 兼容", bundle: appLocalizationBundle)).tag(TranscriptionSettings.Provider.openAICompatible)
                 }
 
                 if transcriptionProvider == .whisperKit {
-                    Picker("转写模型", selection: $modelID) {
+                    Picker(String(localized: "转写模型", bundle: appLocalizationBundle), selection: $modelID) {
                         if !ModelManager.availableModels.contains(where: { $0.id == modelID }) {
-                            Text("未收录：\(modelID)").tag(modelID)
+                            Text(String(localized: "未收录：\(modelID)", bundle: appLocalizationBundle)).tag(modelID)
                         }
                         ForEach(ModelManager.availableModels) { model in
                             Text(model.name).tag(model.id)
@@ -601,16 +601,16 @@ public struct TaskConfigurationView: View {
                             switch status {
                             case .ready, .downloaded:
                                 Circle().fill(Color.green).frame(width: 7, height: 7)
-                                Text("已就绪").foregroundStyle(.green)
+                                Text(String(localized: "已就绪", bundle: appLocalizationBundle)).foregroundStyle(.green)
                             case .downloading, .checking:
                                 ProgressView().controlSize(.mini)
-                                Text("下载中…").foregroundStyle(.blue)
+                                Text(String(localized: "下载中…", bundle: appLocalizationBundle)).foregroundStyle(.blue)
                             case .notDownloaded, .cancelled:
-                                Text("未下载").foregroundStyle(.secondary)
-                                Button("下载") { modelManager.download(modelID: modelID) }
+                                Text(String(localized: "未下载", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
+                                Button(String(localized: "下载", bundle: appLocalizationBundle)) { modelManager.download(modelID: modelID) }
                                     .buttonStyle(.borderless)
                             case .failed, .corrupted:
-                                Text("异常").foregroundStyle(.red)
+                                Text(String(localized: "异常", bundle: appLocalizationBundle)).foregroundStyle(.red)
                             case .loading, .cancelling:
                                 ProgressView().controlSize(.mini)
                             }
@@ -619,37 +619,37 @@ public struct TaskConfigurationView: View {
 
                         Spacer()
 
-                        Button("管理模型") {
+                        Button(String(localized: "管理模型", bundle: appLocalizationBundle)) {
                             showModelManager = true
                         }
                         .buttonStyle(.borderless)
                         .font(.caption)
                     }
 
-                    Picker("原文语言", selection: $languageMode) {
-                        Text("自动识别").tag(TranscriptionSettings.LanguageMode.automatic)
-                        Text("指定语言").tag(TranscriptionSettings.LanguageMode.specified)
+                    Picker(String(localized: "原文语言", bundle: appLocalizationBundle), selection: $languageMode) {
+                        Text(String(localized: "自动识别", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.automatic)
+                        Text(String(localized: "指定语言", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.specified)
                     }
 
                     if languageMode == .specified {
-                        LanguagePicker(title: "语言", selection: $languageCode, identifiers: WhisperKitLanguages.codes)
+                        LanguagePicker(title: String(localized: "语言", bundle: appLocalizationBundle), selection: $languageCode, identifiers: WhisperKitLanguages.codes)
                     }
                 } else {
                     // 云端 OpenAI 兼容
                     if cloudStore.services.isEmpty {
                         HStack {
-                            Text("尚未配置云端转写服务")
+                            Text(String(localized: "尚未配置云端转写服务", bundle: appLocalizationBundle))
                                 .font(.caption).foregroundStyle(.orange)
                             Spacer()
-                            Button("去配置…") {
+                            Button(String(localized: "去配置…", bundle: appLocalizationBundle)) {
                                 showCloudTranscriptionSettings = true
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                         }
                     } else {
-                        Picker("转写服务", selection: $selectedCloudServiceID) {
-                            Text("请选择服务").tag(nil as UUID?)
+                        Picker(String(localized: "转写服务", bundle: appLocalizationBundle), selection: $selectedCloudServiceID) {
+                            Text(String(localized: "请选择服务", bundle: appLocalizationBundle)).tag(nil as UUID?)
                             ForEach(cloudStore.services) { service in
                                 Text(service.name).tag(Optional(service.id))
                             }
@@ -657,7 +657,7 @@ public struct TaskConfigurationView: View {
 
                         if let serviceID = selectedCloudServiceID, let service = cloudStore.services.first(where: { $0.id == serviceID }) {
                             HStack {
-                                Text("协议")
+                                Text(String(localized: "协议", bundle: appLocalizationBundle))
                                 Spacer()
                                 Text(service.protocolKind.label)
                                     .foregroundStyle(.secondary)
@@ -665,7 +665,7 @@ public struct TaskConfigurationView: View {
                             .font(.caption)
 
                             HStack {
-                                Text("API 地址")
+                                Text(String(localized: "API 地址", bundle: appLocalizationBundle))
                                 Spacer()
                                 Text((originalTask.canChangeTranscription ? service.baseURL
                                       : originalTask.parameters.transcription.cloud?.baseURL ?? service.baseURL).absoluteString)
@@ -677,43 +677,43 @@ public struct TaskConfigurationView: View {
                     }
 
                     HStack {
-                        Text("服务模型")
+                        Text(String(localized: "服务模型", bundle: appLocalizationBundle))
                         Spacer()
                         let serviceModel = originalTask.canChangeTranscription
                             ? cloudStore.services.first(where: { $0.id == selectedCloudServiceID })?.modelID
                             : originalTask.parameters.transcription.modelID
-                        Text(serviceModel ?? "未选择")
+                        Text(serviceModel ?? String(localized: "未选择", bundle: appLocalizationBundle))
                             .foregroundStyle(.secondary)
                     }
 
-                    Picker("原文语言", selection: $languageMode) {
-                        Text("自动识别").tag(TranscriptionSettings.LanguageMode.automatic)
-                        Text("指定语言").tag(TranscriptionSettings.LanguageMode.specified)
+                    Picker(String(localized: "原文语言", bundle: appLocalizationBundle), selection: $languageMode) {
+                        Text(String(localized: "自动识别", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.automatic)
+                        Text(String(localized: "指定语言", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.specified)
                     }
 
                     if languageMode == .specified {
                         let selectedProtocol = selectedCloudServiceID.flatMap { id in cloudStore.services.first(where: { $0.id == id })?.protocolKind }
                             ?? originalTask.parameters.transcription.cloud?.protocolKind
                             ?? .audioTranscriptions
-                        LanguagePicker(title: "语言代码", selection: $languageCode, identifiers: cloudLanguageIdentifiers(for: selectedProtocol))
+                        LanguagePicker(title: String(localized: "语言代码", bundle: appLocalizationBundle), selection: $languageCode, identifiers: cloudLanguageIdentifiers(for: selectedProtocol))
                     }
                 }
 
                 if !originalTask.canChangeTranscription {
-                    Text("已有转写记录，转写方式与参数已锁定")
+                    Text(String(localized: "已有转写记录，转写方式与参数已锁定", bundle: appLocalizationBundle))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             .disabled(!originalTask.canChangeTranscription)
 
-            Section("字幕翻译") {
-                Toggle("启用字幕翻译", isOn: $translates)
+            Section(String(localized: "字幕翻译", bundle: appLocalizationBundle)) {
+                Toggle(String(localized: "启用字幕翻译", bundle: appLocalizationBundle), isOn: $translates)
 
                 if translates {
-                    Picker("翻译服务", selection: $translationEngine) {
-                        Text("OpenAI 接口").tag(TranslationEngineChoice.api)
-                        Text("Apple Translation (本机)").tag(TranslationEngineChoice.apple)
+                    Picker(String(localized: "翻译服务", bundle: appLocalizationBundle), selection: $translationEngine) {
+                        Text(String(localized: "OpenAI 接口", bundle: appLocalizationBundle)).tag(TranslationEngineChoice.api)
+                        Text(String(localized: "Apple Translation (本机)", bundle: appLocalizationBundle)).tag(TranslationEngineChoice.apple)
                     }
 
                     if translationEngine == .apple {
@@ -725,27 +725,27 @@ public struct TaskConfigurationView: View {
                     } else {
                         if serviceStore.services.isEmpty {
                             HStack {
-                                Text("尚未配置翻译服务")
+                                Text(String(localized: "尚未配置翻译服务", bundle: appLocalizationBundle))
                                     .font(.caption).foregroundStyle(.orange)
                                 Spacer()
-                                Button("去配置…") {
+                                Button(String(localized: "去配置…", bundle: appLocalizationBundle)) {
                                     showTranslationSettings = true
                                 }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
                             }
                         } else {
-                            Picker("服务提供商", selection: $selectedServiceID) {
-                                Text("请选择服务").tag(nil as UUID?)
+                            Picker(String(localized: "服务提供商", bundle: appLocalizationBundle), selection: $selectedServiceID) {
+                                Text(String(localized: "请选择服务", bundle: appLocalizationBundle)).tag(nil as UUID?)
                                 ForEach(serviceStore.services) { service in
                                     Text(service.name).tag(Optional(service.id))
                                 }
                             }
                         }
 
-                        TextField("模型", text: $translationModel, prompt: Text("例如 gpt-4o-mini"))
+                        TextField(String(localized: "模型", bundle: appLocalizationBundle), text: $translationModel, prompt: Text(String(localized: "例如 gpt-4o-mini", bundle: appLocalizationBundle)))
 
-                        LanguagePicker(title: "目标语言", selection: $targetLanguage)
+                        LanguagePicker(title: String(localized: "目标语言", bundle: appLocalizationBundle), selection: $targetLanguage)
 
                         Button {
                             withAnimation(.easeInOut(duration: 0.15)) {
@@ -755,7 +755,7 @@ public struct TaskConfigurationView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: showAdvancedTranslationOptions ? "chevron.down" : "chevron.right")
                                     .font(.caption2.bold())
-                                Text("高级选项")
+                                Text(String(localized: "高级选项", bundle: appLocalizationBundle))
                                     .font(.subheadline)
                             }
                             .foregroundStyle(.secondary)
@@ -764,7 +764,7 @@ public struct TaskConfigurationView: View {
                         .padding(.vertical, 2)
 
                         if showAdvancedTranslationOptions {
-                            TextField("每批字幕数", value: $translationBatchSize, format: .number)
+                            TextField(String(localized: "每批字幕数", bundle: appLocalizationBundle), value: $translationBatchSize, format: .number)
 
                             LabeledContent {
                                 VStack(alignment: .trailing, spacing: 4) {
@@ -778,14 +778,14 @@ public struct TaskConfigurationView: View {
                                                 .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
                                         )
 
-                                    Button("恢复默认") {
+                                    Button(String(localized: "恢复默认", bundle: appLocalizationBundle)) {
                                         translationSystemPrompt = TranslationSettings.defaultSystemPrompt
                                     }
                                     .buttonStyle(.borderless)
                                     .font(.caption)
                                 }
                             } label: {
-                                Text("系统提示词")
+                                Text(String(localized: "系统提示词", bundle: appLocalizationBundle))
                             }
                         }
                     }
@@ -805,14 +805,14 @@ public struct TaskConfigurationView: View {
                 }
             } else {
                 let totalCount = existingItems.count + candidates.filter({ $0.error == nil }).count
-                Text("共 \(totalCount) 个媒体文件")
+                Text(String(localized: "共 \(totalCount) 个媒体文件", bundle: appLocalizationBundle))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            Button("取消") {
+            Button(String(localized: "取消", bundle: appLocalizationBundle)) {
                 importTask?.cancel()
                 saveTask?.cancel()
                 dismiss()
@@ -820,7 +820,7 @@ public struct TaskConfigurationView: View {
             .keyboardShortcut(.cancelAction)
             .disabled(isSaving)
 
-            Button(originalTask.startedAt == nil ? "保存草稿" : "保存参数") {
+            Button(originalTask.startedAt == nil ? String(localized: "保存草稿", bundle: appLocalizationBundle) : String(localized: "保存参数", bundle: appLocalizationBundle)) {
                 saveTask = Task { await commitTask() }
             }
             .buttonStyle(.borderedProminent)
@@ -835,18 +835,18 @@ public struct TaskConfigurationView: View {
     private var preflightBlockReason: String? {
         let totalCount = existingItems.count + candidates.filter({ $0.error == nil }).count
         if totalCount == 0 {
-            return "请先在左侧添加音视频。"
+            return String(localized: "请先在左侧添加音视频。", bundle: appLocalizationBundle)
         }
         for candidate in candidates where candidate.error == nil {
             if candidate.inspection != nil && candidate.trackID == nil {
-                return "媒体“\(candidate.url.lastPathComponent)”尚未选择音轨。"
+                return String(localized: "媒体“\(candidate.url.lastPathComponent)”尚未选择音轨。", bundle: appLocalizationBundle)
             }
         }
         if originalTask.canChangeTranscription, transcriptionProvider == .openAICompatible {
-            if cloudStore.isLoading || cloudStore.isSaving { return "云端转写服务配置正在读取或保存。" }
+            if cloudStore.isLoading || cloudStore.isSaving { return String(localized: "云端转写服务配置正在读取或保存。", bundle: appLocalizationBundle) }
             if let error = cloudStore.errorMessage { return error }
             if !cloudStore.services.contains(where: { $0.id == selectedCloudServiceID }) {
-                return "开启云端转写需选择已配置的转写服务。"
+                return String(localized: "开启云端转写需选择已配置的转写服务。", bundle: appLocalizationBundle)
             }
             if let service = cloudStore.services.first(where: { $0.id == selectedCloudServiceID }) {
                 do {
@@ -856,13 +856,13 @@ public struct TaskConfigurationView: View {
             }
         }
         if translates && translationEngine == .api {
-            if serviceStore.isLoading || serviceStore.isSaving { return "翻译服务配置正在读取或保存。" }
+            if serviceStore.isLoading || serviceStore.isSaving { return String(localized: "翻译服务配置正在读取或保存。", bundle: appLocalizationBundle) }
             if let error = serviceStore.errorMessage { return error }
             if selectedServiceID == nil || serviceStore.services.isEmpty {
-                return "开启翻译时需选择已配置的翻译服务。"
+                return String(localized: "开启翻译时需选择已配置的翻译服务。", bundle: appLocalizationBundle)
             }
             if translationModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return "翻译模型名称不能为空。"
+                return String(localized: "翻译模型名称不能为空。", bundle: appLocalizationBundle)
             }
         }
         return nil
@@ -914,7 +914,7 @@ public struct TaskConfigurationView: View {
 
             var updated = originalTask
             updated.title = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-            if updated.title.isEmpty { updated.title = "未命名任务" }
+            if updated.title.isEmpty { updated.title = String(localized: "未命名任务", bundle: appLocalizationBundle) }
 
             var newItems: [TaskMediaItem] = existingItems
             var addedBookmarkPairs: [(TaskMediaItem, MediaInspection, Int32)] = []
@@ -933,7 +933,7 @@ public struct TaskConfigurationView: View {
                 }
 
                 guard let inspection = candidate.inspection, let trackID = candidate.trackID else {
-                    errorMessage = "\(candidate.url.lastPathComponent)：请先选择转写音轨。"
+                    errorMessage = String(localized: "\(candidate.url.lastPathComponent)：请先选择转写音轨。", bundle: appLocalizationBundle)
                     return
                 }
 

@@ -29,14 +29,14 @@ public struct SRTExportSheet: View {
     public var body: some View {
         VStack(spacing: 20) {
             HStack {
-                Text("导出 SRT 字幕").font(.headline)
+                Text(String(localized: "导出 SRT 字幕", bundle: appLocalizationBundle)).font(.headline)
                 Spacer()
             }
             VStack(alignment: .leading, spacing: 16) {
-                Picker("导出类型", selection: $selectedKind) {
-                    Text("原文 SRT").tag(SRTOutputKind.source)
-                    Text("译文 SRT").tag(SRTOutputKind.translation)
-                    Text("双语 SRT").tag(SRTOutputKind.bilingual)
+                Picker(String(localized: "导出类型", bundle: appLocalizationBundle), selection: $selectedKind) {
+                    Text(String(localized: "原文 SRT", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
+                    Text(String(localized: "译文 SRT", bundle: appLocalizationBundle)).tag(SRTOutputKind.translation)
+                    Text(String(localized: "双语 SRT", bundle: appLocalizationBundle)).tag(SRTOutputKind.bilingual)
                 }
                 .pickerStyle(.segmented)
                 .onChange(of: selectedKind) { _, kind in
@@ -45,29 +45,29 @@ public struct SRTExportSheet: View {
                     errorMessage = nil
                 }
                 if selectedKind != .source && missingTranslationCount > 0 {
-                    Label("有 \(missingTranslationCount) 条字幕缺少有效译文。请完成翻译或校对，或选择原文 SRT。", systemImage: "exclamationmark.triangle")
+                    Label(String(localized: "有 \(missingTranslationCount) 条字幕缺少有效译文。请完成翻译或校对，或选择原文 SRT。", bundle: appLocalizationBundle), systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.orange)
                 }
-                TextField("文件名", text: $fileName).textFieldStyle(.roundedBorder)
+                TextField(String(localized: "文件名", bundle: appLocalizationBundle), text: $fileName).textFieldStyle(.roundedBorder)
                     .onChange(of: fileName) { _, _ in exportedURL = nil; errorMessage = nil }
                 HStack {
-                    Text(targetDirectory?.path ?? "请选择保存目录")
+                    Text(targetDirectory?.path ?? String(localized: "请选择保存目录", bundle: appLocalizationBundle))
                         .font(.callout).lineLimit(1).truncationMode(.middle)
                     Spacer()
-                    Button("选择目录…") { showDirectoryPicker = true }
+                    Button(String(localized: "选择目录…", bundle: appLocalizationBundle)) { showDirectoryPicker = true }
                 }
                 if let errorMessage { Text(errorMessage).font(.callout).foregroundStyle(.red) }
                 if let exportedURL {
-                    Label("已导出：\(exportedURL.lastPathComponent)", systemImage: "checkmark.circle.fill")
+                    Label(String(localized: "已导出：\(exportedURL.lastPathComponent)", bundle: appLocalizationBundle), systemImage: "checkmark.circle.fill")
                         .font(.callout).foregroundStyle(.green)
                 }
             }
             .padding().liquidGlassSurface()
             HStack {
-                Text("\(cues.count) 条字幕 · UTF-8 编码").font(.caption).foregroundStyle(.secondary)
+                Text(String(localized: "\(cues.count) 条字幕 · UTF-8 编码", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("导出") { export(allowOverwrite: false) }
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(String(localized: "导出", bundle: appLocalizationBundle)) { export(allowOverwrite: false) }
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                     .disabled(targetDirectory == nil || cues.isEmpty || (selectedKind != .source && missingTranslationCount > 0))
             }
@@ -80,10 +80,10 @@ public struct SRTExportSheet: View {
                 exportedURL = nil
             } catch { errorMessage = error.localizedDescription }
         }
-        .alert("文件已存在", isPresented: $showOverwriteAlert) {
-            Button("取消", role: .cancel) {}
-            Button("覆盖并导出", role: .destructive) { export(allowOverwrite: true) }
-        } message: { Text("目录中已存在名为“\(fileName)”的文件。是否确认覆盖？") }
+        .alert(String(localized: "文件已存在", bundle: appLocalizationBundle), isPresented: $showOverwriteAlert) {
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
+            Button(String(localized: "覆盖并导出", bundle: appLocalizationBundle), role: .destructive) { export(allowOverwrite: true) }
+        } message: { Text(String(localized: "目录中已存在名为“\(fileName)”的文件。是否确认覆盖？", bundle: appLocalizationBundle)) }
     }
 
     private func export(allowOverwrite: Bool) {

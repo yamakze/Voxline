@@ -57,8 +57,8 @@ enum TranslationCredentialError: Error, LocalizedError {
     case keychain(OSStatus), invalidData
     var errorDescription: String? {
         switch self {
-        case .keychain(let code): "Keychain 操作失败（\(code)）。请检查系统钥匙串访问。"
-        case .invalidData: "Keychain 中的密钥数据无效，请重新配置。"
+        case .keychain(let code): String(localized: "Keychain 操作失败（\(code)）。请检查系统钥匙串访问。", bundle: voxlineLocalizationBundle)
+        case .invalidData: String(localized: "Keychain 中的密钥数据无效，请重新配置。", bundle: voxlineLocalizationBundle)
         }
     }
 }

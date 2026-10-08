@@ -37,7 +37,7 @@ struct SubtitleBurnInSheet: View {
     var body: some View {
         VStack(spacing: 16) {
             HStack {
-                Text("烧录字幕视频").font(.headline)
+                Text(String(localized: "烧录字幕视频", bundle: appLocalizationBundle)).font(.headline)
                 Spacer()
             }
             HStack(alignment: .top, spacing: 20) {
@@ -46,18 +46,18 @@ struct SubtitleBurnInSheet: View {
                         Image(nsImage: previewImage).resizable().scaledToFit()
                             .frame(width: 400, height: 240).background(.black)
                     } else {
-                        ContentUnavailableView("输出预览", systemImage: "film",
-                            description: Text("选择字幕和输出设置，生成实际合成画面。"))
+                        ContentUnavailableView(String(localized: "输出预览", bundle: appLocalizationBundle), systemImage: "film",
+                            description: Text(String(localized: "选择字幕和输出设置，生成实际合成画面。", bundle: appLocalizationBundle)))
                             .frame(width: 400, height: 240)
                     }
-                    Picker("预览字幕", selection: $previewTime) {
+                    Picker(String(localized: "预览字幕", bundle: appLocalizationBundle), selection: $previewTime) {
                         ForEach(item.cues) { cue in
                             Text("\(SubtitleExporter.formatSRTTimestamp(milliseconds: cue.startMilliseconds)) · \(cue.sourceText.prefix(30))")
                                 .tag(cue.startMilliseconds)
                         }
                     }
                     .disabled(isPreparing || isExporting)
-                    Button(isPreparing ? "正在生成预览…" : "更新预览") { refreshPreview() }
+                    Button(isPreparing ? String(localized: "正在生成预览…", bundle: appLocalizationBundle) : String(localized: "更新预览", bundle: appLocalizationBundle)) { refreshPreview() }
                         .disabled(isPreparing || isExporting)
                     if let plan {
                         Text("\(Int(plan.renderSize.width)) × \(Int(plan.renderSize.height)) · \(1 / plan.videoComposition.frameDuration.seconds, specifier: "%.2f") fps")
@@ -65,47 +65,47 @@ struct SubtitleBurnInSheet: View {
                     }
                 }
                 Form {
-                    Picker("字幕", selection: $options.kind) {
-                        Text("原文").tag(SRTOutputKind.source)
-                        Text("译文").tag(SRTOutputKind.translation)
-                        Text("双语").tag(SRTOutputKind.bilingual)
+                    Picker(String(localized: "字幕", bundle: appLocalizationBundle), selection: $options.kind) {
+                        Text(String(localized: "原文", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
+                        Text(String(localized: "译文", bundle: appLocalizationBundle)).tag(SRTOutputKind.translation)
+                        Text(String(localized: "双语", bundle: appLocalizationBundle)).tag(SRTOutputKind.bilingual)
                     }
-                    Picker("编码", selection: $options.codec) {
+                    Picker(String(localized: "编码", bundle: appLocalizationBundle), selection: $options.codec) {
                         ForEach(BurnInCodec.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
-                    Picker("质量", selection: $options.quality) {
+                    Picker(String(localized: "质量", bundle: appLocalizationBundle), selection: $options.quality) {
                         ForEach(BurnInQuality.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
-                    Stepper("字号：\(Int(options.fontSize))（1080p 基准）", value: $options.fontSize, in: 16...72, step: 2)
-                    Text("底部居中 · 白字深色背景 · SDR\n使用本次校对字幕与所选音轨，输出新的 MP4。")
+                    Stepper(String(localized: "字号：\(Int(options.fontSize))（1080p 基准）", bundle: appLocalizationBundle), value: $options.fontSize, in: 16...72, step: 2)
+                    Text(String(localized: "底部居中 · 白字深色背景 · SDR\n使用本次校对字幕与所选音轨，输出新的 MP4。", bundle: appLocalizationBundle))
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .disabled(isPreparing || isExporting)
                 .frame(width: 340)
             }
-            TextField("输出文件名", text: $fileName).textFieldStyle(.roundedBorder).disabled(isExporting)
+            TextField(String(localized: "输出文件名", bundle: appLocalizationBundle), text: $fileName).textFieldStyle(.roundedBorder).disabled(isExporting)
             HStack {
-                Text(targetDirectory?.path ?? "请选择保存目录").lineLimit(1).truncationMode(.middle)
+                Text(targetDirectory?.path ?? String(localized: "请选择保存目录", bundle: appLocalizationBundle)).lineLimit(1).truncationMode(.middle)
                 Spacer()
-                Button("选择目录…") { showDirectoryPicker = true }.disabled(isExporting)
+                Button(String(localized: "选择目录…", bundle: appLocalizationBundle)) { showDirectoryPicker = true }.disabled(isExporting)
             }
             if let errorMessage { Text(errorMessage).foregroundStyle(.red).textSelection(.enabled) }
             if isExporting { ProgressView(value: progress) }
             if let exportedURL {
-                Label("已导出：\(exportedURL.lastPathComponent)", systemImage: "checkmark.circle.fill")
-                Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([exportedURL]) }
+                Label(String(localized: "已导出：\(exportedURL.lastPathComponent)", bundle: appLocalizationBundle), systemImage: "checkmark.circle.fill")
+                Button(String(localized: "在 Finder 中显示", bundle: appLocalizationBundle)) { NSWorkspace.shared.activateFileViewerSelecting([exportedURL]) }
             }
             HStack {
                 if isPreparing || isExporting {
-                    Button("停止") { operation?.cancel() }
-                    Text(isExporting ? "正在烧录 \(Int(progress * 100))%" : "正在准备画面…").font(.caption)
+                    Button(String(localized: "停止", bundle: appLocalizationBundle)) { operation?.cancel() }
+                    Text(isExporting ? String(localized: "正在烧录 \(Int(progress * 100))%", bundle: appLocalizationBundle) : String(localized: "正在准备画面…", bundle: appLocalizationBundle)).font(.caption)
                 }
                 Spacer()
-                Button("取消") { dismiss() }
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .disabled(isPreparing || isExporting)
-                Button("烧录并导出") { startExport(allowOverwrite: false) }
+                Button(String(localized: "烧录并导出", bundle: appLocalizationBundle)) { startExport(allowOverwrite: false) }
                     .buttonStyle(.borderedProminent)
                     .disabled(plan == nil || previewImage == nil || targetDirectory == nil || isPreparing || isExporting)
             }
@@ -119,10 +119,10 @@ struct SubtitleBurnInSheet: View {
             do { targetDirectory = try result.get(); errorMessage = nil; exportedURL = nil }
             catch { errorMessage = error.localizedDescription }
         }
-        .alert("输出文件已存在", isPresented: $showOverwriteAlert) {
-            Button("取消", role: .cancel) {}
-            Button("覆盖并导出", role: .destructive) { startExport(allowOverwrite: true) }
-        } message: { Text("是否覆盖“\(fileName)”？原视频始终保留。") }
+        .alert(String(localized: "输出文件已存在", bundle: appLocalizationBundle), isPresented: $showOverwriteAlert) {
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
+            Button(String(localized: "覆盖并导出", bundle: appLocalizationBundle), role: .destructive) { startExport(allowOverwrite: true) }
+        } message: { Text(String(localized: "是否覆盖“\(fileName)”？原视频始终保留。", bundle: appLocalizationBundle)) }
     }
 
     private func invalidatePreview() {
@@ -146,7 +146,7 @@ struct SubtitleBurnInSheet: View {
                 previewImage = NSImage(cgImage: image, size: .zero)
             } catch {
                 previewImage = nil
-                errorMessage = error is CancellationError ? "预览已取消。" : error.localizedDescription
+                errorMessage = error is CancellationError ? String(localized: "预览已取消。", bundle: appLocalizationBundle) : error.localizedDescription
             }
         }
     }
@@ -170,7 +170,7 @@ struct SubtitleBurnInSheet: View {
                 try await SubtitleBurnInExporter.export(plan, to: destination, allowOverwrite: allowOverwrite) { progress = $0 }
                 exportedURL = destination
             } catch BurnInError.fileAlreadyExists { showOverwriteAlert = true }
-            catch { errorMessage = error is CancellationError ? "烧录已取消，未发布输出文件。" : error.localizedDescription }
+            catch { errorMessage = error is CancellationError ? String(localized: "烧录已取消，未发布输出文件。", bundle: appLocalizationBundle) : error.localizedDescription }
         }
     }
 }

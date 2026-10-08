@@ -13,15 +13,15 @@ public enum ModelStatus: Equatable, Sendable {
 
     public var label: String {
         switch self {
-        case .notDownloaded: "未下载"
-        case .downloading(let component, let progress): String(format: "%@文件下载 %.0f%%", component, progress * 100)
-        case .checking: "校验版本与文件"
-        case .loading: "加载中"
-        case .cancelling: "取消中"
-        case .cancelled: "已取消，可重新下载"
-        case .downloaded(_, let bytes), .ready(_, let bytes): String(format: "已安装 %.1f MB", Double(bytes) / 1_000_000)
-        case .failed(let reason): "操作失败：\(reason)"
-        case .corrupted(let reason): "安装不完整：\(reason)"
+        case .notDownloaded: String(localized: "未下载", bundle: voxlineLocalizationBundle)
+        case .downloading(let component, let progress): String(format: String(localized: "%@文件下载 %.0f%%", bundle: voxlineLocalizationBundle), locale: .current, component, progress * 100)
+        case .checking: String(localized: "校验版本与文件", bundle: voxlineLocalizationBundle)
+        case .loading: String(localized: "加载中", bundle: voxlineLocalizationBundle)
+        case .cancelling: String(localized: "取消中", bundle: voxlineLocalizationBundle)
+        case .cancelled: String(localized: "已取消，可重新下载", bundle: voxlineLocalizationBundle)
+        case .downloaded(_, let bytes), .ready(_, let bytes): String(format: String(localized: "已安装 %.1f MB", bundle: voxlineLocalizationBundle), locale: .current, Double(bytes) / 1_000_000)
+        case .failed(let reason): String(localized: "操作失败：\(reason)", bundle: voxlineLocalizationBundle)
+        case .corrupted(let reason): String(localized: "安装不完整：\(reason)", bundle: voxlineLocalizationBundle)
         }
     }
 }
@@ -40,7 +40,7 @@ public final class ModelManager {
     public static let availableModels = [WhisperModelDescriptor(
         id: TranscriptionSettings.whisperKitBaseline.modelID,
         name: "Whisper · 626 MB 基准",
-        description: "Whisper large-v3 压缩模型，使用固定仓库版本。本地处理不上传音频。",
+        description: String(localized: "Whisper large-v3 压缩模型，使用固定仓库版本。本地处理不上传音频。", bundle: voxlineLocalizationBundle),
         expectedSizeMB: 629.5, isBaseline: true)]
 
     public private(set) var modelStatuses: [String: ModelStatus] = [:]
@@ -103,7 +103,7 @@ public final class ModelManager {
     public func download(modelID: String) {
         guard operations[modelID] == nil else { return }
         let operationID = UUID()
-        modelStatuses[modelID] = .downloading(component: "权重", progress: 0)
+        modelStatuses[modelID] = .downloading(component: String(localized: "权重", bundle: voxlineLocalizationBundle), progress: 0)
         let task = Task {
             do {
                 try await store.download(modelID: modelID) { [weak self] progress in
@@ -112,7 +112,7 @@ public final class ModelManager {
                         switch progress {
                         case .files(let component, let fraction):
                             guard case .downloading(let current, let previous) = self.modelStatuses[modelID] else { return }
-                            if current == "分词器" && component == "权重" { return }
+                            if current == String(localized: "分词器", bundle: voxlineLocalizationBundle) && component == String(localized: "权重", bundle: voxlineLocalizationBundle) { return }
                             if current == component && fraction < previous { return }
                             self.modelStatuses[modelID] = .downloading(component: component, progress: fraction)
                         case .checking:
@@ -171,7 +171,7 @@ public final class ModelManager {
 
     public func delete(modelID: String) async {
         guard operations[modelID] == nil, !isOperating, !deletingModels.contains(modelID) else {
-            deletionErrors[modelID] = "模型使用中"
+            deletionErrors[modelID] = String(localized: "模型使用中", bundle: voxlineLocalizationBundle)
             return
         }
         deletingModels.insert(modelID)
@@ -181,7 +181,7 @@ public final class ModelManager {
             try await store.delete(modelID: modelID)
         } catch {
             deletionErrors[modelID] = (error as? WhisperTranscriptionError) == .busy
-                ? "模型使用中" : error.localizedDescription
+                ? String(localized: "模型使用中", bundle: voxlineLocalizationBundle) : error.localizedDescription
         }
         await refresh(modelID: modelID)
     }

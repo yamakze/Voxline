@@ -64,7 +64,7 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
         let raw = aligned.map { Self.raw($0, offset: sourceOffsetSeconds) }
         state.withLock { $0[$0.count - 1].alignedSegments = raw }
         guard aligned.map(\.text) == segments.map(\.text), aligned.map(\.tokens) == segments.map(\.tokens) else {
-            throw WhisperTranscriptionError.invalidAlignment("词对齐改变了识别文本或词元。")
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐改变了识别文本或词元。", bundle: voxlineLocalizationBundle))
         }
         let selected = try Self.selectTiming(segments: segments, aligned: aligned, offset: sourceOffsetSeconds,
             lower: sourceOffsetSeconds + Double(seek) / 16_000,
@@ -87,7 +87,7 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
     static func requiresSegmentTimings(original: [RawTranscriptionSegment], aligned: [RawTranscriptionSegment],
                                        lower: Double, upper: Double) throws -> Bool {
         guard original.map(\.text) == aligned.map(\.text) else {
-            throw WhisperTranscriptionError.invalidAlignment("词对齐改变了识别文本。")
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐改变了识别文本。", bundle: voxlineLocalizationBundle))
         }
         do {
             try validate(aligned, lower: lower, upper: upper)
@@ -112,11 +112,11 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
         let samplesPerColumn = 320 // Pinned Whisper model: one alignment column per 20 ms.
         guard shape.count == 2, strides.count == 2, strides[1] == 1,
               shape[0] > 0, shape[1] > 0, frameCount >= samplesPerColumn else {
-            throw WhisperTranscriptionError.invalidAlignment("对齐矩阵或实际音频窗口不足一个 20 毫秒帧。")
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "对齐矩阵或实际音频窗口不足一个 20 毫秒帧。", bundle: voxlineLocalizationBundle))
         }
         // The pinned model emits Float16 weights; copy its logical rows before alignment.
         guard weights.dataType == .float16 else {
-            throw WhisperTranscriptionError.invalidAlignment("固定 SDK 的词对齐只支持 Float16 权重。")
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "固定 SDK 的词对齐只支持 Float16 权重。", bundle: voxlineLocalizationBundle))
         }
         let columns = min(shape[1], frameCount / samplesPerColumn)
         let cropped = try MLMultiArray(shape: [shape[0], columns] as [NSNumber], dataType: .float16)
@@ -133,13 +133,13 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
         // Invalid confidence must not be hidden by recovering an earlier timing failure.
         for segment in segments {
             if let probability = segment.averageLogProbability, !probability.isFinite {
-                throw WhisperTranscriptionError.invalidAlignment("识别段平均置信度无效。")
+                throw WhisperTranscriptionError.invalidAlignment(String(localized: "识别段平均置信度无效。", bundle: voxlineLocalizationBundle))
             }
             if let probability = segment.noSpeechProbability, !probability.isFinite || !(0...1).contains(probability) {
-                throw WhisperTranscriptionError.invalidAlignment("识别段静音概率无效。")
+                throw WhisperTranscriptionError.invalidAlignment(String(localized: "识别段静音概率无效。", bundle: voxlineLocalizationBundle))
             }
             guard (segment.words ?? []).allSatisfy({ $0.probability.isFinite && (0...1).contains($0.probability) }) else {
-                throw WhisperTranscriptionError.invalidAlignment("词置信度无效。")
+                throw WhisperTranscriptionError.invalidAlignment(String(localized: "词置信度无效。", bundle: voxlineLocalizationBundle))
             }
         }
         var previousEnd = lower - 0.02
@@ -148,7 +148,7 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
                 let wordText = words.map(\.text).joined().precomposedStringWithCanonicalMapping.filter { !$0.isWhitespace }
                 let segmentText = segment.text.precomposedStringWithCanonicalMapping.filter { !$0.isWhitespace }
                 guard wordText == segmentText else {
-                    throw WhisperTranscriptionError.invalidTiming("词对齐文本与原始段不一致，保留段时间供校对。")
+                    throw WhisperTranscriptionError.invalidTiming(String(localized: "词对齐文本与原始段不一致，保留段时间供校对。", bundle: voxlineLocalizationBundle))
                 }
             }
             // Empty model evidence remains in the report; it is never exported as a subtitle cue.
@@ -156,7 +156,7 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
             guard segment.startSeconds.isFinite, segment.endSeconds.isFinite,
                   segment.startSeconds >= lower - 0.02, segment.endSeconds <= upper + 0.02,
                   segment.endSeconds > segment.startSeconds, segment.startSeconds >= previousEnd else {
-                throw WhisperTranscriptionError.invalidTiming("非空识别段时间无效、回退、重叠或越过实际窗口；原文保留为待校时证据。")
+                throw WhisperTranscriptionError.invalidTiming(String(localized: "非空识别段时间无效、回退、重叠或越过实际窗口；原文保留为待校时证据。", bundle: voxlineLocalizationBundle))
             }
             previousEnd = segment.endSeconds
             var previousWordEnd = lower - 0.02
@@ -164,7 +164,7 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
                 guard word.startSeconds.isFinite, word.endSeconds.isFinite, word.startSeconds >= lower - 0.02,
                       word.endSeconds <= upper + 0.02, word.endSeconds >= word.startSeconds,
                       word.startSeconds >= previousWordEnd else {
-                    throw WhisperTranscriptionError.invalidTiming("词时间无效；原文保留为待校时证据。")
+                    throw WhisperTranscriptionError.invalidTiming(String(localized: "词时间无效；原文保留为待校时证据。", bundle: voxlineLocalizationBundle))
                 }
                 previousWordEnd = word.endSeconds
             }
@@ -179,13 +179,13 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
             guard window.seekFrame > previousSeek, window.seekFrame <= coveredThrough,
                   window.frameCount > 0, window.frameCount <= 480_000,
                   window.seekFrame + window.frameCount <= frameCount else {
-                throw WhisperTranscriptionError.invalidAlignment("推理窗口回退、缺失或越过音频范围。")
+                throw WhisperTranscriptionError.invalidAlignment(String(localized: "推理窗口回退、缺失或越过音频范围。", bundle: voxlineLocalizationBundle))
             }
             previousSeek = window.seekFrame
             coveredThrough = max(coveredThrough, window.seekFrame + window.frameCount)
         }
         guard coveredThrough == frameCount else {
-            throw WhisperTranscriptionError.invalidAlignment("推理未覆盖完整输入音频。")
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "推理未覆盖完整输入音频。", bundle: voxlineLocalizationBundle))
         }
         let raw = evidence.flatMap { window in
             window.usesSegmentTimings == true ? window.segmentsBeforeAlignment :
@@ -194,7 +194,7 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
         // The SDK filters zero-duration segments. Fail if any nonempty evidence was lost in that path.
         guard raw.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ==
                 returnedSegments.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
-            throw WhisperTranscriptionError.invalidAlignment("SDK 输出遗漏或改变了非空识别证据。")
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "SDK 输出遗漏或改变了非空识别证据。", bundle: voxlineLocalizationBundle))
         }
         try Self.validate(raw, lower: sourceOffsetSeconds, upper: sourceOffsetSeconds + Double(frameCount) / 16_000)
         return raw

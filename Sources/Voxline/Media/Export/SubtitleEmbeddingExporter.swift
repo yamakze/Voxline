@@ -8,12 +8,12 @@ public enum SubtitleEmbeddingError: LocalizedError {
     case failure(String)
     public var errorDescription: String? {
         switch self {
-        case .videoRequired: "内封字幕需要视频。"
-        case .missingMedia: "本地媒体尚未关联。"
-        case .failure(let reason): "内封字幕失败：\(reason)"
-        case .unsupportedFormat: "系统不支持将当前音视频封装为 MP4 软字幕。"
-        case .invalidText: "字幕文本无法编码为内封字幕。"
-        case .invalidOutput: "内封字幕成品的轨道或时间不符合源文件。"
+        case .videoRequired: String(localized: "内封字幕需要视频。", bundle: voxlineLocalizationBundle)
+        case .missingMedia: String(localized: "本地媒体尚未关联。", bundle: voxlineLocalizationBundle)
+        case .failure(let reason): String(localized: "内封字幕失败：\(reason)", bundle: voxlineLocalizationBundle)
+        case .unsupportedFormat: String(localized: "系统不支持将当前音视频封装为 MP4 软字幕。", bundle: voxlineLocalizationBundle)
+        case .invalidText: String(localized: "字幕文本无法编码为内封字幕。", bundle: voxlineLocalizationBundle)
+        case .invalidOutput: String(localized: "内封字幕成品的轨道或时间不符合源文件。", bundle: voxlineLocalizationBundle)
         }
     }
 }
@@ -170,7 +170,7 @@ public enum SubtitleEmbeddingExporter {
             reader.cancelReading(); writer.cancelWriting()
             if manager.fileExists(atPath: temporary.path) {
                 do { try manager.removeItem(at: temporary) }
-                catch let cleanup { throw SubtitleEmbeddingError.failure("\(error.localizedDescription)；临时文件清理失败：\(cleanup.localizedDescription)") }
+                catch let cleanup { throw SubtitleEmbeddingError.failure(String(localized: "\(error.localizedDescription)；临时文件清理失败：\(cleanup.localizedDescription)", bundle: voxlineLocalizationBundle)) }
             }
             if Task.isCancelled { throw CancellationError() }
             throw error

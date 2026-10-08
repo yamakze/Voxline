@@ -37,9 +37,9 @@ public struct TaskConflictResolutionSheet: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("解决版本冲突")
+                    Text(String(localized: "解决版本冲突", bundle: appLocalizationBundle))
                         .font(.headline)
-                    Text("选择保留的主版本，未选版本将解除冲突标记。")
+                    Text(String(localized: "选择保留的主版本，未选版本将解除冲突标记。", bundle: appLocalizationBundle))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -83,7 +83,7 @@ public struct TaskConflictResolutionSheet: View {
                 HStack(spacing: 8) {
                     Image(systemName: "lock.fill")
                         .foregroundStyle(.orange)
-                    Text("任务正在处理中，暂时无法替换版本。")
+                    Text(String(localized: "任务正在处理中，暂时无法替换版本。", bundle: appLocalizationBundle))
                         .font(.caption)
                         .foregroundStyle(.orange)
                     Spacer()
@@ -96,7 +96,7 @@ public struct TaskConflictResolutionSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if versions.isEmpty {
-                        ProgressView("正在读取冲突版本…")
+                        ProgressView(String(localized: "正在读取冲突版本…", bundle: appLocalizationBundle))
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.vertical, 40)
                     } else {
@@ -112,7 +112,7 @@ public struct TaskConflictResolutionSheet: View {
 
             HStack(spacing: 12) {
                 if let draft = draftTask {
-                    Button("草稿另存为副本") {
+                    Button(String(localized: "草稿另存为副本", bundle: appLocalizationBundle)) {
                         saveRecoveryCopy(draft)
                     }
                     .buttonStyle(.bordered)
@@ -122,11 +122,11 @@ public struct TaskConflictResolutionSheet: View {
 
                 Spacer()
 
-                Button("关闭") { dismiss() }
+                Button(String(localized: "关闭", bundle: appLocalizationBundle)) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .disabled(isResolving)
 
-                Button("保留选定版本") {
+                Button(String(localized: "保留选定版本", bundle: appLocalizationBundle)) {
                     keepSelectedVersion()
                 }
                 .buttonStyle(.borderedProminent)
@@ -161,18 +161,18 @@ public struct TaskConflictResolutionSheet: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Text(version.isCurrent ? "当前设备版本" : "云端冲突版本")
+                        Text(version.isCurrent ? String(localized: "当前设备版本", bundle: appLocalizationBundle) : String(localized: "云端冲突版本", bundle: appLocalizationBundle))
                             .font(.headline)
 
                         if version.isCurrent {
-                            Text("本地")
+                            Text(String(localized: "本地", bundle: appLocalizationBundle))
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(Color.blue.opacity(0.12), in: .capsule)
                                 .foregroundStyle(.blue)
                         } else {
-                            Text("冲突副本")
+                            Text(String(localized: "冲突副本", bundle: appLocalizationBundle))
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -190,18 +190,18 @@ public struct TaskConflictResolutionSheet: View {
                     }
 
                     if let device = version.deviceName {
-                        Text("保存设备：\(device)")
+                        Text(String(localized: "保存设备：\(device)", bundle: appLocalizationBundle))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
 
                     HStack(spacing: 12) {
-                        Text("标题：\(version.task.title)")
+                        Text(String(localized: "标题：\(version.task.title)", bundle: appLocalizationBundle))
                         Text("•")
-                        Text("\(version.task.items.count) 个媒体")
+                        Text(String(localized: "\(version.task.items.count) 个媒体", bundle: appLocalizationBundle))
                         Text("•")
                         let cuesCount = version.task.items.reduce(0) { $0 + $1.cues.count }
-                        Text("\(cuesCount) 句字幕")
+                        Text(String(localized: "\(cuesCount) 句字幕", bundle: appLocalizationBundle))
                     }
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -214,7 +214,7 @@ public struct TaskConflictResolutionSheet: View {
                         HStack(spacing: 4) {
                             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                                 .font(.caption2.bold())
-                            Text(isExpanded ? "收起媒体详情" : "预览包含的媒体与字幕")
+                            Text(isExpanded ? String(localized: "收起媒体详情", bundle: appLocalizationBundle) : String(localized: "预览包含的媒体与字幕", bundle: appLocalizationBundle))
                                 .font(.caption)
                         }
                         .foregroundStyle(Color.voxlineAccent)
@@ -232,7 +232,7 @@ public struct TaskConflictResolutionSheet: View {
                                         .font(.caption)
                                         .lineLimit(1)
                                     Spacer()
-                                    Text("\(item.cues.count) 句")
+                                    Text(String(localized: "\(item.cues.count) 句", bundle: appLocalizationBundle))
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
@@ -269,7 +269,7 @@ public struct TaskConflictResolutionSheet: View {
     private func keepSelectedVersion() {
         guard let versionID = selectedVersionID else { return }
         guard !isTaskBusy else {
-            errorMessage = "任务正在执行，无法替换版本。"
+            errorMessage = String(localized: "任务正在执行，无法替换版本。", bundle: appLocalizationBundle)
             return
         }
         isResolving = true
@@ -288,9 +288,9 @@ public struct TaskConflictResolutionSheet: View {
     private func saveRecoveryCopy(_ draft: ProcessingTask) {
         do {
             let copy = try library.saveRecoveryCopy(draft)
-            noticeMessage = "已将草稿另存为独立副本：“\(copy.title)”"
+            noticeMessage = String(localized: "已将草稿另存为独立副本：“\(copy.title)”", bundle: appLocalizationBundle)
         } catch {
-            errorMessage = "另存副本失败：\(error.localizedDescription)"
+            errorMessage = String(localized: "另存副本失败：\(error.localizedDescription)", bundle: appLocalizationBundle)
         }
     }
 }

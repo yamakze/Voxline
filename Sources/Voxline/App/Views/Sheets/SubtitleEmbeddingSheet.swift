@@ -52,15 +52,15 @@ public struct SubtitleEmbeddingSheet: View {
     public var body: some View {
         VStack(spacing: 20) {
             HStack {
-                Text("内封软字幕视频").font(.headline)
+                Text(String(localized: "内封软字幕视频", bundle: appLocalizationBundle)).font(.headline)
                 Spacer()
             }
 
             VStack(alignment: .leading, spacing: 16) {
-                Picker("字幕类型", selection: $selectedKind) {
-                    Text("原文").tag(SRTOutputKind.source)
-                    Text("译文").tag(SRTOutputKind.translation)
-                    Text("双语").tag(SRTOutputKind.bilingual)
+                Picker(String(localized: "字幕类型", bundle: appLocalizationBundle), selection: $selectedKind) {
+                    Text(String(localized: "原文", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
+                    Text(String(localized: "译文", bundle: appLocalizationBundle)).tag(SRTOutputKind.translation)
+                    Text(String(localized: "双语", bundle: appLocalizationBundle)).tag(SRTOutputKind.bilingual)
                 }
                 .pickerStyle(.segmented)
                 .disabled(isExporting)
@@ -70,16 +70,16 @@ public struct SubtitleEmbeddingSheet: View {
                 }
 
                 if selectedKind != .source && missingTranslationCount > 0 {
-                    Label("有 \(missingTranslationCount) 条字幕缺少有效译文。请完成翻译或校对后导出，或选择原文。", systemImage: "exclamationmark.triangle")
+                    Label(String(localized: "有 \(missingTranslationCount) 条字幕缺少有效译文。请完成翻译或校对后导出，或选择原文。", bundle: appLocalizationBundle), systemImage: "exclamationmark.triangle")
                         .font(.callout)
                         .foregroundStyle(.orange)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("输出文件名")
+                    Text(String(localized: "输出文件名", bundle: appLocalizationBundle))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("输出文件名", text: $fileName)
+                    TextField(String(localized: "输出文件名", bundle: appLocalizationBundle), text: $fileName)
                         .textFieldStyle(.roundedBorder)
                         .disabled(isExporting)
                         .onChange(of: fileName) { _, _ in
@@ -89,19 +89,19 @@ public struct SubtitleEmbeddingSheet: View {
                 }
 
                 HStack {
-                    Text(targetDirectory?.path ?? "请选择保存目录")
+                    Text(targetDirectory?.path ?? String(localized: "请选择保存目录", bundle: appLocalizationBundle))
                         .font(.callout)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer()
-                    Button("选择目录…") { showDirectoryPicker = true }
+                    Button(String(localized: "选择目录…", bundle: appLocalizationBundle)) { showDirectoryPicker = true }
                         .disabled(isExporting)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("• 软字幕无损直通音视频画面，并在 MP4 内嵌入独立字幕轨。")
-                    Text("• 导出无需重新编码画面，耗时极短，画质零损耗。")
-                    Text("• 支持在 QuickTime Player、VLC 等现代播放器中随时开启或关闭字幕。")
+                    Text(String(localized: "• 软字幕无损直通音视频画面，并在 MP4 内嵌入独立字幕轨。", bundle: appLocalizationBundle))
+                    Text(String(localized: "• 导出无需重新编码画面，耗时极短，画质零损耗。", bundle: appLocalizationBundle))
+                    Text(String(localized: "• 支持在 QuickTime Player、VLC 等现代播放器中随时开启或关闭字幕。", bundle: appLocalizationBundle))
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -110,11 +110,11 @@ public struct SubtitleEmbeddingSheet: View {
                     VStack(alignment: .leading, spacing: 6) {
                         ProgressView(value: progress)
                         HStack {
-                            Text("正在封装软字幕 \(Int(progress * 100))%…")
+                            Text(String(localized: "正在封装软字幕 \(Int(progress * 100))%…", bundle: appLocalizationBundle))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Button("取消") {
+                            Button(String(localized: "取消", bundle: appLocalizationBundle)) {
                                 exportTask?.cancel()
                             }
                             .controlSize(.small)
@@ -131,11 +131,11 @@ public struct SubtitleEmbeddingSheet: View {
 
                 if let exportedURL {
                     HStack {
-                        Label("已导出：\(exportedURL.lastPathComponent)", systemImage: "checkmark.circle.fill")
+                        Label(String(localized: "已导出：\(exportedURL.lastPathComponent)", bundle: appLocalizationBundle), systemImage: "checkmark.circle.fill")
                             .font(.callout)
                             .foregroundStyle(.green)
                         Spacer()
-                        Button("在 Finder 中显示") {
+                        Button(String(localized: "在 Finder 中显示", bundle: appLocalizationBundle)) {
                             NSWorkspace.shared.activateFileViewerSelecting([exportedURL])
                         }
                         .controlSize(.small)
@@ -146,14 +146,14 @@ public struct SubtitleEmbeddingSheet: View {
             .liquidGlassSurface()
 
             HStack {
-                Text("\(itemSnapshot.cues.count) 条字幕")
+                Text(String(localized: "\(itemSnapshot.cues.count) 条字幕", bundle: appLocalizationBundle))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("取消") { dismiss() }
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .disabled(isExporting)
-                Button("导出软字幕") {
+                Button(String(localized: "导出软字幕", bundle: appLocalizationBundle)) {
                     startExport(allowOverwrite: false)
                 }
                 .buttonStyle(.borderedProminent)
@@ -175,13 +175,13 @@ public struct SubtitleEmbeddingSheet: View {
                 errorMessage = error.localizedDescription
             }
         }
-        .alert("输出文件已存在", isPresented: $showOverwriteAlert) {
-            Button("取消", role: .cancel) {}
-            Button("覆盖并导出", role: .destructive) {
+        .alert(String(localized: "输出文件已存在", bundle: appLocalizationBundle), isPresented: $showOverwriteAlert) {
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
+            Button(String(localized: "覆盖并导出", bundle: appLocalizationBundle), role: .destructive) {
                 startExport(allowOverwrite: true)
             }
         } message: {
-            Text("目录中已存在名为“\(fileName)”的文件。是否确认覆盖？原视频始终保留。")
+            Text(String(localized: "目录中已存在名为“\(fileName)”的文件。是否确认覆盖？原视频始终保留。", bundle: appLocalizationBundle))
         }
     }
 
@@ -218,7 +218,7 @@ public struct SubtitleEmbeddingSheet: View {
                 )
                 exportedURL = destination
             } catch is CancellationError {
-                errorMessage = "导出已取消。"
+                errorMessage = String(localized: "导出已取消。", bundle: appLocalizationBundle)
             } catch BurnInError.fileAlreadyExists {
                 showOverwriteAlert = true
             } catch {

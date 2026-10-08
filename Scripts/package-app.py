@@ -29,9 +29,14 @@ contents = bundle / "Contents"
 (contents / "MacOS").mkdir(parents=True, exist_ok=True)
 (contents / "Resources").mkdir(exist_ok=True)
 shutil.copy2(binary, contents / "MacOS" / "Voxline")
-shutil.copy2(binary.parent / "Voxline_VoxlineWhisperKit.bundle" / "BaselineModel.json",
-             contents / "Resources" / "BaselineModel.json")
+for resource_bundle in binary.parent.glob("Voxline_*.bundle"):
+    shutil.copytree(resource_bundle, contents / "Resources" / resource_bundle.name)
 shutil.copytree(root / "Licenses", contents / "Resources" / "Licenses", dirs_exist_ok=True)
+for language in ("zh-Hans", "en"):
+    source = root / "Sources" / "Voxline" / "App" / "Resources" / f"{language}.lproj" / "InfoPlist.strings"
+    destination = contents / "Resources" / f"{language}.lproj"
+    destination.mkdir()
+    shutil.copy2(source, destination / source.name)
 icon_source = root / "Resources" / "AppIcon.icns"
 if icon_source.is_file():
     shutil.copy2(icon_source, contents / "Resources" / "AppIcon.icns")
@@ -41,6 +46,8 @@ if icon_png_source.is_file():
 metadata = {
     "CFBundleIdentifier": "dev.voxline.app",
     "CFBundleName": "Voxline",
+    "CFBundleDevelopmentRegion": "zh-Hans",
+    "CFBundleLocalizations": ["zh-Hans", "en"],
     "CFBundleDisplayName": "Voxline",
     "CFBundleExecutable": "Voxline",
     "CFBundlePackageType": "APPL",

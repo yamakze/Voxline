@@ -137,7 +137,7 @@ struct MediaPlaybackControllerTests {
         #expect(controller.currentTimeSeconds == 0)
         await controller.loadMedia(for: video) // No bookmark for this item.
         #expect(controller.isMediaUnavailable && !controller.isReady)
-        #expect(controller.errorMessage?.contains("未找到") == true)
+        #expect(controller.errorMessage?.isEmpty == false)
         try FileManager.default.removeItem(at: audioURL)
         try Data("corrupt media".utf8).write(to: audioURL)
         await controller.loadMedia(for: audio)

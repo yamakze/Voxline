@@ -57,7 +57,7 @@ struct ModelInstallationTests {
         try JSONSerialization.data(withJSONObject: receipt).write(to: root.appendingPathComponent("installation.json"))
         let store = WhisperModelStore(directory: directory)
         let inventory = try await store.inventory(modelID: manifest.modelID)
-        if case .incomplete(let reason) = inventory.state { #expect(reason.contains("版本")) }
+        if case .incomplete(let reason) = inventory.state { #expect(reason == WhisperModelError.differentVersion.localizedDescription) }
         else { Issue.record("Mismatched version accepted") }
         await #expect(throws: WhisperModelError.unknownModel) {
             try await store.download(modelID: "different-model", onProgress: { _ in })

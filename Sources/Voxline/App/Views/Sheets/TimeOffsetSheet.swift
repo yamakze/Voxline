@@ -23,23 +23,23 @@ public struct TimeOffsetSheet: View {
     public var body: some View {
         VStack(spacing: 20) {
             HStack {
-                Text("整体时间偏移").font(.headline)
+                Text(String(localized: "整体时间偏移", bundle: appLocalizationBundle)).font(.headline)
                 Spacer()
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }.keyboardShortcut(.cancelAction)
             }
 
-            Text("调整当前媒体中全部 \(cues.count) 条字幕的时间位置。正数向后延后，负数向前提前。")
+            Text(String(localized: "调整当前媒体中全部 \(cues.count) 条字幕的时间位置。正数向后延后，负数向前提前。", bundle: appLocalizationBundle))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("偏移时间（秒）：")
+                    Text(String(localized: "偏移时间（秒）：", bundle: appLocalizationBundle))
                     TextField("0.0", text: $offsetText)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 120)
-                    Text("秒")
+                    Text(String(localized: "秒", bundle: appLocalizationBundle))
                     Spacer()
                     Button("-1.0s") { adjustOffset(by: -1.0) }
                     Button("-0.2s") { adjustOffset(by: -0.2) }
@@ -58,7 +58,7 @@ public struct TimeOffsetSheet: View {
                 } else if shiftedCues != cues {
                     if let first = cues.first, let shifted = shiftedCues.first {
                         let newStart = Double(shifted.startMilliseconds) / 1000.0
-                        Text(String(format: "首条字幕将从 %.3f 秒调整为 %.3f 秒", Double(first.startMilliseconds) / 1000.0, newStart))
+                        Text(String(format: String(localized: "首条字幕将从 %.3f 秒调整为 %.3f 秒", bundle: appLocalizationBundle), locale: .current, Double(first.startMilliseconds) / 1000.0, newStart))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -69,7 +69,7 @@ public struct TimeOffsetSheet: View {
 
             HStack {
                 Spacer()
-                Button("应用偏移") {
+                Button(String(localized: "应用偏移", bundle: appLocalizationBundle)) {
                     applyOffset()
                 }
                 .buttonStyle(.borderedProminent)

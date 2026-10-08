@@ -14,17 +14,17 @@ public struct RetranslateConfirmationSheet: View {
     public var body: some View {
         VStack(spacing: 20) {
             HStack {
-                Text("重译覆盖选择").font(.headline)
+                Text(String(localized: "重译覆盖选择", bundle: appLocalizationBundle)).font(.headline)
                 Spacer()
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }.keyboardShortcut(.cancelAction)
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                Label("本次选择 \(affectedCues.count) 条字幕。", systemImage: "character.bubble")
+                Label(String(localized: "本次选择 \(affectedCues.count) 条字幕。", bundle: appLocalizationBundle), systemImage: "character.bubble")
                     .font(.headline)
                     .foregroundStyle(.orange)
 
-                Text("仅翻译无译文的字幕将保留全部已有译文，包括手工校对和待重译内容。覆盖重译会替换所选字幕的已有译文，使用本次任务冻结的服务与模型。")
+                Text(String(localized: "仅翻译无译文的字幕将保留全部已有译文，包括手工校对和待重译内容。覆盖重译会替换所选字幕的已有译文，使用本次任务冻结的服务与模型。", bundle: appLocalizationBundle))
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
@@ -34,14 +34,14 @@ public struct RetranslateConfirmationSheet: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(cue.sourceText).font(.callout.bold())
                                 if case .succeeded(let text, _) = cue.translation {
-                                    Text("当前译文：\(text)").font(.caption).foregroundStyle(.secondary)
+                                    Text(String(localized: "当前译文：\(text)", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.secondary)
                                 }
                             }
                             .padding(.vertical, 4)
                             Divider()
                         }
                         if affectedCues.count > 10 {
-                            Text("… 以及其余 \(affectedCues.count - 10) 条").font(.caption).foregroundStyle(.secondary)
+                            Text(String(localized: "… 以及其余 \(affectedCues.count - 10) 条", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     .padding(8)
@@ -54,7 +54,7 @@ public struct RetranslateConfirmationSheet: View {
 
             HStack(spacing: 12) {
                 Spacer()
-                Button("仅翻译无译文字幕") {
+                Button(String(localized: "仅翻译无译文字幕", bundle: appLocalizationBundle)) {
                     onConfirm(false)
                     dismiss()
                 }
@@ -64,7 +64,7 @@ public struct RetranslateConfirmationSheet: View {
                     return true
                 })
 
-                Button("覆盖所选字幕并重译") {
+                Button(String(localized: "覆盖所选字幕并重译", bundle: appLocalizationBundle)) {
                     onConfirm(true)
                     dismiss()
                 }

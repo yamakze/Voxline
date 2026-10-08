@@ -115,18 +115,21 @@ public enum SubtitleTranslationError: Error, LocalizedError, Equatable {
     }
     public var errorDescription: String? {
         switch self {
-        case .invalidRequest: "翻译输入为空、重复或与当前字幕不一致。"
-        case .requestTooLarge: "字幕与相邻上下文超过本次请求容量，请缩短过长字幕后重试。"
-        case .invalidResponse: "聊天接口返回了无效的响应。"
-        case .invalidTranslationResult: "译文必须是纯 JSON，完整匹配字幕 ID，且每条译文非空。"
-        case .incompleteResponse(let reason): "聊天响应未完整结束（\(reason)），本批次未提交。"
-        case .missingCredential: "服务要求鉴权，请配置 API 密钥。"
-        case .authenticationFailed: "鉴权失败：API 密钥无效或未授权。"
-        case .rateLimited(let retryAfter): "服务限流（HTTP 429）。" + (retryAfter.map { "Retry-After：\($0)。" } ?? "") + "请稍后重试失败批次。"
-        case .timeout: "翻译请求超时，本批次未提交，请重试。"
-        case .connectionFailed: "无法连接翻译服务，请检查地址和网络。"
-        case .httpFailure(let code): "翻译服务返回 HTTP \(code)，本批次未提交。"
-        case .temporarilyUnavailable(let code, _): "翻译服务暂时不可用（HTTP \(code)），本批次未提交。"
+        case .invalidRequest: String(localized: "翻译输入为空、重复或与当前字幕不一致。", bundle: voxlineLocalizationBundle)
+        case .requestTooLarge: String(localized: "字幕与相邻上下文超过本次请求容量，请缩短过长字幕后重试。", bundle: voxlineLocalizationBundle)
+        case .invalidResponse: String(localized: "聊天接口返回了无效的响应。", bundle: voxlineLocalizationBundle)
+        case .invalidTranslationResult: String(localized: "译文必须是纯 JSON，完整匹配字幕 ID，且每条译文非空。", bundle: voxlineLocalizationBundle)
+        case .incompleteResponse(let reason): String(localized: "聊天响应未完整结束（\(reason)），本批次未提交。", bundle: voxlineLocalizationBundle)
+        case .missingCredential: String(localized: "服务要求鉴权，请配置 API 密钥。", bundle: voxlineLocalizationBundle)
+        case .authenticationFailed: String(localized: "鉴权失败：API 密钥无效或未授权。", bundle: voxlineLocalizationBundle)
+        case .rateLimited(let retryAfter):
+            if let retryAfter {
+                String(localized: "服务限流（HTTP 429），Retry-After：\(retryAfter)。请稍后重试失败批次。", bundle: voxlineLocalizationBundle)
+            } else { String(localized: "服务限流（HTTP 429）。请稍后重试失败批次。", bundle: voxlineLocalizationBundle) }
+        case .timeout: String(localized: "翻译请求超时，本批次未提交，请重试。", bundle: voxlineLocalizationBundle)
+        case .connectionFailed: String(localized: "无法连接翻译服务，请检查地址和网络。", bundle: voxlineLocalizationBundle)
+        case .httpFailure(let code): String(localized: "翻译服务返回 HTTP \(code)，本批次未提交。", bundle: voxlineLocalizationBundle)
+        case .temporarilyUnavailable(let code, _): String(localized: "翻译服务暂时不可用（HTTP \(code)），本批次未提交。", bundle: voxlineLocalizationBundle)
         }
     }
 }

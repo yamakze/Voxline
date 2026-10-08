@@ -76,12 +76,12 @@ struct IOSMediaDetailView: View {
                                 try library.storage.updateItem(updated, taskID: taskID, comparedTo: item)
                             } catch { errorMessage = error.localizedDescription }
                         } label: {
-                            Label("一键校对 (\(pendingReviewCount))", systemImage: "checkmark.seal.fill")
+                            Label(String(localized: "一键校对 (\(pendingReviewCount))", bundle: appLocalizationBundle), systemImage: "checkmark.seal.fill")
                         }
                     }
 
                     if !item.cues.isEmpty {
-                        Button(isSelecting ? "完成" : "选择") {
+                        Button(isSelecting ? String(localized: "完成", bundle: appLocalizationBundle) : String(localized: "选择", bundle: appLocalizationBundle)) {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 isSelecting.toggle()
                                 if !isSelecting { selectedCueIDs.removeAll() }
@@ -160,14 +160,14 @@ struct IOSMediaDetailView: View {
                     }
                 }
             }
-            .alert("操作异常", isPresented: Binding(
+            .alert(String(localized: "操作异常", bundle: appLocalizationBundle), isPresented: Binding(
                 get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-                Button("好") { errorMessage = nil }
+                Button(String(localized: "好", bundle: appLocalizationBundle)) { errorMessage = nil }
             } message: { Text(errorMessage ?? "") }
             .task(id: mediaID) { await playback.loadMedia(for: item) }
             .onDisappear { playback.releaseMedia() }
         } else {
-            ContentUnavailableView("媒体不存在", systemImage: "film")
+            ContentUnavailableView(String(localized: "媒体不存在", bundle: appLocalizationBundle), systemImage: "film")
         }
     }
 
@@ -191,7 +191,7 @@ struct IOSMediaDetailView: View {
                                 .font(.headline)
                                 .lineLimit(1)
                             if let media = item.media {
-                                Text("音轨 \(media.audioTrackID) · \(formatDuration(media.durationMilliseconds))")
+                                Text(String(localized: "音轨 \(media.audioTrackID) · \(formatDuration(media.durationMilliseconds))", bundle: appLocalizationBundle))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -214,7 +214,7 @@ struct IOSMediaDetailView: View {
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             } else {
-                                Text("待更新")
+                                Text(String(localized: "待更新", bundle: appLocalizationBundle))
                                     .font(.caption2)
                                     .foregroundStyle(.orange)
                             }
@@ -281,17 +281,17 @@ struct IOSMediaDetailView: View {
             .padding(.vertical, 8)
             .background(Color.secondary.opacity(0.05))
         } else if playback.isLoading {
-            ProgressView("读取本地媒体…")
+            ProgressView(String(localized: "读取本地媒体…", bundle: appLocalizationBundle))
                 .frame(maxWidth: .infinity, minHeight: 140)
         } else {
             VStack(spacing: 10) {
                 Image(systemName: "film.stack")
                     .font(.largeTitle)
                     .foregroundStyle(.secondary)
-                Text(playback.errorMessage ?? "媒体尚未关联")
+                Text(playback.errorMessage ?? String(localized: "媒体尚未关联", bundle: appLocalizationBundle))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                Button("关联本地媒体") {
+                Button(String(localized: "关联本地媒体", bundle: appLocalizationBundle)) {
                     importingMedia = true
                 }
                 .buttonStyle(.borderedProminent)
@@ -306,10 +306,10 @@ struct IOSMediaDetailView: View {
     // MARK: - 预览与倍速切换栏
     private var previewControlBar: some View {
         HStack(spacing: 12) {
-            Picker("字幕预览", selection: $previewKind) {
-                Text("原文").tag(SRTOutputKind.source)
-                Text("译文").tag(SRTOutputKind.translation)
-                Text("双语").tag(SRTOutputKind.bilingual)
+            Picker(String(localized: "字幕预览", bundle: appLocalizationBundle), selection: $previewKind) {
+                Text(String(localized: "原文", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
+                Text(String(localized: "译文", bundle: appLocalizationBundle)).tag(SRTOutputKind.translation)
+                Text(String(localized: "双语", bundle: appLocalizationBundle)).tag(SRTOutputKind.bilingual)
             }
             .pickerStyle(.segmented)
 
@@ -341,10 +341,10 @@ struct IOSMediaDetailView: View {
                 if library.queue.taskID == taskID && library.queue.mediaID == mediaID {
                     HStack(spacing: 10) {
                         ProgressView().controlSize(.small)
-                        Text(library.queue.progressText ?? "正在处理…")
+                        Text(library.queue.progressText ?? String(localized: "正在处理…", bundle: appLocalizationBundle))
                             .font(.caption)
                         Spacer()
-                        Button(library.queue.isCancelling ? "取消中" : "取消") {
+                        Button(library.queue.isCancelling ? String(localized: "取消中", bundle: appLocalizationBundle) : String(localized: "取消", bundle: appLocalizationBundle)) {
                             do { try library.queue.cancel(mediaID: mediaID) }
                             catch { errorMessage = error.localizedDescription }
                         }
@@ -357,7 +357,7 @@ struct IOSMediaDetailView: View {
                 }
 
                 if item.cues.isEmpty {
-                    ContentUnavailableView("暂无字幕内容", systemImage: "character.bubble")
+                    ContentUnavailableView(String(localized: "暂无字幕内容", bundle: appLocalizationBundle), systemImage: "character.bubble")
                         .padding(.vertical, 30)
                 }
 
@@ -459,7 +459,7 @@ struct IOSMediaDetailView: View {
                     if !cue.hasCurrentTranslation {
                         HStack(spacing: 4) {
                             Circle().fill(Color.orange).frame(width: 5, height: 5)
-                            Text("原文已修改，译文待更新")
+                            Text(String(localized: "原文已修改，译文待更新", bundle: appLocalizationBundle))
                                 .font(.caption2)
                                 .foregroundStyle(.orange)
                         }
@@ -471,7 +471,7 @@ struct IOSMediaDetailView: View {
                         .foregroundStyle(.red)
 
                 case .pending:
-                    Text("待翻译")
+                    Text(String(localized: "待翻译", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -484,7 +484,7 @@ struct IOSMediaDetailView: View {
                             try library.storage.updateItem(updated, taskID: taskID, comparedTo: item)
                         } catch { errorMessage = error.localizedDescription }
                     } label: {
-                        Label("确认校对", systemImage: "checkmark.circle")
+                        Label(String(localized: "确认校对", bundle: appLocalizationBundle), systemImage: "checkmark.circle")
                             .font(.caption2)
                     }
                     .buttonStyle(.bordered)
@@ -500,19 +500,19 @@ struct IOSMediaDetailView: View {
     @ViewBuilder
     private func selectionActionBar(_ item: TaskMediaItem) -> some View {
         HStack(spacing: 16) {
-            Button("全选") {
+            Button(String(localized: "全选", bundle: appLocalizationBundle)) {
                 selectedCueIDs = Set(item.cues.map(\.id))
             }
             .font(.subheadline)
 
-            Button("取消全选") {
+            Button(String(localized: "取消全选", bundle: appLocalizationBundle)) {
                 selectedCueIDs.removeAll()
             }
             .font(.subheadline)
 
             Spacer()
 
-            Text("已选 \(selectedCueIDs.count) 句")
+            Text(String(localized: "已选 \(selectedCueIDs.count) 句", bundle: appLocalizationBundle))
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
 
@@ -520,7 +520,7 @@ struct IOSMediaDetailView: View {
                 let targets = item.cues.filter { selectedCueIDs.contains($0.id) }
                 retranslatingCues = targets
             } label: {
-                Label("重译所选", systemImage: "arrow.triangle.2.circlepath")
+                Label(String(localized: "重译所选", bundle: appLocalizationBundle), systemImage: "arrow.triangle.2.circlepath")
                     .font(.subheadline.bold())
             }
             .buttonStyle(.borderedProminent)
@@ -544,21 +544,21 @@ struct IOSMediaDetailView: View {
                 Button {
                     shareSRT(kind: .source, item: item)
                 } label: {
-                    Label("导出原文字幕 (.srt)", systemImage: "doc.text")
+                    Label(String(localized: "导出原文字幕 (.srt)", bundle: appLocalizationBundle), systemImage: "doc.text")
                 }
                 .disabled(item.cues.isEmpty)
 
                 Button {
                     shareSRT(kind: .translation, item: item)
                 } label: {
-                    Label("导出译文字幕 (.srt)", systemImage: "doc.text.fill")
+                    Label(String(localized: "导出译文字幕 (.srt)", bundle: appLocalizationBundle), systemImage: "doc.text.fill")
                 }
                 .disabled(item.cues.isEmpty)
 
                 Button {
                     shareSRT(kind: .bilingual, item: item)
                 } label: {
-                    Label("导出双语字幕 (.srt)", systemImage: "doc.on.doc")
+                    Label(String(localized: "导出双语字幕 (.srt)", bundle: appLocalizationBundle), systemImage: "doc.on.doc")
                 }
                 .disabled(item.cues.isEmpty)
 
@@ -567,14 +567,14 @@ struct IOSMediaDetailView: View {
                     Button {
                         showingEmbedding = true
                     } label: {
-                        Label("内封软字幕视频 (.mp4)…", systemImage: "captions.bubble")
+                        Label(String(localized: "内封软字幕视频 (.mp4)…", bundle: appLocalizationBundle), systemImage: "captions.bubble")
                     }
                     .disabled(item.cues.isEmpty)
 
                     Button {
                         showingBurnIn = true
                     } label: {
-                        Label("烧录字幕视频 (.mp4)…", systemImage: "film")
+                        Label(String(localized: "烧录字幕视频 (.mp4)…", bundle: appLocalizationBundle), systemImage: "film")
                     }
                     .disabled(item.cues.isEmpty)
                 }
@@ -584,11 +584,11 @@ struct IOSMediaDetailView: View {
                     Button {
                         shareTask(currentTask)
                     } label: {
-                        Label("分享任务文件 (.voxline)", systemImage: "square.and.arrow.up")
+                        Label(String(localized: "分享任务文件 (.voxline)", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                     }
                 }
             } label: {
-                Label("导出与分享", systemImage: "square.and.arrow.up")
+                Label(String(localized: "导出与分享", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
             }
 
             Divider()
@@ -596,7 +596,7 @@ struct IOSMediaDetailView: View {
             let hasTranslation = task?.parameters.translation != nil
             if hasTranslation {
                 if !item.cues.isEmpty && !item.cues.allSatisfy(\.hasCurrentTranslation) {
-                    Button("继续翻译未完成", systemImage: "character.bubble") {
+                    Button(String(localized: "继续翻译未完成", bundle: appLocalizationBundle), systemImage: "character.bubble") {
                         do { try library.startTranslation(taskID: taskID, mediaID: mediaID) }
                         catch { errorMessage = error.localizedDescription }
                     }
@@ -604,13 +604,13 @@ struct IOSMediaDetailView: View {
                 }
 
                 if !item.cues.isEmpty {
-                    Button("重译全部字幕…", systemImage: "arrow.triangle.2.circlepath") {
+                    Button(String(localized: "重译全部字幕…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.2.circlepath") {
                         retranslatingCues = item.cues
                     }
                     .disabled(library.queue.taskID != nil)
                 }
             } else {
-                Button("配置翻译服务…", systemImage: "slider.horizontal.3") {
+                Button(String(localized: "配置翻译服务…", bundle: appLocalizationBundle), systemImage: "slider.horizontal.3") {
                     editingParameters = true
                 }
                 .disabled(library.queue.taskID == taskID)
@@ -618,11 +618,11 @@ struct IOSMediaDetailView: View {
 
             Divider()
 
-            Button("重新关联媒体…", systemImage: "paperclip") {
+            Button(String(localized: "重新关联媒体…", bundle: appLocalizationBundle), systemImage: "paperclip") {
                 importingMedia = true
             }
 
-            Button("整体时间偏移…", systemImage: "clock") {
+            Button(String(localized: "整体时间偏移…", bundle: appLocalizationBundle), systemImage: "clock") {
                 showingOffset = true
             }
         } label: {
@@ -682,11 +682,11 @@ private struct IOSSubtitleEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("原文") {
+                Section(String(localized: "原文", bundle: appLocalizationBundle)) {
                     TextEditor(text: $source)
                         .frame(minHeight: 100)
                 }
-                Section("译文") {
+                Section(String(localized: "译文", bundle: appLocalizationBundle)) {
                     TextEditor(text: $translation)
                         .frame(minHeight: 100)
                 }
@@ -696,14 +696,14 @@ private struct IOSSubtitleEditor: View {
                     }
                 }
             }
-            .navigationTitle("编辑字幕")
+            .navigationTitle(String(localized: "编辑字幕", bundle: appLocalizationBundle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
+                    Button(String(localized: "保存", bundle: appLocalizationBundle)) {
                         do {
                             try onSave(source, translation)
                             dismiss()
@@ -727,10 +727,10 @@ private struct IOSSubtitleOffsetEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("偏移秒数（支持小数或负数）", text: $secondsText)
+                    TextField(String(localized: "偏移秒数（支持小数或负数）", bundle: appLocalizationBundle), text: $secondsText)
                         .keyboardType(.numbersAndPunctuation)
                 } footer: {
-                    Text("正数延后，负数提前。")
+                    Text(String(localized: "正数延后，负数提前。", bundle: appLocalizationBundle))
                 }
 
                 if let errorMessage {
@@ -739,14 +739,14 @@ private struct IOSSubtitleOffsetEditor: View {
                     }
                 }
             }
-            .navigationTitle("整体时间偏移")
+            .navigationTitle(String(localized: "整体时间偏移", bundle: appLocalizationBundle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("应用") {
+                    Button(String(localized: "应用", bundle: appLocalizationBundle)) {
                         do {
                             guard let seconds = Double(secondsText.trimmingCharacters(in: .whitespacesAndNewlines)) else {
                                 throw SubtitleTimeOffsetError.invalidOffset

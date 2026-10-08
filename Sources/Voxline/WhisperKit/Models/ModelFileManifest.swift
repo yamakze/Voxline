@@ -19,13 +19,7 @@ struct ModelFileManifest: Codable, Equatable, Sendable {
     }
 
     static func baseline() throws -> Self {
-        #if SWIFT_PACKAGE
-        let url = Bundle.main.bundleURL.pathExtension == "app"
-            ? Bundle.main.url(forResource: "BaselineModel", withExtension: "json")
-            : Bundle.module.url(forResource: "BaselineModel", withExtension: "json")
-        #else
-        let url = Bundle(for: ModelResourceBundle.self).url(forResource: "BaselineModel", withExtension: "json")
-        #endif
+        let url = voxlineLocalizationBundle.url(forResource: "BaselineModel", withExtension: "json")
         guard let url else {
             throw WhisperModelError.missingManifest
         }
@@ -71,19 +65,15 @@ public enum WhisperModelError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .missingManifest: "应用缺少模型版本清单，请重新构建应用。"
-        case .unknownModel: "当前只支持已验证的 S001 基准型号。"
-        case .differentVersion: "本地模型版本不匹配，请重新下载。"
-        case .notInstalled: "模型尚未完整安装，请先下载。"
-        case .incompleteFile(let file): "模型文件缺失或不完整：\(file)"
-        case .differentFile(let file): "模型文件与固定版本不符：\(file)"
+        case .missingManifest: String(localized: "应用缺少模型版本清单，请重新构建应用。", bundle: voxlineLocalizationBundle)
+        case .unknownModel: String(localized: "当前只支持已验证的 S001 基准型号。", bundle: voxlineLocalizationBundle)
+        case .differentVersion: String(localized: "本地模型版本不匹配，请重新下载。", bundle: voxlineLocalizationBundle)
+        case .notInstalled: String(localized: "模型尚未完整安装，请先下载。", bundle: voxlineLocalizationBundle)
+        case .incompleteFile(let file): String(localized: "模型文件缺失或不完整：\(file)", bundle: voxlineLocalizationBundle)
+        case .differentFile(let file): String(localized: "模型文件与固定版本不符：\(file)", bundle: voxlineLocalizationBundle)
         case .insufficientSpace(let required, let available):
-            "可用空间不足，需要 \(required / 1_000_000) MB，可用 \(available / 1_000_000) MB。"
-        case .unavailableDiskSpace: "无法读取模型目录的可用空间。"
+            String(localized: "可用空间不足，需要 \(required / 1_000_000) MB，可用 \(available / 1_000_000) MB。", bundle: voxlineLocalizationBundle)
+        case .unavailableDiskSpace: String(localized: "无法读取模型目录的可用空间。", bundle: voxlineLocalizationBundle)
         }
     }
 }
-
-#if !SWIFT_PACKAGE
-private final class ModelResourceBundle: NSObject {}
-#endif

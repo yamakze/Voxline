@@ -50,11 +50,11 @@ public struct IOSSubtitleEmbeddingSheet: View {
     public var body: some View {
         NavigationStack {
             Form {
-                Section("字幕类型") {
-                    Picker("字幕类型", selection: $selectedKind) {
-                        Text("原文").tag(SRTOutputKind.source)
-                        Text("译文").tag(SRTOutputKind.translation)
-                        Text("双语").tag(SRTOutputKind.bilingual)
+                Section(String(localized: "字幕类型", bundle: appLocalizationBundle)) {
+                    Picker(String(localized: "字幕类型", bundle: appLocalizationBundle), selection: $selectedKind) {
+                        Text(String(localized: "原文", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
+                        Text(String(localized: "译文", bundle: appLocalizationBundle)).tag(SRTOutputKind.translation)
+                        Text(String(localized: "双语", bundle: appLocalizationBundle)).tag(SRTOutputKind.bilingual)
                     }
                     .pickerStyle(.segmented)
                     .disabled(isExporting)
@@ -64,44 +64,44 @@ public struct IOSSubtitleEmbeddingSheet: View {
                     }
 
                     if selectedKind != .source && missingTranslationCount > 0 {
-                        Text("有 \(missingTranslationCount) 条字幕缺少有效译文。请完成翻译或校对后导出，或选择原文。")
+                        Text(String(localized: "有 \(missingTranslationCount) 条字幕缺少有效译文。请完成翻译或校对后导出，或选择原文。", bundle: appLocalizationBundle))
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
                 }
 
-                Section("输出设置") {
-                    TextField("输出文件名", text: $fileName)
+                Section(String(localized: "输出设置", bundle: appLocalizationBundle)) {
+                    TextField(String(localized: "输出文件名", bundle: appLocalizationBundle), text: $fileName)
                         .disabled(isExporting)
                         .onChange(of: fileName) { _, _ in
                             exportedURL = nil
                             errorMessage = nil
                         }
 
-                    LabeledContent("字幕语言", value: selectedLanguageTag)
-                    LabeledContent("字幕条数", value: "\(itemSnapshot.cues.count) 条")
+                    LabeledContent(String(localized: "字幕语言", bundle: appLocalizationBundle), value: selectedLanguageTag)
+                    LabeledContent(String(localized: "字幕条数", bundle: appLocalizationBundle), value: String(localized: "\(itemSnapshot.cues.count) 条", bundle: appLocalizationBundle))
                 }
 
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("• 软字幕无损直通音视频画面，并在 MP4 内嵌入独立字幕轨。")
-                        Text("• 导出无需重新编码画面，耗时极短，画质零损耗。")
-                        Text("• 支持在播放器中自由开启或关闭字幕。")
+                        Text(String(localized: "• 软字幕无损直通音视频画面，并在 MP4 内嵌入独立字幕轨。", bundle: appLocalizationBundle))
+                        Text(String(localized: "• 导出无需重新编码画面，耗时极短，画质零损耗。", bundle: appLocalizationBundle))
+                        Text(String(localized: "• 支持在播放器中自由开启或关闭字幕。", bundle: appLocalizationBundle))
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
 
                 if isExporting {
-                    Section("导出进度") {
+                    Section(String(localized: "导出进度", bundle: appLocalizationBundle)) {
                         VStack(alignment: .leading, spacing: 8) {
                             ProgressView(value: progress)
                             HStack {
-                                Text("正在封装软字幕 \(Int(progress * 100))%…")
+                                Text(String(localized: "正在封装软字幕 \(Int(progress * 100))%…", bundle: appLocalizationBundle))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                Button("取消") {
+                                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
                                     exportTask?.cancel()
                                 }
                                 .font(.caption)
@@ -111,18 +111,18 @@ public struct IOSSubtitleEmbeddingSheet: View {
                 }
 
                 if let exportedURL {
-                    Section("导出成果") {
-                        Label("已生成软字幕视频", systemImage: "checkmark.circle.fill")
+                    Section(String(localized: "导出成果", bundle: appLocalizationBundle)) {
+                        Label(String(localized: "已生成软字幕视频", bundle: appLocalizationBundle), systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.green)
 
                         Button {
                             showPreviewPlayer = true
                         } label: {
-                            Label("在播放器中预览", systemImage: "play.circle")
+                            Label(String(localized: "在播放器中预览", bundle: appLocalizationBundle), systemImage: "play.circle")
                         }
 
                         ShareLink(item: exportedURL) {
-                            Label("分享或存储到“文件”…", systemImage: "square.and.arrow.up")
+                            Label(String(localized: "分享或存储到“文件”…", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                         }
                     }
                 }
@@ -142,7 +142,7 @@ public struct IOSSubtitleEmbeddingSheet: View {
                         } label: {
                             HStack {
                                 Spacer()
-                                Text("开始导出内封软字幕")
+                                Text(String(localized: "开始导出内封软字幕", bundle: appLocalizationBundle))
                                     .fontWeight(.semibold)
                                 Spacer()
                             }
@@ -151,11 +151,11 @@ public struct IOSSubtitleEmbeddingSheet: View {
                     }
                 }
             }
-            .navigationTitle("内封软字幕视频")
+            .navigationTitle(String(localized: "内封软字幕视频", bundle: appLocalizationBundle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { dismiss() }
+                    Button(String(localized: "关闭", bundle: appLocalizationBundle)) { dismiss() }
                         .disabled(isExporting)
                 }
                 if let exportedURL {
@@ -207,7 +207,7 @@ public struct IOSSubtitleEmbeddingSheet: View {
                 )
                 exportedURL = destination
             } catch is CancellationError {
-                errorMessage = "导出已取消。"
+                errorMessage = String(localized: "导出已取消。", bundle: appLocalizationBundle)
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -223,11 +223,11 @@ private struct VideoPlayerView: View {
         NavigationStack {
             VideoPlayer(player: AVPlayer(url: url))
                 .ignoresSafeArea()
-                .navigationTitle("视频预览")
+                .navigationTitle(String(localized: "视频预览", bundle: appLocalizationBundle))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("完成") { dismiss() }
+                        Button(String(localized: "完成", bundle: appLocalizationBundle)) { dismiss() }
                     }
                 }
         }

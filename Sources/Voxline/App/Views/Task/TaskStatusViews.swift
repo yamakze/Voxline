@@ -125,25 +125,25 @@ public struct MediaProcessingStepsView: View {
 
     private var transcriptionTitle: String {
         switch provider {
-        case .openAICompatible: return "云端转写"
-        case .whisperKit: return "本地转写"
-        case nil: return "语音转写"
+        case .openAICompatible: return String(localized: "云端转写", bundle: appLocalizationBundle)
+        case .whisperKit: return String(localized: "本地转写", bundle: appLocalizationBundle)
+        case nil: return String(localized: "语音转写", bundle: appLocalizationBundle)
         }
     }
 
     public var body: some View {
         HStack(spacing: 4) {
-            stepChip(title: "提取音频", state: item.extractionState)
+            stepChip(title: String(localized: "提取音频", bundle: appLocalizationBundle), state: item.extractionState)
             connectorLine(isActive: item.transcriptionState != .waiting)
             stepChip(title: transcriptionTitle, state: item.transcriptionState)
 
             if hasTranslation {
                 connectorLine(isActive: item.translationState != .waiting)
-                stepChip(title: status.isTranslationPaused ? "翻译暂停" : "字幕翻译", state: item.translationState)
+                stepChip(title: status.isTranslationPaused ? String(localized: "翻译暂停", bundle: appLocalizationBundle) : String(localized: "字幕翻译", bundle: appLocalizationBundle), state: item.translationState)
             }
 
             connectorLine(isActive: isCompleted)
-            stepChip(title: "就绪", state: isCompleted ? .completed : (isFailed ? .failed : (isCancelled ? .cancelled : .waiting)))
+            stepChip(title: String(localized: "就绪", bundle: appLocalizationBundle), state: isCompleted ? .completed : (isFailed ? .failed : (isCancelled ? .cancelled : .waiting)))
         }
         .font(.caption2)
     }
@@ -223,14 +223,14 @@ public struct SyncFileStatusBadge: View {
 
     private var label: String {
         switch state {
-        case .available: return "可用"
-        case .waitingForUpload: return "等待上传"
-        case .uploading: return "上传中"
-        case .notDownloaded: return "云端占位"
-        case .downloading: return "下载中"
-        case .synced: return "已同步"
-        case .conflict: return "版本冲突"
-        case .failed(let reason): return "同步失败：\(reason)"
+        case .available: return String(localized: "可用", bundle: appLocalizationBundle)
+        case .waitingForUpload: return String(localized: "等待上传", bundle: appLocalizationBundle)
+        case .uploading: return String(localized: "上传中", bundle: appLocalizationBundle)
+        case .notDownloaded: return String(localized: "云端占位", bundle: appLocalizationBundle)
+        case .downloading: return String(localized: "下载中", bundle: appLocalizationBundle)
+        case .synced: return String(localized: "已同步", bundle: appLocalizationBundle)
+        case .conflict: return String(localized: "版本冲突", bundle: appLocalizationBundle)
+        case .failed(let reason): return String(localized: "同步失败：\(reason)", bundle: appLocalizationBundle)
         }
     }
 

@@ -48,65 +48,65 @@ public struct ChangeCloudTranscriptionServiceSheet: View {
             Form {
                 if isTaskRunning {
                     Section {
-                        Text("任务正在处理中，不可更换转写服务。请先等待当前操作结束或取消处理。")
+                        Text(String(localized: "任务正在处理中，不可更换转写服务。请先等待当前操作结束或取消处理。", bundle: appLocalizationBundle))
                             .font(.callout)
                             .foregroundStyle(.orange)
                     }
                 }
 
-                Section("当前转写配置") {
+                Section(String(localized: "当前转写配置", bundle: appLocalizationBundle)) {
                     if let currentCloud {
-                        let currentServiceName = store.services.first(where: { $0.id == currentCloud.serviceID })?.name ?? "未在本机配置的服务"
-                        LabeledContent("当前服务", value: currentServiceName)
-                        LabeledContent("预设协议", value: currentCloud.protocolKind.label)
-                        LabeledContent("转写模型", value: currentTranscription.modelID)
-                        LabeledContent("API 地址", value: currentCloud.baseURL.absoluteString)
+                        let currentServiceName = store.services.first(where: { $0.id == currentCloud.serviceID })?.name ?? String(localized: "未在本机配置的服务", bundle: appLocalizationBundle)
+                        LabeledContent(String(localized: "当前服务", bundle: appLocalizationBundle), value: currentServiceName)
+                        LabeledContent(String(localized: "预设协议", bundle: appLocalizationBundle), value: currentCloud.protocolKind.label)
+                        LabeledContent(String(localized: "转写模型", bundle: appLocalizationBundle), value: currentTranscription.modelID)
+                        LabeledContent(String(localized: "API 地址", bundle: appLocalizationBundle), value: currentCloud.baseURL.absoluteString)
                     } else {
-                        LabeledContent("当前转写", value: "本地 WhisperKit")
+                        LabeledContent(String(localized: "当前转写", bundle: appLocalizationBundle), value: String(localized: "本地 WhisperKit", bundle: appLocalizationBundle))
                     }
-                    LabeledContent("语言识别", value: currentTranscription.languageMode == .specified ? (currentTranscription.languageCode ?? "未指定") : "自动识别")
+                    LabeledContent(String(localized: "语言识别", bundle: appLocalizationBundle), value: currentTranscription.languageMode == .specified ? (currentTranscription.languageCode ?? String(localized: "未指定", bundle: appLocalizationBundle)) : String(localized: "自动识别", bundle: appLocalizationBundle))
                 }
 
-                Section("目标转写服务") {
+                Section(String(localized: "目标转写服务", bundle: appLocalizationBundle)) {
                     if store.services.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("本机尚未配置任何云端转写服务。")
+                            Text(String(localized: "本机尚未配置任何云端转写服务。", bundle: appLocalizationBundle))
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
-                            Button("配置转写服务…") {
+                            Button(String(localized: "配置转写服务…", bundle: appLocalizationBundle)) {
                                 showManageServices = true
                             }
                             .buttonStyle(.bordered)
                         }
                     } else {
-                        Picker("选择新服务", selection: $selectedServiceID) {
-                            Text("请选择服务").tag(nil as UUID?)
+                        Picker(String(localized: "选择新服务", bundle: appLocalizationBundle), selection: $selectedServiceID) {
+                            Text(String(localized: "请选择服务", bundle: appLocalizationBundle)).tag(nil as UUID?)
                             ForEach(store.services) { service in
                                 Text(service.name).tag(Optional(service.id))
                             }
                         }
 
                         if let service = selectedService {
-                            LabeledContent("协议", value: service.protocolKind.label)
-                            LabeledContent("模型", value: service.modelID)
-                            LabeledContent("API 地址", value: service.baseURL.absoluteString)
+                            LabeledContent(String(localized: "协议", bundle: appLocalizationBundle), value: service.protocolKind.label)
+                            LabeledContent(String(localized: "模型", bundle: appLocalizationBundle), value: service.modelID)
+                            LabeledContent(String(localized: "API 地址", bundle: appLocalizationBundle), value: service.baseURL.absoluteString)
 
                             if isIncompatibleProtocolSwitch {
-                                Text("⚠️ 当前任务已有转写成果。Audio Transcriptions（整段转写）与音频聊天预设（语音分块）之间的切分机制不同，已有检查点的任务无法切换，请新建任务。")
+                                Text(String(localized: "⚠️ 当前任务已有转写成果。Audio Transcriptions（整段转写）与音频聊天预设（语音分块）之间的切分机制不同，已有检查点的任务无法切换，请新建任务。", bundle: appLocalizationBundle))
                                     .font(.caption)
                                     .foregroundStyle(.red)
                             } else if service.id == currentCloud?.serviceID {
-                                Text("所选服务与当前已绑定的服务相同。")
+                                Text(String(localized: "所选服务与当前已绑定的服务相同。", bundle: appLocalizationBundle))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             } else {
-                                Text("更换后将保留已有转写成果与人工校对，后续未转写的音频将使用新配置。")
+                                Text(String(localized: "更换后将保留已有转写成果与人工校对，后续未转写的音频将使用新配置。", bundle: appLocalizationBundle))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                         }
 
-                        Button("管理转写服务…") {
+                        Button(String(localized: "管理转写服务…", bundle: appLocalizationBundle)) {
                             showManageServices = true
                         }
                         .font(.caption)
@@ -122,17 +122,17 @@ public struct ChangeCloudTranscriptionServiceSheet: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle("更换转写服务")
+            .navigationTitle(String(localized: "更换转写服务", bundle: appLocalizationBundle))
             #if os(macOS)
             .frame(minWidth: 460, minHeight: 380)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("确认更换") {
+                    Button(String(localized: "确认更换", bundle: appLocalizationBundle)) {
                         applyChange()
                     }
                     .buttonStyle(.borderedProminent)

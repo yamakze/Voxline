@@ -12,7 +12,7 @@ public enum BurnInCodec: String, CaseIterable, Sendable {
 
 public enum BurnInQuality: String, CaseIterable, Sendable {
     case original, fullHD
-    public var label: String { self == .original ? "源尺寸 · 最高质量" : "最高 1080p · 最高质量" }
+    public var label: String { self == .original ? String(localized: "源尺寸 · 最高质量", bundle: voxlineLocalizationBundle) : String(localized: "最高 1080p · 最高质量", bundle: voxlineLocalizationBundle) }
     func preset(codec: BurnInCodec) -> String {
         switch (codec, self) {
         case (.h264, .original): AVAssetExportPresetHighestQuality
@@ -37,17 +37,17 @@ public enum BurnInError: LocalizedError, Equatable {
     case textDoesNotFit, sourceIsOutput, invalidFileName, fileAlreadyExists, invalidOutput, failure(String)
     public var errorDescription: String? {
         switch self {
-        case .videoRequired: "字幕烧录需要包含画面的视频。"
-        case .missingMedia: "本地媒体未关联，请先重新关联并确认音轨。"
-        case .unsupportedColor: "当前烧录仅支持 SDR 视频；HDR 或广色域输入不会自动转换。"
-        case .unsupportedEncoding: "系统不支持所选编码与质量，请选择其他输出设置。"
-        case .invalidGeometry: "无法确定视频的尺寸、方向或帧时间。"
-        case .textDoesNotFit: "字幕超过画面可用区域，请减小字号或修改换行后重新预览。"
-        case .sourceIsOutput: "输出文件不能是原视频，请使用新的文件名。"
-        case .invalidFileName: "请输入不含路径的 .mp4 文件名。"
-        case .fileAlreadyExists: "输出文件已存在。"
-        case .invalidOutput: "导出文件的编码、尺寸、时长或音轨不符合所选输出。"
-        case .failure(let reason): "烧录失败：\(reason)"
+        case .videoRequired: String(localized: "字幕烧录需要包含画面的视频。", bundle: voxlineLocalizationBundle)
+        case .missingMedia: String(localized: "本地媒体未关联，请先重新关联并确认音轨。", bundle: voxlineLocalizationBundle)
+        case .unsupportedColor: String(localized: "当前烧录仅支持 SDR 视频；HDR 或广色域输入不会自动转换。", bundle: voxlineLocalizationBundle)
+        case .unsupportedEncoding: String(localized: "系统不支持所选编码与质量，请选择其他输出设置。", bundle: voxlineLocalizationBundle)
+        case .invalidGeometry: String(localized: "无法确定视频的尺寸、方向或帧时间。", bundle: voxlineLocalizationBundle)
+        case .textDoesNotFit: String(localized: "字幕超过画面可用区域，请减小字号或修改换行后重新预览。", bundle: voxlineLocalizationBundle)
+        case .sourceIsOutput: String(localized: "输出文件不能是原视频，请使用新的文件名。", bundle: voxlineLocalizationBundle)
+        case .invalidFileName: String(localized: "请输入不含路径的 .mp4 文件名。", bundle: voxlineLocalizationBundle)
+        case .fileAlreadyExists: String(localized: "输出文件已存在。", bundle: voxlineLocalizationBundle)
+        case .invalidOutput: String(localized: "导出文件的编码、尺寸、时长或音轨不符合所选输出。", bundle: voxlineLocalizationBundle)
+        case .failure(let reason): String(localized: "烧录失败：\(reason)", bundle: voxlineLocalizationBundle)
         }
     }
 }
@@ -245,7 +245,7 @@ public enum SubtitleBurnInExporter {
             session.cancelExport()
             if manager.fileExists(atPath: temporary.path) {
                 do { try manager.removeItem(at: temporary) }
-                catch let cleanupError { throw BurnInError.failure("\(error.localizedDescription)；临时文件清理失败：\(cleanupError.localizedDescription)") }
+                catch let cleanupError { throw BurnInError.failure(String(localized: "\(error.localizedDescription)；临时文件清理失败：\(cleanupError.localizedDescription)", bundle: voxlineLocalizationBundle)) }
             }
             if Task.isCancelled { throw CancellationError() }
             throw error
@@ -280,20 +280,20 @@ private final class BurnInTextRenderer: @unchecked Sendable {
             guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
                                           bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-                throw BurnInError.failure("无法分配字幕绘制缓冲。")
+                throw BurnInError.failure(String(localized: "无法分配字幕绘制缓冲。", bundle: voxlineLocalizationBundle))
             }
             context.setFillColor(CGColor(gray: 0, alpha: 0.72))
             context.fill(CGRect(x: 0, y: 0, width: width, height: height))
             context.translateBy(x: padding, y: padding)
             CTFrameDraw(frame, context)
-            guard let image = context.makeImage() else { throw BurnInError.failure("无法生成字幕图像。") }
+            guard let image = context.makeImage() else { throw BurnInError.failure(String(localized: "无法生成字幕图像。", bundle: voxlineLocalizationBundle)) }
             cachedOverlay = CIImage(cgImage: image).transformed(by: CGAffineTransform(
                 translationX: source.extent.midX - Double(width) / 2,
                 y: source.extent.minY + size.height * 0.05))
             cachedID = cue.id
             cachedSize = size
         }
-        guard let overlay = cachedOverlay else { throw BurnInError.failure("字幕图像未生成。") }
+        guard let overlay = cachedOverlay else { throw BurnInError.failure(String(localized: "字幕图像未生成。", bundle: voxlineLocalizationBundle)) }
         return overlay.composited(over: source).cropped(to: source.extent)
     }
 

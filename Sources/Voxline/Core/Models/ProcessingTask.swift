@@ -9,7 +9,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
     public private(set) var parameters: TaskParameters
     public private(set) var startedAt: Date?
 
-    public init(id: UUID = UUID(), title: String = "未命名任务", items: [TaskMediaItem] = [],
+    public init(id: UUID = UUID(), title: String = String(localized: "未命名任务", bundle: voxlineLocalizationBundle), items: [TaskMediaItem] = [],
                 parameters: TaskParameters = .baseline) {
         formatVersion = Self.currentFormatVersion
         self.id = id
@@ -20,7 +20,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
 
     /// A recovery copy keeps media and immutable evidence IDs, but never claims a local worker.
     public func duplicated(title: String? = nil) throws -> ProcessingTask {
-        var copy = ProcessingTask(title: title ?? self.title + " 副本", items: items, parameters: parameters)
+        var copy = ProcessingTask(title: title ?? self.title + String(localized: " 副本", bundle: voxlineLocalizationBundle), items: items, parameters: parameters)
         copy.startedAt = startedAt
         copy.interruptRunningItems()
         try copy.validate()
@@ -363,21 +363,21 @@ public enum TaskValidationError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .emptyTitle: "任务名称不能为空。"
-        case .taskChanged: "提交期间任务已改变，请重新打开任务准备。"
-        case .parametersFrozen: "已有转写记录或字幕；更换模型或原文语言需新建任务。"
-        case .translationReplacementRequired: "目标语言已改变，需要确认清除现有译文；原文、时间与转写成果保持。"
-        case .noMedia: "请先添加本地媒体。"
-        case .noReadyMedia: "任务没有可开始的媒体，请修复失败条目或添加可用媒体。"
-        case .invalidOutputs: "请选择不重复的 SRT 输出类型。"
-        case .translationRequired: "译文和双语输出需要开启翻译。"
-        case .unconfiguredTranslationService: "请为本次翻译选择已配置的本地服务。"
-        case .duplicateMedia: "任务包含重复的媒体条目 ID。"
-        case .emptyMediaTitle: "媒体名称不能为空。"
-        case .invalidSource: "媒体来源与文件信息不一致。"
-        case .unassociatedMedia: "请先关联媒体并选择音轨。"
-        case .workBeforeStart: "未开始任务不能包含运行或已完成状态。"
-        case .emptyFailureReason: "处理失败必须保留实际原因。"
+        case .emptyTitle: String(localized: "任务名称不能为空。", bundle: voxlineLocalizationBundle)
+        case .taskChanged: String(localized: "提交期间任务已改变，请重新打开任务准备。", bundle: voxlineLocalizationBundle)
+        case .parametersFrozen: String(localized: "已有转写记录或字幕；更换模型或原文语言需新建任务。", bundle: voxlineLocalizationBundle)
+        case .translationReplacementRequired: String(localized: "目标语言已改变，需要确认清除现有译文；原文、时间与转写成果保持。", bundle: voxlineLocalizationBundle)
+        case .noMedia: String(localized: "请先添加本地媒体。", bundle: voxlineLocalizationBundle)
+        case .noReadyMedia: String(localized: "任务没有可开始的媒体，请修复失败条目或添加可用媒体。", bundle: voxlineLocalizationBundle)
+        case .invalidOutputs: String(localized: "请选择不重复的 SRT 输出类型。", bundle: voxlineLocalizationBundle)
+        case .translationRequired: String(localized: "译文和双语输出需要开启翻译。", bundle: voxlineLocalizationBundle)
+        case .unconfiguredTranslationService: String(localized: "请为本次翻译选择已配置的本地服务。", bundle: voxlineLocalizationBundle)
+        case .duplicateMedia: String(localized: "任务包含重复的媒体条目 ID。", bundle: voxlineLocalizationBundle)
+        case .emptyMediaTitle: String(localized: "媒体名称不能为空。", bundle: voxlineLocalizationBundle)
+        case .invalidSource: String(localized: "媒体来源与文件信息不一致。", bundle: voxlineLocalizationBundle)
+        case .unassociatedMedia: String(localized: "请先关联媒体并选择音轨。", bundle: voxlineLocalizationBundle)
+        case .workBeforeStart: String(localized: "未开始任务不能包含运行或已完成状态。", bundle: voxlineLocalizationBundle)
+        case .emptyFailureReason: String(localized: "处理失败必须保留实际原因。", bundle: voxlineLocalizationBundle)
         }
     }
 }

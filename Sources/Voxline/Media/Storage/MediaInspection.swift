@@ -142,19 +142,19 @@ public enum MediaAccessError: Error, LocalizedError, Equatable {
     case missingFile(String)
     public var errorDescription: String? {
         switch self {
-        case .unsupportedFormat: "请选择本地 MP4／MOV／M4V 视频或 M4A／MP3／WAV 音频。"
-        case .invalidFile: "媒体为空或不是普通文件。"
-        case .protectedMedia: "媒体受保护，无法转写。"
-        case .invalidDuration: "无法取得有效的媒体时长。"
-        case .noVideo: "文件中没有视频轨。"
-        case .noAudio: "媒体中没有音轨。"
-        case .undecodableVideo: "当前系统无法解码视频轨。"
-        case .undecodableAudio: "当前系统无法解码任何音轨。"
-        case .invalidAudioTrack: "所选音轨不存在或无法解码，请重新选择。"
-        case .fileChanged: "检查期间媒体发生变化，请重试。"
-        case .invalidBookmark: "本地媒体关联记录无效，请重新关联媒体。"
-        case .itemChanged: "确认期间媒体条目已改变，请重新关联。"
-        case .missingFile(let name): "找不到“\(name)”，请重新关联媒体。"
+        case .unsupportedFormat: String(localized: "请选择本地 MP4／MOV／M4V 视频或 M4A／MP3／WAV 音频。", bundle: voxlineLocalizationBundle)
+        case .invalidFile: String(localized: "媒体为空或不是普通文件。", bundle: voxlineLocalizationBundle)
+        case .protectedMedia: String(localized: "媒体受保护，无法转写。", bundle: voxlineLocalizationBundle)
+        case .invalidDuration: String(localized: "无法取得有效的媒体时长。", bundle: voxlineLocalizationBundle)
+        case .noVideo: String(localized: "文件中没有视频轨。", bundle: voxlineLocalizationBundle)
+        case .noAudio: String(localized: "媒体中没有音轨。", bundle: voxlineLocalizationBundle)
+        case .undecodableVideo: String(localized: "当前系统无法解码视频轨。", bundle: voxlineLocalizationBundle)
+        case .undecodableAudio: String(localized: "当前系统无法解码任何音轨。", bundle: voxlineLocalizationBundle)
+        case .invalidAudioTrack: String(localized: "所选音轨不存在或无法解码，请重新选择。", bundle: voxlineLocalizationBundle)
+        case .fileChanged: String(localized: "检查期间媒体发生变化，请重试。", bundle: voxlineLocalizationBundle)
+        case .invalidBookmark: String(localized: "本地媒体关联记录无效，请重新关联媒体。", bundle: voxlineLocalizationBundle)
+        case .itemChanged: String(localized: "确认期间媒体条目已改变，请重新关联。", bundle: voxlineLocalizationBundle)
+        case .missingFile(let name): String(localized: "找不到“\(name)”，请重新关联媒体。", bundle: voxlineLocalizationBundle)
         }
     }
 }

@@ -39,7 +39,7 @@ public struct TaskDetailView: View {
             }
             .padding(24)
             if task.items.isEmpty {
-                Text("请先添加本地音视频。").font(.callout).foregroundStyle(.secondary).padding()
+                Text(String(localized: "请先添加本地音视频。", bundle: appLocalizationBundle)).font(.callout).foregroundStyle(.secondary).padding()
             }
             if let error = queue.errorMessage {
                 Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled).padding()
@@ -51,15 +51,15 @@ public struct TaskDetailView: View {
                 syncSettings.refresh()
             }
         }
-        .alert("提示", isPresented: Binding(
+        .alert(String(localized: "提示", bundle: appLocalizationBundle), isPresented: Binding(
             get: { noticeMessage != nil }, set: { if !$0 { noticeMessage = nil } }
         )) {
-            Button("好", role: .cancel) { noticeMessage = nil }
+            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { noticeMessage = nil }
         } message: { Text(noticeMessage ?? "") }
-        .alert("处理未开始或操作失败", isPresented: Binding(
+        .alert(String(localized: "处理未开始或操作失败", bundle: appLocalizationBundle), isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
         )) {
-            Button("好", role: .cancel) { errorMessage = nil }
+            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
     }
 
@@ -70,16 +70,16 @@ public struct TaskDetailView: View {
                 .font(.title3)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("此任务存在云端冲突版本")
+                Text(String(localized: "此任务存在云端冲突版本", bundle: appLocalizationBundle))
                     .font(.subheadline.bold())
-                Text("检测到其他设备保存的冲突文档，请选择保留版本或保存草稿副本。")
+                Text(String(localized: "检测到其他设备保存的冲突文档，请选择保留版本或保存草稿副本。", bundle: appLocalizationBundle))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            Button("解决冲突…") {
+            Button(String(localized: "解决冲突…", bundle: appLocalizationBundle)) {
                 showConflictSheet = true
             }
             .buttonStyle(.borderedProminent)
@@ -95,14 +95,14 @@ public struct TaskDetailView: View {
             HStack(spacing: 6) {
                 Image(systemName: "film.stack")
                     .foregroundStyle(.secondary)
-                Text("\(task.items.count) 媒体")
+                Text(String(localized: "\(task.items.count) 媒体", bundle: appLocalizationBundle))
                     .font(.subheadline.weight(.medium))
             }
 
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
-                Text("\(task.completedCount) 完成")
+                Text(String(localized: "\(task.completedCount) 完成", bundle: appLocalizationBundle))
                     .font(.subheadline.weight(.medium))
             }
 
@@ -110,7 +110,7 @@ public struct TaskDetailView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.red)
-                    Text("\(task.failedCount) 失败")
+                    Text(String(localized: "\(task.failedCount) 失败", bundle: appLocalizationBundle))
                         .font(.subheadline.weight(.medium))
                 }
             }
@@ -119,7 +119,7 @@ public struct TaskDetailView: View {
             HStack(spacing: 6) {
                 Image(systemName: "captions.bubble")
                     .foregroundStyle(.secondary)
-                Text("\(totalCues) 句字幕")
+                Text(String(localized: "\(totalCues) 句字幕", bundle: appLocalizationBundle))
                     .font(.subheadline.weight(.medium))
             }
 
@@ -149,16 +149,16 @@ public struct TaskDetailView: View {
     private var mediaQueue: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("媒体列表", systemImage: "film.stack")
+                Label(String(localized: "媒体列表", bundle: appLocalizationBundle), systemImage: "film.stack")
                     .font(.headline)
                 Spacer()
             }
 
             if task.items.isEmpty {
                 ContentUnavailableView(
-                    "流水线队列为空",
+                    String(localized: "流水线队列为空", bundle: appLocalizationBundle),
                     systemImage: "film.stack",
-                    description: Text("请点击右上角“调整参数与媒体”导入音视频。")
+                    description: Text(String(localized: "请点击右上角“调整参数与媒体”导入音视频。", bundle: appLocalizationBundle))
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 36)
@@ -187,16 +187,16 @@ public struct TaskDetailView: View {
                                     HStack(spacing: 8) {
                                         if let media = item.media {
                                             Text(String(format: "%.1fs", Double(media.durationMilliseconds) / 1000.0))
-                                            Text("音轨 \(media.audioTrackID)")
-                                            Text("\(item.cues.count) 句字幕")
+                                            Text(String(localized: "音轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
+                                            Text(String(localized: "\(item.cues.count) 句字幕", bundle: appLocalizationBundle))
                                         } else {
-                                            Text("未关联文件").foregroundStyle(.red)
+                                            Text(String(localized: "未关联文件", bundle: appLocalizationBundle)).foregroundStyle(.red)
                                         }
                                     }
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     if queue.taskID == task.id, queue.mediaID == item.id {
-                                        Text(queue.isCancelling ? "正在取消，等待当前操作结束" : queue.progressText ?? "处理中")
+                                        Text(queue.isCancelling ? String(localized: "正在取消，等待当前操作结束", bundle: appLocalizationBundle) : queue.progressText ?? String(localized: "处理中", bundle: appLocalizationBundle))
                                             .font(.caption2).foregroundStyle(.tint)
                                         if let wait = queue.translationRetryWait, !queue.isCancelling {
                                             TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -222,7 +222,7 @@ public struct TaskDetailView: View {
                                 // In-line Action Buttons
                                 HStack(spacing: 6) {
                                     if item.status.isRetryable {
-                                        Button(item.status.isTranslationPaused ? "继续翻译" : "重试", systemImage: "arrow.clockwise") {
+                                        Button(item.status.isTranslationPaused ? String(localized: "继续翻译", bundle: appLocalizationBundle) : String(localized: "重试", bundle: appLocalizationBundle), systemImage: "arrow.clockwise") {
                                             do { try queue.start(taskID: task.id, mediaID: item.id) }
                                             catch { errorMessage = error.localizedDescription }
                                         }
@@ -232,7 +232,7 @@ public struct TaskDetailView: View {
                                     }
 
                                     if queue.taskID == task.id, queue.isScheduled(mediaID: item.id) {
-                                        Button("取消") {
+                                        Button(String(localized: "取消", bundle: appLocalizationBundle)) {
                                             do { try queue.cancel(mediaID: item.id) }
                                             catch { errorMessage = error.localizedDescription }
                                         }
@@ -240,7 +240,7 @@ public struct TaskDetailView: View {
                                         .disabled(queue.isCancelling && queue.mediaID == item.id)
                                     }
 
-                                    Button("校对", systemImage: "chevron.right") {
+                                    Button(String(localized: "校对", bundle: appLocalizationBundle), systemImage: "chevron.right") {
                                         selectedMediaID = item.id
                                     }
                                     .buttonStyle(.borderless)
@@ -254,7 +254,7 @@ public struct TaskDetailView: View {
                             // Inline Failure Diagnosis Drawer
                             if case .translationPaused(let reason) = item.status {
                                 Label {
-                                    Text("翻译暂停，成果已保存。\(reason) 可稍后继续翻译，或进入校对导出原文。")
+                                    Text(String(localized: "翻译暂停，成果已保存。\(reason) 可稍后继续翻译，或进入校对导出原文。", bundle: appLocalizationBundle))
                                         .foregroundStyle(.primary)
                                 } icon: {
                                     Image(systemName: "pause.circle").foregroundStyle(.orange)
@@ -268,7 +268,7 @@ public struct TaskDetailView: View {
                                     Image(systemName: "exclamationmark.octagon.fill")
                                         .foregroundStyle(.red)
                                         .font(.caption)
-                                    Text("失败原因：\(reason)")
+                                    Text(String(localized: "失败原因：\(reason)", bundle: appLocalizationBundle))
                                         .font(.caption2)
                                         .foregroundStyle(.red)
                                     Spacer()

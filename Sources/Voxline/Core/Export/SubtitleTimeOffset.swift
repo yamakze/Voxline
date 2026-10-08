@@ -31,8 +31,8 @@ public enum SubtitleTimeOffsetError: Error, LocalizedError, Equatable {
     case invalidOffset, negativeTime
     public var errorDescription: String? {
         switch self {
-        case .invalidOffset: "偏移时间无效或超出可表示范围。"
-        case .negativeTime: "偏移后部分字幕开始时间小于 0 秒。"
+        case .invalidOffset: String(localized: "偏移时间无效或超出可表示范围。", bundle: voxlineLocalizationBundle)
+        case .negativeTime: String(localized: "偏移后部分字幕开始时间小于 0 秒。", bundle: voxlineLocalizationBundle)
         }
     }
 }

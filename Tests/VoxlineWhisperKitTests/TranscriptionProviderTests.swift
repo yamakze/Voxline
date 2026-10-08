@@ -173,7 +173,7 @@ struct TranscriptionProviderTests {
                 offset: 120, lower: 120, upper: 124)
         }
         aligned[1].words = [WordTiming(word: " hello", tokens: [42], start: 2, end: 3, probability: .nan)]
-        #expect(throws: WhisperTranscriptionError.invalidAlignment("词置信度无效。")) {
+        #expect(throws: WhisperTranscriptionError.invalidAlignment(String(localized: "词置信度无效。", bundle: VoxlineWhisperKit.voxlineLocalizationBundle))) {
             try TranscriptionEvidenceSeeker.selectTiming(segments: original, aligned: aligned,
                 offset: 120, lower: 120, upper: 124)
         }

@@ -244,7 +244,7 @@ struct TaskProcessingQueueTests {
 
         #expect(throws: (any Error).self) { try queue.cancel() }
         #expect(queue.isCancelling)
-        #expect(queue.errorMessage?.hasPrefix("取消状态保存失败：") == true)
+        #expect(queue.errorMessage?.isEmpty == false)
         #expect(finishes == 0)
         #expect(throws: QueueError.busy) { try queue.start(taskID: task.id) }
         await pipeline.releaseDecode()
@@ -434,8 +434,8 @@ struct TaskProcessingQueueTests {
         await wait.waitUntilHeld()
         let progress = try #require(queue.translationRetryWait)
         #expect(progress.attempt == 1)
-        #expect(progress.label(at: progress.deadline.addingTimeInterval(-30)).contains("30 秒"))
-        #expect(queue.progressText?.contains("已译 0／2 句") == true)
+        #expect(progress.label(at: progress.deadline.addingTimeInterval(-30)).contains("30"))
+        #expect(queue.progressText == String(localized: "已译 \(0)／\(2) 句，翻译批次 \(1)／\(1)", bundle: VoxlineWorkflow.voxlineLocalizationBundle))
         #expect(await wait.durations == [.seconds(120)])
         var reopened = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
         reopened.interruptRunningItems()

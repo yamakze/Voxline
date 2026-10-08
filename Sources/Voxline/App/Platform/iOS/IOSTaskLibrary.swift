@@ -61,7 +61,7 @@ final class IOSTaskLibrary {
         guard let task = storage.task(for: taskID), task.parameters.translation != nil,
               let item = task.items.first(where: { $0.id == mediaID }),
               item.hasCompletedTranscription else {
-            throw QueueError.unavailable("本机翻译需要启用翻译且已完成转写的任务成果。")
+            throw QueueError.unavailable(String(localized: "本机翻译需要启用翻译且已完成转写的任务成果。", bundle: appLocalizationBundle))
         }
         try queue.start(taskID: taskID, mediaID: mediaID)
     }
@@ -86,7 +86,7 @@ final class IOSTaskLibrary {
             }
             if identifier == .invalid {
                 // No execution time was granted; stop the queue and expose save failures.
-                errorMessage = "后台执行不可用。"
+                errorMessage = String(localized: "后台执行不可用。", bundle: appLocalizationBundle)
                 do { try queue.cancel() }
                 catch { errorMessage = error.localizedDescription }
             } else {

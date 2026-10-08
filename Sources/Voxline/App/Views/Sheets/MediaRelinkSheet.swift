@@ -26,12 +26,12 @@ public struct MediaRelinkSheet: View {
     public var body: some View {
         VStack(spacing: 20) {
             HStack {
-                Text("重新关联本地媒体").font(.headline)
+                Text(String(localized: "重新关联本地媒体", bundle: appLocalizationBundle)).font(.headline)
                 Spacer()
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }.keyboardShortcut(.cancelAction)
             }
 
-            Text("为“\(item.title)”选择本地原文件。文件内容哈希、时长与所选音轨需与任务记录一致；关联成功后保留现有全部字幕与校对记录。")
+            Text(String(localized: "为“\(item.title)”选择本地原文件。文件内容哈希、时长与所选音轨需与任务记录一致；关联成功后保留现有全部字幕与校对记录。", bundle: appLocalizationBundle))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -40,15 +40,15 @@ public struct MediaRelinkSheet: View {
                 if let media = item.media {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("已记录媒体：\(media.fileName)").font(.headline)
-                            Text(String(format: "时长 %.3f 秒 · 音轨 ID：%d", Double(media.durationMilliseconds) / 1000.0, media.audioTrackID))
+                            Text(String(localized: "已记录媒体：\(media.fileName)", bundle: appLocalizationBundle)).font(.headline)
+                            Text(String(format: String(localized: "时长 %.3f 秒 · 音轨 ID：%d", bundle: appLocalizationBundle), locale: .current, Double(media.durationMilliseconds) / 1000.0, media.audioTrackID))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
                 }
 
-                Button("选择本地文件…") {
+                Button(String(localized: "选择本地文件…", bundle: appLocalizationBundle)) {
                     showMediaImporter = true
                 }
                 .disabled(isInspecting || isCommitting)
@@ -56,21 +56,21 @@ public struct MediaRelinkSheet: View {
                 if isInspecting {
                     HStack {
                         ProgressView().controlSize(.small)
-                        Text("正在检查媒体信息与计算内容哈希…").font(.caption).foregroundStyle(.secondary)
+                        Text(String(localized: "正在检查媒体信息与计算内容哈希…", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
 
                 if let inspection {
                     Divider()
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("所选文件：\(inspection.url.lastPathComponent)").font(.headline)
-                        Text(String(format: "时长 %.3f 秒 · 大小 %.1f MB", Double(inspection.durationMilliseconds) / 1000.0, Double(inspection.byteCount) / 1_048_576))
+                        Text(String(localized: "所选文件：\(inspection.url.lastPathComponent)", bundle: appLocalizationBundle)).font(.headline)
+                        Text(String(format: String(localized: "时长 %.3f 秒 · 大小 %.1f MB", bundle: appLocalizationBundle), locale: .current, Double(inspection.durationMilliseconds) / 1000.0, Double(inspection.byteCount) / 1_048_576))
                             .font(.caption).foregroundStyle(.secondary)
 
-                        Picker("确认转写音轨：", selection: $selectedAudioTrackID) {
-                            Text("请选择音轨").tag(nil as Int32?)
+                        Picker(String(localized: "确认转写音轨：", bundle: appLocalizationBundle), selection: $selectedAudioTrackID) {
+                            Text(String(localized: "请选择音轨", bundle: appLocalizationBundle)).tag(nil as Int32?)
                             ForEach(inspection.audioTracks) { track in
-                                Text("音轨 \(track.id) · \(track.language ?? "未知语言") · \(track.codecs.joined(separator: ", "))\(track.isDecodable ? "" : " (无法解码)")")
+                                Text(String(localized: "音轨 \(track.id) · \(track.language ?? String(localized: "未知语言", bundle: appLocalizationBundle)) · \(track.codecs.joined(separator: ", "))\(track.isDecodable ? "" : String(localized: " (无法解码)", bundle: appLocalizationBundle))", bundle: appLocalizationBundle))
                                     .tag(Optional(track.id))
                                     .disabled(!track.isDecodable)
                             }
@@ -90,7 +90,7 @@ public struct MediaRelinkSheet: View {
 
             HStack {
                 Spacer()
-                Button("确认关联") {
+                Button(String(localized: "确认关联", bundle: appLocalizationBundle)) {
                     commitAssociation()
                 }
                 .buttonStyle(.borderedProminent)
@@ -119,7 +119,7 @@ public struct MediaRelinkSheet: View {
         do {
             let result = try await inspector.inspect(url)
             guard result.kind == item.kind else {
-                errorMessage = "所选文件格式与媒体类型不一致。"
+                errorMessage = String(localized: "所选文件格式与媒体类型不一致。", bundle: appLocalizationBundle)
                 return
             }
             inspection = result

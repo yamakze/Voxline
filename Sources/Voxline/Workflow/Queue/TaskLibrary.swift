@@ -15,7 +15,7 @@ public final class TaskLibrary {
         public let url: URL?
         public var task: ProcessingTask?
         public let error: String?
-        public var title: String { task?.title ?? url?.deletingPathExtension().lastPathComponent ?? "未命名任务" }
+        public var title: String { task?.title ?? url?.deletingPathExtension().lastPathComponent ?? String(localized: "未命名任务", bundle: voxlineLocalizationBundle) }
     }
 
     public private(set) var sharedDocuments: SharedTaskDocuments?
@@ -144,7 +144,7 @@ public final class TaskLibrary {
                         retainedTasks.append(published)
                     }
                 } catch let error as CocoaError where error.code == .fileReadNoSuchFile { continue }
-                catch { throw TaskDeletionError.cleanupFailed(["\(otherURL.path)：无法确认其他任务的资源引用：\(error.localizedDescription)"]) }
+                catch { throw TaskDeletionError.cleanupFailed([String(localized: "\(otherURL.path)：无法确认其他任务的资源引用：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)]) }
             }
             // Complete cleanup before removing the document. Any partial failure keeps the task and
             // its IDs available across restart, so deletion can be retried without a second journal.
@@ -217,7 +217,7 @@ public final class TaskLibrary {
         do {
             orderedURLs = FileManager.default.fileExists(atPath: orderURL.path)
                 ? try JSONDecoder().decode([URL].self, from: Data(contentsOf: orderURL)) : []
-        } catch { errorMessage = "任务顺序读取失败：\(error.localizedDescription)" }
+        } catch { errorMessage = String(localized: "任务顺序读取失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle) }
         var foundEntries: [Entry] = []
         var seenIDs = Set<UUID>()
 

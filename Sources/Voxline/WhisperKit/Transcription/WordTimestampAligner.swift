@@ -14,18 +14,18 @@ enum WordTimestampAligner {
         var logProbabilities = [Float]()
         for segment in segments {
             guard segment.tokens.count == segment.tokenLogProbs.count else {
-                throw WhisperTranscriptionError.invalidAlignment("词元与置信度数量不符。")
+                throw WhisperTranscriptionError.invalidAlignment(String(localized: "词元与置信度数量不符。", bundle: voxlineLocalizationBundle))
             }
             for (token, probabilities) in zip(segment.tokens, segment.tokenLogProbs) {
                 guard let probability = probabilities[token], probability.isFinite else {
-                    throw WhisperTranscriptionError.invalidAlignment("词元置信度缺失或无效。")
+                    throw WhisperTranscriptionError.invalidAlignment(String(localized: "词元置信度缺失或无效。", bundle: voxlineLocalizationBundle))
                 }
                 logProbabilities.append(probability)
             }
         }
         let path = try dynamicTimeWarping(alignmentWeights, tokenCount: tokens.count)
         guard let lastStep = path.last else {
-            throw WhisperTranscriptionError.invalidAlignment("词对齐路径为空。")
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐路径为空。", bundle: voxlineLocalizationBundle))
         }
         let (words, wordTokens) = tokenizer.splitToWordTokens(tokenIds: tokens)
         var alignment = [WordTiming]()
@@ -42,12 +42,12 @@ enum WordTimestampAligner {
             ends.append(Float(lastStep.column) * Float(WhisperKit.secondsPerTimeToken))
             guard starts.count == tokens.count, ends.count == tokens.count,
                   wordTokens.flatMap({ $0 }) == tokens, words.count == wordTokens.count else {
-                throw WhisperTranscriptionError.invalidAlignment("词对齐未完整覆盖识别词元。")
+                throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐未完整覆盖识别词元。", bundle: voxlineLocalizationBundle))
             }
             var offset = 0
             for (word, group) in zip(words, wordTokens) {
                 guard !group.isEmpty else {
-                    throw WhisperTranscriptionError.invalidAlignment("分词返回空词元组。")
+                    throw WhisperTranscriptionError.invalidAlignment(String(localized: "分词返回空词元组。", bundle: voxlineLocalizationBundle))
                 }
                 let end = offset + group.count
                 let probability = exp(logProbabilities[offset..<end].reduce(0, +) / Float(group.count))
@@ -69,7 +69,7 @@ enum WordTimestampAligner {
     static func dynamicTimeWarping(_ matrix: MLMultiArray, tokenCount: Int) throws -> [(token: Int, column: Int)] {
         let shape = matrix.shape.map(\.intValue)
         guard shape.count == 2, tokenCount > 0, tokenCount <= shape[0], shape[1] > 0 else {
-            throw WhisperTranscriptionError.invalidAlignment("对齐矩阵未覆盖识别词元。")
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "对齐矩阵未覆盖识别词元。", bundle: voxlineLocalizationBundle))
         }
         let columns = shape[1]
         var previous = [Double](repeating: .infinity, count: columns + 1)
@@ -81,7 +81,7 @@ enum WordTimestampAligner {
             for column in 1...columns {
                 let weight = matrix[[row - 1, column - 1] as [NSNumber]].doubleValue
                 guard weight.isFinite else {
-                    throw WhisperTranscriptionError.invalidAlignment("词对齐权重无效。")
+                    throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐权重无效。", bundle: voxlineLocalizationBundle))
                 }
                 let diagonal = previous[column - 1]
                 let up = previous[column]

@@ -12,7 +12,7 @@ public struct CloudTranscriptionServicesSettingsView: View {
 
     public init(referencedSettings: TranscriptionSettings? = nil) {
         if let cloud = referencedSettings?.cloud {
-            referencedService = .init(id: cloud.serviceID, name: "云端转写", baseURL: cloud.baseURL, modelID: referencedSettings?.modelID ?? "whisper-1", protocolKind: cloud.protocolKind)
+            referencedService = .init(id: cloud.serviceID, name: String(localized: "云端转写", bundle: appLocalizationBundle), baseURL: cloud.baseURL, modelID: referencedSettings?.modelID ?? "whisper-1", protocolKind: cloud.protocolKind)
         }
     }
 
@@ -23,10 +23,10 @@ public struct CloudTranscriptionServicesSettingsView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "info.circle")
                             .foregroundStyle(.blue)
-                        Text("当前任务引用的转写服务尚未在此设备配置")
+                        Text(String(localized: "当前任务引用的转写服务尚未在此设备配置", bundle: appLocalizationBundle))
                             .font(.subheadline)
                         Spacer()
-                        Button("配置此服务") { editingService = referencedService }
+                        Button(String(localized: "配置此服务", bundle: appLocalizationBundle)) { editingService = referencedService }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                     }
@@ -35,7 +35,7 @@ public struct CloudTranscriptionServicesSettingsView: View {
                 }
 
                 if store.isLoading {
-                    ProgressView("正在读取服务…")
+                    ProgressView(String(localized: "正在读取服务…", bundle: appLocalizationBundle))
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 20)
                 }
@@ -44,20 +44,20 @@ public struct CloudTranscriptionServicesSettingsView: View {
                     HStack {
                         Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
                         Spacer()
-                        Button("重试") { Task { await store.load() } }.disabled(store.isLoading || store.isSaving)
+                        Button(String(localized: "重试", bundle: appLocalizationBundle)) { Task { await store.load() } }.disabled(store.isLoading || store.isSaving)
                     }
                 }
 
                 if store.services.isEmpty {
                     ContentUnavailableView {
-                        Label("尚未配置云端转写服务", systemImage: "waveform.badge.mic")
+                        Label(String(localized: "尚未配置云端转写服务", bundle: appLocalizationBundle), systemImage: "waveform.badge.mic")
                     } description: {
-                        Text("添加兼容接口以启用云端转写")
+                        Text(String(localized: "添加兼容接口以启用云端转写", bundle: appLocalizationBundle))
                     } actions: {
                         Button {
                             isAddingService = true
                         } label: {
-                            Label("添加转写服务", systemImage: "plus")
+                            Label(String(localized: "添加转写服务", bundle: appLocalizationBundle), systemImage: "plus")
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(store.isLoading || store.isSaving)
@@ -66,14 +66,14 @@ public struct CloudTranscriptionServicesSettingsView: View {
                     .frame(maxWidth: .infinity)
                 } else {
                     HStack {
-                        Text("已配置服务")
+                        Text(String(localized: "已配置服务", bundle: appLocalizationBundle))
                             .font(.headline)
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button {
                             isAddingService = true
                         } label: {
-                            Label("添加服务", systemImage: "plus")
+                            Label(String(localized: "添加服务", bundle: appLocalizationBundle), systemImage: "plus")
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
@@ -90,7 +90,7 @@ public struct CloudTranscriptionServicesSettingsView: View {
             .padding(24)
         }
         #if os(iOS)
-        .navigationTitle("云端转写服务")
+        .navigationTitle(String(localized: "云端转写服务", bundle: appLocalizationBundle))
         #endif
         .sheet(isPresented: $isAddingService) {
             CloudTranscriptionServiceEditorModal(service: nil, store: store)
@@ -98,9 +98,9 @@ public struct CloudTranscriptionServicesSettingsView: View {
         .sheet(item: $editingService) { service in
             CloudTranscriptionServiceEditorModal(service: service, store: store)
         }
-        .confirmationDialog("删除转写服务？", isPresented: Binding(
+        .confirmationDialog(String(localized: "删除转写服务？", bundle: appLocalizationBundle), isPresented: Binding(
             get: { deletingService != nil }, set: { if !$0 { deletingService = nil } }), titleVisibility: .visible) {
-            Button("删除服务与本地密钥", role: .destructive) {
+            Button(String(localized: "删除服务与本地密钥", bundle: appLocalizationBundle), role: .destructive) {
                 guard let service = deletingService else { return }
                 Task {
                     do {
@@ -111,12 +111,12 @@ public struct CloudTranscriptionServicesSettingsView: View {
                     }
                 }
             }
-            Button("取消", role: .cancel) { deletingService = nil }
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) { deletingService = nil }
         } message: {
-            Text("将从本设备删除该服务配置及钥匙串密钥。")
+            Text(String(localized: "将从本设备删除该服务配置及钥匙串密钥。", bundle: appLocalizationBundle))
         }
-        .alert("服务操作失败", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-            Button("好", role: .cancel) { errorMessage = nil }
+        .alert(String(localized: "服务操作失败", bundle: appLocalizationBundle), isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
     }
 
@@ -157,7 +157,7 @@ public struct CloudTranscriptionServicesSettingsView: View {
                     Image(systemName: store.credentialPresence[service.id] == true ? "key.fill" : "key.slash")
                         .font(.caption2)
                         .foregroundStyle(store.credentialPresence[service.id] == true ? .green : .secondary)
-                    Text(store.credentialPresence[service.id] == true ? "已存入钥匙串" : "无密钥")
+                    Text(store.credentialPresence[service.id] == true ? String(localized: "已存入钥匙串", bundle: appLocalizationBundle) : String(localized: "无密钥", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -166,11 +166,11 @@ public struct CloudTranscriptionServicesSettingsView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                Button("编辑") { editingService = service }
+                Button(String(localized: "编辑", bundle: appLocalizationBundle)) { editingService = service }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
 
-                Button("删除", role: .destructive) { deletingService = service }
+                Button(String(localized: "删除", bundle: appLocalizationBundle), role: .destructive) { deletingService = service }
                     .buttonStyle(.borderless)
                     .foregroundStyle(.red)
                     .controlSize(.small)
@@ -227,7 +227,7 @@ private struct CloudTranscriptionServiceEditorModal: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(original == nil ? "添加转写服务" : "编辑转写服务")
+                Text(original == nil ? String(localized: "添加转写服务", bundle: appLocalizationBundle) : String(localized: "编辑转写服务", bundle: appLocalizationBundle))
                     .font(.headline)
                 Spacer()
             }
@@ -238,8 +238,8 @@ private struct CloudTranscriptionServiceEditorModal: View {
             Divider()
 
             Form {
-                Section("服务接入") {
-                    Picker("预设协议", selection: $protocolKind) {
+                Section(String(localized: "服务接入", bundle: appLocalizationBundle)) {
+                    Picker(String(localized: "预设协议", bundle: appLocalizationBundle), selection: $protocolKind) {
                         ForEach(CloudTranscriptionProtocol.allCases, id: \.self) { proto in
                             Text(proto.label).tag(proto)
                         }
@@ -269,28 +269,28 @@ private struct CloudTranscriptionServiceEditorModal: View {
                         }
                     }
 
-                    TextField("名称", text: $name, prompt: Text(placeholderName))
-                    TextField("API 根地址", text: $baseURLString, prompt: Text(Self.defaultURL(for: protocolKind)))
+                    TextField(String(localized: "名称", bundle: appLocalizationBundle), text: $name, prompt: Text(placeholderName))
+                    TextField(String(localized: "API 根地址", bundle: appLocalizationBundle), text: $baseURLString, prompt: Text(Self.defaultURL(for: protocolKind)))
 
                     if protocolKind == .audioTranscriptions {
                         HStack {
-                            Text("转写模型")
+                            Text(String(localized: "转写模型", bundle: appLocalizationBundle))
                             Spacer()
                             Text("whisper-1")
                                 .foregroundStyle(.secondary)
                         }
                     } else {
-                        TextField("转写模型", text: $modelID, prompt: Text(placeholderModel))
+                        TextField(String(localized: "转写模型", bundle: appLocalizationBundle), text: $modelID, prompt: Text(placeholderModel))
                     }
 
                     if isLoadingKey {
-                        ProgressView("正在从钥匙串安全读取密钥…")
+                        ProgressView(String(localized: "正在从钥匙串安全读取密钥…", bundle: appLocalizationBundle))
                             .font(.caption)
                     } else {
-                        PasswordVisibilityField("API 密钥（选填）", text: $apiKey)
+                        PasswordVisibilityField(String(localized: "API 密钥（选填）", bundle: appLocalizationBundle), text: $apiKey)
                     }
                     if keyReadFailed {
-                        Text("未能读取已存密钥，可重新输入更新。")
+                        Text(String(localized: "未能读取已存密钥，可重新输入更新。", bundle: appLocalizationBundle))
                             .font(.caption2).foregroundStyle(.orange)
                     }
                 }
@@ -309,10 +309,10 @@ private struct CloudTranscriptionServiceEditorModal: View {
 
             HStack {
                 Spacer()
-                Button("取消") { dismiss() }
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .disabled(isSaving)
-                Button("保存") { save() }
+                Button(String(localized: "保存", bundle: appLocalizationBundle)) { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(isSaving || isLoadingKey || (keyReadFailed && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (protocolKind != .audioTranscriptions && modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
@@ -337,17 +337,17 @@ private struct CloudTranscriptionServiceEditorModal: View {
 
     private var placeholderName: String {
         switch protocolKind {
-        case .audioTranscriptions: "例如 OpenAI / 自建 Whisper"
-        case .geminiAudioChat: "例如 Google Gemini"
-        case .qwenAudioChat: "例如 阿里百炼 / 通义千问"
+        case .audioTranscriptions: String(localized: "例如 OpenAI / 自建 Whisper", bundle: appLocalizationBundle)
+        case .geminiAudioChat: String(localized: "例如 Google Gemini", bundle: appLocalizationBundle)
+        case .qwenAudioChat: String(localized: "例如 阿里百炼 / 通义千问", bundle: appLocalizationBundle)
         }
     }
 
     private var placeholderModel: String {
         switch protocolKind {
         case .audioTranscriptions: "whisper-1"
-        case .geminiAudioChat: "例如 gemini-2.5-flash"
-        case .qwenAudioChat: "例如 qwen3-asr-flash"
+        case .geminiAudioChat: String(localized: "例如 gemini-2.5-flash", bundle: appLocalizationBundle)
+        case .qwenAudioChat: String(localized: "例如 qwen3-asr-flash", bundle: appLocalizationBundle)
         }
     }
 
@@ -355,12 +355,12 @@ private struct CloudTranscriptionServiceEditorModal: View {
         guard let url = URL(string: baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
               url.host?.isEmpty == false else {
-            errorMessage = "请输入有效的 HTTP 或 HTTPS API 根地址。"
+            errorMessage = String(localized: "请输入有效的 HTTP 或 HTTPS API 根地址。", bundle: appLocalizationBundle)
             return
         }
         let finalModel = protocolKind == .audioTranscriptions ? "whisper-1" : modelID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !finalModel.isEmpty else {
-            errorMessage = "请输入转写模型 ID。"
+            errorMessage = String(localized: "请输入转写模型 ID。", bundle: appLocalizationBundle)
             return
         }
         let config = CloudTranscriptionServiceConfig(

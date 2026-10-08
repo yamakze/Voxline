@@ -31,12 +31,12 @@ public struct ModelManagementView: View {
                 // Storage Breakdown Card
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Label("模型储存空间", systemImage: "internaldrive")
+                        Label(String(localized: "模型储存空间", bundle: appLocalizationBundle), systemImage: "internaldrive")
                             .font(.headline)
                         Spacer()
                         let totalBytes = modelManager.totalDiskUsage()
                         let mb = Double(totalBytes) / 1_000_000.0
-                        Text(mb >= 1000 ? String(format: "已用 %.2f GB", mb / 1000.0) : String(format: "已用 %.0f MB", mb))
+                        Text(mb >= 1000 ? String(format: String(localized: "已用 %.2f GB", bundle: appLocalizationBundle), locale: .current, mb / 1000.0) : String(format: String(localized: "已用 %.0f MB", bundle: appLocalizationBundle), locale: .current, mb))
                             .font(.subheadline.monospacedDigit().bold())
                             .foregroundStyle(.secondary)
 
@@ -46,11 +46,11 @@ public struct ModelManagementView: View {
                                 NSWorkspace.shared.open(dir)
                             }
                         } label: {
-                            Label("打开目录", systemImage: "folder")
+                            Label(String(localized: "打开目录", bundle: appLocalizationBundle), systemImage: "folder")
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .help("在访达中打开模型存储目录")
+                        .help(String(localized: "在访达中打开模型存储目录", bundle: appLocalizationBundle))
                         #endif
                     }
 
@@ -68,7 +68,7 @@ public struct ModelManagementView: View {
 
                 // Models List
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("可用模型")
+                    Text(String(localized: "可用模型", bundle: appLocalizationBundle))
                         .font(.headline)
                         .foregroundStyle(.secondary)
 
@@ -82,7 +82,7 @@ public struct ModelManagementView: View {
             .padding(24)
         }
         #if os(iOS)
-        .navigationTitle("模型管理")
+        .navigationTitle(String(localized: "模型管理", bundle: appLocalizationBundle))
         #endif
         .task {
             await modelManager.refreshAll()
@@ -117,7 +117,7 @@ public struct ModelManagementView: View {
                             .font(.headline)
 
                         if model.isBaseline {
-                            Text("默认推荐")
+                            Text(String(localized: "默认推荐", bundle: appLocalizationBundle))
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -138,11 +138,11 @@ public struct ModelManagementView: View {
 
                         if usage > 0 {
                             let mb = Double(usage) / 1_000_000.0
-                            Text(String(format: "已占 %.0f MB", mb))
+                            Text(String(format: String(localized: "已占 %.0f MB", bundle: appLocalizationBundle), locale: .current, mb))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Text(String(format: "约 %.0f MB", model.expectedSizeMB))
+                            Text(String(format: String(localized: "约 %.0f MB", bundle: appLocalizationBundle), locale: .current, model.expectedSizeMB))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -161,14 +161,14 @@ public struct ModelManagementView: View {
 
                     switch status {
                     case .notDownloaded, .cancelled:
-                        Button("下载") {
+                        Button(String(localized: "下载", bundle: appLocalizationBundle)) {
                             modelManager.download(modelID: model.id)
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
 
                     case .downloading, .checking:
-                        Button("取消") {
+                        Button(String(localized: "取消", bundle: appLocalizationBundle)) {
                             modelManager.cancelDownload(modelID: model.id)
                         }
                         .buttonStyle(.bordered)
@@ -179,7 +179,7 @@ public struct ModelManagementView: View {
 
                     case .failed, .corrupted:
                         if modelManager.deletionErrors[model.id] == nil {
-                            Button("重新下载") {
+                            Button(String(localized: "重新下载", bundle: appLocalizationBundle)) {
                                 modelManager.download(modelID: model.id)
                             }
                             .buttonStyle(.borderedProminent)
@@ -202,7 +202,7 @@ public struct ModelManagementView: View {
                 HStack(alignment: .top, spacing: 8) {
                     Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
                     Spacer()
-                    Button("重试删除", role: .destructive) {
+                    Button(String(localized: "重试删除", bundle: appLocalizationBundle), role: .destructive) {
                         Task { await modelManager.delete(modelID: model.id) }
                     }
                     .buttonStyle(.borderless)
@@ -246,7 +246,7 @@ public struct ModelManagementView: View {
                 Button {
                     NSWorkspace.shared.open(directory)
                 } label: {
-                    Label("在访达中显示", systemImage: "folder")
+                    Label(String(localized: "在访达中显示", bundle: appLocalizationBundle), systemImage: "folder")
                 }
             }
             #endif
@@ -258,7 +258,7 @@ public struct ModelManagementView: View {
                 Button(role: .destructive) {
                     Task { await modelManager.delete(modelID: model.id) }
                 } label: {
-                    Label("删除模型文件", systemImage: "trash")
+                    Label(String(localized: "删除模型文件", bundle: appLocalizationBundle), systemImage: "trash")
                 }
                 .disabled(modelManager.isOperating || modelManager.deletingModels.contains(model.id))
             }
@@ -276,25 +276,25 @@ public struct ModelManagementView: View {
             switch status {
             case .ready, .downloaded:
                 Circle().fill(modelManager.isOperating ? Color.orange : Color.green).frame(width: 7, height: 7)
-                Text(modelManager.isOperating ? "使用中" : "已就绪")
+                Text(modelManager.isOperating ? String(localized: "使用中", bundle: appLocalizationBundle) : String(localized: "已就绪", bundle: appLocalizationBundle))
                     .foregroundStyle(modelManager.isOperating ? .orange : .green)
             case .downloading, .checking:
                 ProgressView().controlSize(.mini)
-                Text("下载中").foregroundStyle(.blue)
+                Text(String(localized: "下载中", bundle: appLocalizationBundle)).foregroundStyle(.blue)
             case .notDownloaded:
                 EmptyView()
             case .loading:
                 ProgressView().controlSize(.mini)
-                Text("准备中").foregroundStyle(.secondary)
+                Text(String(localized: "准备中", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
             case .cancelling:
                 ProgressView().controlSize(.mini)
-                Text("正在取消").foregroundStyle(.secondary)
+                Text(String(localized: "正在取消", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
             case .cancelled:
                 Circle().fill(Color.orange).frame(width: 7, height: 7)
-                Text("已取消").foregroundStyle(.orange)
+                Text(String(localized: "已取消", bundle: appLocalizationBundle)).foregroundStyle(.orange)
             case .failed, .corrupted:
                 Circle().fill(Color.red).frame(width: 7, height: 7)
-                Text("异常").foregroundStyle(.red)
+                Text(String(localized: "异常", bundle: appLocalizationBundle)).foregroundStyle(.red)
             }
         }
         .font(.caption2.weight(.medium))

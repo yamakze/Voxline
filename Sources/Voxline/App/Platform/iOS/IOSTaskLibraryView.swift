@@ -26,7 +26,7 @@ struct IOSTaskLibraryView: View {
                     taskList
                 }
             }
-            .navigationTitle("任务")
+            .navigationTitle(String(localized: "任务", bundle: appLocalizationBundle))
             .navigationDestination(for: UUID.self) { taskID in
                 IOSTaskDetailView(library: library, taskID: taskID)
             }
@@ -44,13 +44,13 @@ struct IOSTaskLibraryView: View {
                         Button {
                             newTaskDraft = ProcessingTask()
                         } label: {
-                            Label("新建任务", systemImage: "plus")
+                            Label(String(localized: "新建任务", bundle: appLocalizationBundle), systemImage: "plus")
                         }
 
                         Button {
                             importing = true
                         } label: {
-                            Label("导入任务文件…", systemImage: "square.and.arrow.down")
+                            Label(String(localized: "导入任务文件…", bundle: appLocalizationBundle), systemImage: "square.and.arrow.down")
                         }
                     } label: {
                         Image(systemName: "plus.circle.fill")
@@ -94,15 +94,15 @@ struct IOSTaskLibraryView: View {
                 case .failure(let error): library.errorMessage = error.localizedDescription
                 }
             }
-            .alert("读取失败", isPresented: Binding(
+            .alert(String(localized: "读取失败", bundle: appLocalizationBundle), isPresented: Binding(
                 get: { library.errorMessage != nil }, set: { if !$0 { library.errorMessage = nil } })) {
-                Button("好") { library.errorMessage = nil }
+                Button(String(localized: "好", bundle: appLocalizationBundle)) { library.errorMessage = nil }
             } message: {
                 Text(library.errorMessage ?? "")
             }
-            .alert("提示", isPresented: Binding(
+            .alert(String(localized: "提示", bundle: appLocalizationBundle), isPresented: Binding(
                 get: { noticeMessage != nil }, set: { if !$0 { noticeMessage = nil } })) {
-                Button("好") { noticeMessage = nil }
+                Button(String(localized: "好", bundle: appLocalizationBundle)) { noticeMessage = nil }
             } message: {
                 Text(noticeMessage ?? "")
             }
@@ -111,9 +111,9 @@ struct IOSTaskLibraryView: View {
                 library.handleScenePhaseChange(to: phase)
             }
             .onOpenURL { importTask($0) }
-            .confirmationDialog("删除任务？", isPresented: Binding(
+            .confirmationDialog(String(localized: "删除任务？", bundle: appLocalizationBundle), isPresented: Binding(
                 get: { deletingTask != nil }, set: { if !$0 { deletingTask = nil } }), titleVisibility: .visible) {
-                Button("删除", role: .destructive) {
+                Button(String(localized: "删除", bundle: appLocalizationBundle), role: .destructive) {
                     do {
                         if let deletingTask {
                             guard library.queue.taskID != deletingTask.id else { throw CheckpointError.workRunning }
@@ -122,36 +122,36 @@ struct IOSTaskLibraryView: View {
                         deletingTask = nil
                     } catch { library.errorMessage = error.localizedDescription }
                 }
-                Button("取消", role: .cancel) { deletingTask = nil }
+                Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) { deletingTask = nil }
             } message: {
-                Text("将删除设备上的任务及其字幕，源媒体文件不受影响。")
+                Text(String(localized: "将删除设备上的任务及其字幕，源媒体文件不受影响。", bundle: appLocalizationBundle))
             }
-            .alert("覆盖同名任务？", isPresented: Binding(
+            .alert(String(localized: "覆盖同名任务？", bundle: appLocalizationBundle), isPresented: Binding(
                 get: { replacement != nil }, set: { if !$0 { replacement = nil } })) {
-                Button("取消", role: .cancel) { replacement = nil }
-                Button("覆盖", role: .destructive) {
+                Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) { replacement = nil }
+                Button(String(localized: "覆盖", bundle: appLocalizationBundle), role: .destructive) {
                     do {
                         if let replacement { try library.save(replacement) }
                         replacement = nil
                     } catch { library.errorMessage = error.localizedDescription }
                 }
             } message: {
-                Text("已存在同 ID 任务，覆盖将替换已有校对成果。")
+                Text(String(localized: "已存在同 ID 任务，覆盖将替换已有校对成果。", bundle: appLocalizationBundle))
             }
         }
     }
 
     private var emptyStateView: some View {
         ContentUnavailableView {
-            Label("暂无任务", systemImage: "waveform.badge.magnifyingglass")
+            Label(String(localized: "暂无任务", bundle: appLocalizationBundle), systemImage: "waveform.badge.magnifyingglass")
         } description: {
-            Text("添加音视频开始本地或云端转写与翻译")
+            Text(String(localized: "添加音视频开始本地或云端转写与翻译", bundle: appLocalizationBundle))
         } actions: {
             HStack(spacing: 14) {
                 Button {
                     newTaskDraft = ProcessingTask()
                 } label: {
-                    Label("新建任务", systemImage: "plus")
+                    Label(String(localized: "新建任务", bundle: appLocalizationBundle), systemImage: "plus")
                         .font(.headline)
                         .padding(.horizontal, 6)
                 }
@@ -161,7 +161,7 @@ struct IOSTaskLibraryView: View {
                 Button {
                     importing = true
                 } label: {
-                    Label("导入任务", systemImage: "square.and.arrow.down")
+                    Label(String(localized: "导入任务", bundle: appLocalizationBundle), systemImage: "square.and.arrow.down")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
@@ -184,14 +184,14 @@ struct IOSTaskLibraryView: View {
                         Button(role: .destructive) {
                             deletingTask = task
                         } label: {
-                            Label("删除", systemImage: "trash")
+                            Label(String(localized: "删除", bundle: appLocalizationBundle), systemImage: "trash")
                         }
                         .disabled(library.queue.taskID == task.id)
 
                         Button {
                             shareTask(task)
                         } label: {
-                            Label("分享", systemImage: "square.and.arrow.up")
+                            Label(String(localized: "分享", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                         }
                         .tint(.blue)
 
@@ -199,7 +199,7 @@ struct IOSTaskLibraryView: View {
                             Button {
                                 conflictResolutionTaskID = task.id
                             } label: {
-                                Label("解决冲突", systemImage: "exclamationmark.triangle")
+                                Label(String(localized: "解决冲突", bundle: appLocalizationBundle), systemImage: "exclamationmark.triangle")
                             }
                             .tint(.orange)
                         }
@@ -209,7 +209,7 @@ struct IOSTaskLibraryView: View {
                             Button {
                                 conflictResolutionTaskID = task.id
                             } label: {
-                                Label("解决版本冲突…", systemImage: "exclamationmark.triangle")
+                                Label(String(localized: "解决版本冲突…", bundle: appLocalizationBundle), systemImage: "exclamationmark.triangle")
                             }
                             Divider()
                         }
@@ -217,7 +217,7 @@ struct IOSTaskLibraryView: View {
                         Button {
                             shareTask(task)
                         } label: {
-                            Label("分享任务文件 (.voxline)", systemImage: "square.and.arrow.up")
+                            Label(String(localized: "分享任务文件 (.voxline)", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                         }
 
                         Divider()
@@ -225,7 +225,7 @@ struct IOSTaskLibraryView: View {
                         Button(role: .destructive) {
                             deletingTask = task
                         } label: {
-                            Label("删除任务", systemImage: "trash")
+                            Label(String(localized: "删除任务", bundle: appLocalizationBundle), systemImage: "trash")
                         }
                         .disabled(library.queue.taskID == task.id)
                     }
@@ -236,7 +236,7 @@ struct IOSTaskLibraryView: View {
                                 Button {
                                     conflictResolutionTaskID = entry.taskID
                                 } label: {
-                                    Label("解决版本冲突…", systemImage: "exclamationmark.triangle")
+                                    Label(String(localized: "解决版本冲突…", bundle: appLocalizationBundle), systemImage: "exclamationmark.triangle")
                                 }
                                 Divider()
                             }
@@ -244,7 +244,7 @@ struct IOSTaskLibraryView: View {
                                 Button {
                                     downloadPlaceholder(url: url)
                                 } label: {
-                                    Label("从云端下载", systemImage: "arrow.down.circle")
+                                    Label(String(localized: "从云端下载", bundle: appLocalizationBundle), systemImage: "arrow.down.circle")
                                 }
                             }
                         }
@@ -280,7 +280,7 @@ struct IOSTaskLibraryView: View {
                     }
                 }
 
-                Text("云端任务尚未下载完整内容与字幕。")
+                Text(String(localized: "云端任务尚未下载完整内容与字幕。", bundle: appLocalizationBundle))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
@@ -294,13 +294,13 @@ struct IOSTaskLibraryView: View {
             Spacer()
 
             if fileState == .conflict {
-                Button("解决冲突") {
+                Button(String(localized: "解决冲突", bundle: appLocalizationBundle)) {
                     conflictResolutionTaskID = entry.taskID
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             } else if let url = entry.url {
-                Button("下载", systemImage: "arrow.down.circle") {
+                Button(String(localized: "下载", bundle: appLocalizationBundle), systemImage: "arrow.down.circle") {
                     downloadPlaceholder(url: url)
                 }
                 .buttonStyle(.bordered)
@@ -315,9 +315,9 @@ struct IOSTaskLibraryView: View {
             try syncSettings.requestDownload(url)
             library.load()
             syncSettings.refresh()
-            noticeMessage = "已请求系统下载云端任务，请稍候。"
+            noticeMessage = String(localized: "已请求系统下载云端任务，请稍候。", bundle: appLocalizationBundle)
         } catch {
-            library.errorMessage = "请求下载失败：\(error.localizedDescription)"
+            library.errorMessage = String(localized: "请求下载失败：\(error.localizedDescription)", bundle: appLocalizationBundle)
         }
     }
 
@@ -338,19 +338,19 @@ struct IOSTaskLibraryView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
-                    Text("存在云端冲突版本")
+                    Text(String(localized: "存在云端冲突版本", bundle: appLocalizationBundle))
                         .font(.caption2.bold())
                         .foregroundStyle(.orange)
                 }
             }
 
             HStack(spacing: 8) {
-                Text("\(task.items.count) 个媒体")
+                Text(String(localized: "\(task.items.count) 个媒体", bundle: appLocalizationBundle))
                 Text("•")
-                Text("\(task.completedCount) 完成")
+                Text(String(localized: "\(task.completedCount) 完成", bundle: appLocalizationBundle))
                 if task.failedCount > 0 {
                     Text("•")
-                    Text("\(task.failedCount) 失败")
+                    Text(String(localized: "\(task.failedCount) 失败", bundle: appLocalizationBundle))
                         .foregroundStyle(.red)
                 }
             }
@@ -372,28 +372,28 @@ struct IOSTaskLibraryView: View {
             switch status {
             case .completed:
                 Circle().fill(Color.green).frame(width: 6, height: 6)
-                Text("已完成").foregroundStyle(.green)
+                Text(String(localized: "已完成", bundle: appLocalizationBundle)).foregroundStyle(.green)
             case .running:
                 ProgressView().controlSize(.mini)
-                Text("处理中").foregroundStyle(Color.voxlineAccent)
+                Text(String(localized: "处理中", bundle: appLocalizationBundle)).foregroundStyle(Color.voxlineAccent)
             case .queued:
                 Circle().fill(Color.blue).frame(width: 6, height: 6)
-                Text("排队中").foregroundStyle(.blue)
+                Text(String(localized: "排队中", bundle: appLocalizationBundle)).foregroundStyle(.blue)
             case .draft:
                 Circle().fill(Color.secondary).frame(width: 6, height: 6)
-                Text("草稿").foregroundStyle(.secondary)
+                Text(String(localized: "草稿", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
             case .cancelled:
                 Circle().fill(Color.orange).frame(width: 6, height: 6)
-                Text("已取消").foregroundStyle(.orange)
+                Text(String(localized: "已取消", bundle: appLocalizationBundle)).foregroundStyle(.orange)
             case .interrupted, .translationPaused:
                 Circle().fill(Color.orange).frame(width: 6, height: 6)
-                Text("已暂停").foregroundStyle(.orange)
+                Text(String(localized: "已暂停", bundle: appLocalizationBundle)).foregroundStyle(.orange)
             case .needsReview:
                 Circle().fill(Color.orange).frame(width: 6, height: 6)
-                Text("待校对").foregroundStyle(.orange)
+                Text(String(localized: "待校对", bundle: appLocalizationBundle)).foregroundStyle(.orange)
             case .partiallyFailed, .failed:
                 Circle().fill(Color.red).frame(width: 6, height: 6)
-                Text("失败").foregroundStyle(.red)
+                Text(String(localized: "失败", bundle: appLocalizationBundle)).foregroundStyle(.red)
             }
         }
         .font(.caption2.weight(.medium))
@@ -446,14 +446,14 @@ private struct IOSTaskDetailView: View {
                                 .foregroundStyle(.orange)
                                 .font(.title3)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("存在云端冲突版本")
+                                Text(String(localized: "存在云端冲突版本", bundle: appLocalizationBundle))
                                     .font(.subheadline.bold())
-                                Text("另一设备在离线期间保存了不同版本。")
+                                Text(String(localized: "另一设备在离线期间保存了不同版本。", bundle: appLocalizationBundle))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button("解决冲突…") {
+                            Button(String(localized: "解决冲突…", bundle: appLocalizationBundle)) {
                                 showConflictSheet = true
                             }
                             .buttonStyle(.borderedProminent)
@@ -474,10 +474,10 @@ private struct IOSTaskDetailView: View {
                 .listRowBackground(Color.clear)
 
                 // 媒体条目列表
-                Section("媒体条目 (\(task.items.count))") {
+                Section(String(localized: "媒体条目 (\(task.items.count))", bundle: appLocalizationBundle)) {
                     if task.items.isEmpty {
-                        ContentUnavailableView("暂无媒体条目", systemImage: "film.stack",
-                                               description: Text("请点击右上角参数菜单添加音视频。"))
+                        ContentUnavailableView(String(localized: "暂无媒体条目", bundle: appLocalizationBundle), systemImage: "film.stack",
+                                               description: Text(String(localized: "请点击右上角参数菜单添加音视频。", bundle: appLocalizationBundle)))
                     } else {
                         ForEach(task.items) { item in
                             NavigationLink {
@@ -487,13 +487,13 @@ private struct IOSTaskDetailView: View {
                             }
                             .contextMenu {
                                 if item.status.isRetryable && item.canResumeProcessing {
-                                    Button(item.status.isTranslationPaused ? "继续翻译" : "重试", systemImage: "arrow.clockwise") {
+                                    Button(item.status.isTranslationPaused ? String(localized: "继续翻译", bundle: appLocalizationBundle) : String(localized: "重试", bundle: appLocalizationBundle), systemImage: "arrow.clockwise") {
                                         handleRetryItem(item: item, in: task)
                                     }
                                     .disabled(library.queue.taskID != nil)
                                 }
                                 if library.queue.taskID == task.id, library.queue.isScheduled(mediaID: item.id) {
-                                    Button("取消此媒体", systemImage: "stop.circle") {
+                                    Button(String(localized: "取消此媒体", bundle: appLocalizationBundle), systemImage: "stop.circle") {
                                         do { try library.queue.cancel(mediaID: item.id) }
                                         catch { errorMessage = error.localizedDescription }
                                     }
@@ -513,7 +513,7 @@ private struct IOSTaskDetailView: View {
                         Button {
                             shareTask(task)
                         } label: {
-                            Label("分享任务文件 (.voxline)", systemImage: "square.and.arrow.up")
+                            Label(String(localized: "分享任务文件 (.voxline)", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                         }
 
                         Divider()
@@ -522,7 +522,7 @@ private struct IOSTaskDetailView: View {
                             Button {
                                 configuringTask = true
                             } label: {
-                                Label("媒体管理与准备…", systemImage: "film")
+                                Label(String(localized: "媒体管理与准备…", bundle: appLocalizationBundle), systemImage: "film")
                             }
                             .disabled(library.queue.taskID == taskID)
                         }
@@ -530,7 +530,7 @@ private struct IOSTaskDetailView: View {
                         Button {
                             editingParameters = true
                         } label: {
-                            Label("调整参数…", systemImage: "slider.horizontal.3")
+                            Label(String(localized: "调整参数…", bundle: appLocalizationBundle), systemImage: "slider.horizontal.3")
                         }
                         .disabled(library.queue.taskID == taskID)
 
@@ -538,7 +538,7 @@ private struct IOSTaskDetailView: View {
                             Button {
                                 changingCloudService = true
                             } label: {
-                                Label("更换转写服务…", systemImage: "arrow.triangle.2.circlepath")
+                                Label(String(localized: "更换转写服务…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.2.circlepath")
                             }
                             .disabled(library.queue.taskID == taskID)
                         }
@@ -580,16 +580,16 @@ private struct IOSTaskDetailView: View {
                     syncSettings.refresh()
                 }
             }
-            .alert("操作异常", isPresented: Binding(
+            .alert(String(localized: "操作异常", bundle: appLocalizationBundle), isPresented: Binding(
                 get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-                Button("好") { errorMessage = nil }
+                Button(String(localized: "好", bundle: appLocalizationBundle)) { errorMessage = nil }
             } message: { Text(errorMessage ?? "") }
-            .alert("提示", isPresented: Binding(
+            .alert(String(localized: "提示", bundle: appLocalizationBundle), isPresented: Binding(
                 get: { noticeMessage != nil }, set: { if !$0 { noticeMessage = nil } })) {
-                Button("好") { noticeMessage = nil }
+                Button(String(localized: "好", bundle: appLocalizationBundle)) { noticeMessage = nil }
             } message: { Text(noticeMessage ?? "") }
         } else {
-            ContentUnavailableView("任务不存在", systemImage: "tray")
+            ContentUnavailableView(String(localized: "任务不存在", bundle: appLocalizationBundle), systemImage: "tray")
         }
     }
 
@@ -603,16 +603,16 @@ private struct IOSTaskDetailView: View {
                     Image(systemName: transcription.provider == .openAICompatible ? "waveform.badge.mic" : "cpu")
                         .foregroundStyle(.secondary)
                     if transcription.provider == .openAICompatible {
-                        Text("云端：\(transcription.modelID)")
+                        Text(String(localized: "云端：\(transcription.modelID)", bundle: appLocalizationBundle))
                     } else {
-                        Text("本地：\(transcription.modelID)")
+                        Text(String(localized: "本地：\(transcription.modelID)", bundle: appLocalizationBundle))
                     }
                 }
                 Text("•").foregroundStyle(.secondary)
-                Text(transcription.languageMode == .specified ? (transcription.languageCode ?? "指定") : "自动识别")
+                Text(transcription.languageMode == .specified ? (transcription.languageCode ?? String(localized: "指定", bundle: appLocalizationBundle)) : String(localized: "自动识别", bundle: appLocalizationBundle))
                 if let translation = task.parameters.translation {
                     Text("•").foregroundStyle(.secondary)
-                    Text("译：\(translation.targetLanguage)")
+                    Text(String(localized: "译：\(translation.targetLanguage)", bundle: appLocalizationBundle))
                 }
                 if let fileState {
                     Spacer()
@@ -628,7 +628,7 @@ private struct IOSTaskDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(task.items.count)")
                         .font(.title2.bold())
-                    Text("媒体总数")
+                    Text(String(localized: "媒体总数", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -637,7 +637,7 @@ private struct IOSTaskDetailView: View {
                     Text("\(task.completedCount)")
                         .font(.title2.bold())
                         .foregroundStyle(.green)
-                    Text("已完成")
+                    Text(String(localized: "已完成", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -647,7 +647,7 @@ private struct IOSTaskDetailView: View {
                         Text("\(task.failedCount)")
                             .font(.title2.bold())
                             .foregroundStyle(.red)
-                        Text("失败项")
+                        Text(String(localized: "失败项", bundle: appLocalizationBundle))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -659,7 +659,7 @@ private struct IOSTaskDetailView: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(totalCues)")
                         .font(.title2.bold())
-                    Text("字幕总句")
+                    Text(String(localized: "字幕总句", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -671,7 +671,7 @@ private struct IOSTaskDetailView: View {
                     ProgressView()
                         .controlSize(.small)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(library.queue.isCancelling ? "正在取消…" : (library.queue.progressText ?? "处理中…"))
+                        Text(library.queue.isCancelling ? String(localized: "正在取消…", bundle: appLocalizationBundle) : (library.queue.progressText ?? String(localized: "处理中…", bundle: appLocalizationBundle)))
                             .font(.subheadline.weight(.medium))
                         if let wait = library.queue.translationRetryWait, !library.queue.isCancelling {
                             TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -682,7 +682,7 @@ private struct IOSTaskDetailView: View {
                         }
                     }
                     Spacer()
-                    Button("取消") {
+                    Button(String(localized: "取消", bundle: appLocalizationBundle)) {
                         do { try library.queue.cancel() }
                         catch { errorMessage = error.localizedDescription }
                     }
@@ -699,7 +699,7 @@ private struct IOSTaskDetailView: View {
                 } label: {
                     HStack {
                         Spacer()
-                        Label(task.startedAt == nil ? "开始处理任务" : "继续未完成处理",
+                        Label(task.startedAt == nil ? String(localized: "开始处理任务", bundle: appLocalizationBundle) : String(localized: "继续未完成处理", bundle: appLocalizationBundle),
                               systemImage: task.startedAt == nil ? "play.fill" : "arrow.clockwise")
                             .font(.headline)
                         Spacer()
@@ -741,11 +741,11 @@ private struct IOSTaskDetailView: View {
                         if let media = item.media {
                             Text(String(format: "%.1fs", Double(media.durationMilliseconds) / 1000.0))
                             Text("•")
-                            Text("音轨 \(media.audioTrackID)")
+                            Text(String(localized: "音轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
                             Text("•")
-                            Text("\(item.cues.count) 句")
+                            Text(String(localized: "\(item.cues.count) 句", bundle: appLocalizationBundle))
                         } else {
-                            Text("未关联媒体")
+                            Text(String(localized: "未关联媒体", bundle: appLocalizationBundle))
                                 .foregroundStyle(.red)
                         }
                     }
@@ -773,13 +773,13 @@ private struct IOSTaskDetailView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "pause.circle.fill")
                         .foregroundStyle(.orange)
-                    Text("翻译暂停：\(reason)")
+                    Text(String(localized: "翻译暂停：\(reason)", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.orange)
                         .lineLimit(1)
                     Spacer()
                     if item.status.isRetryable && item.canResumeProcessing {
-                        Button("继续") {
+                        Button(String(localized: "继续", bundle: appLocalizationBundle)) {
                             handleRetryItem(item: item, in: task)
                         }
                         .buttonStyle(.bordered)
@@ -799,7 +799,7 @@ private struct IOSTaskDetailView: View {
                         .lineLimit(1)
                     Spacer()
                     if item.status.isRetryable && item.canResumeProcessing {
-                        Button("重试") {
+                        Button(String(localized: "重试", bundle: appLocalizationBundle)) {
                             handleRetryItem(item: item, in: task)
                         }
                         .buttonStyle(.bordered)
@@ -828,20 +828,20 @@ private struct IOSTaskDetailView: View {
             switch status {
             case .completed:
                 Circle().fill(Color.green).frame(width: 5, height: 5)
-                Text("完成").foregroundStyle(.green)
+                Text(String(localized: "完成", bundle: appLocalizationBundle)).foregroundStyle(.green)
             case .running:
                 ProgressView().controlSize(.mini)
-                Text("处理中").foregroundStyle(Color.voxlineAccent)
+                Text(String(localized: "处理中", bundle: appLocalizationBundle)).foregroundStyle(Color.voxlineAccent)
             case .pending:
-                Text("等待").foregroundStyle(.secondary)
+                Text(String(localized: "等待", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
             case .cancelled:
-                Text("已取消").foregroundStyle(.orange)
+                Text(String(localized: "已取消", bundle: appLocalizationBundle)).foregroundStyle(.orange)
             case .interrupted, .translationPaused:
-                Text("暂停").foregroundStyle(.orange)
+                Text(String(localized: "暂停", bundle: appLocalizationBundle)).foregroundStyle(.orange)
             case .failed:
-                Text("失败").foregroundStyle(.red)
+                Text(String(localized: "失败", bundle: appLocalizationBundle)).foregroundStyle(.red)
             case .needsReview:
-                Text("待校对").foregroundStyle(.orange)
+                Text(String(localized: "待校对", bundle: appLocalizationBundle)).foregroundStyle(.orange)
             }
         }
         .font(.caption2.bold())

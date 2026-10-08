@@ -49,7 +49,7 @@ public final class MediaPlaybackController {
         let loadID = generation
         guard let identity = item.media else {
             isMediaUnavailable = true
-            errorMessage = "尚未关联本地媒体文件。"
+            errorMessage = String(localized: "尚未关联本地媒体文件。", bundle: voxlineLocalizationBundle)
             return
         }
         isLoading = true
@@ -58,7 +58,7 @@ public final class MediaPlaybackController {
                 guard generation == loadID else { return }
                 isLoading = false
                 isMediaUnavailable = true
-                errorMessage = "本地原文件未找到，请重新关联媒体。"
+                errorMessage = String(localized: "本地原文件未找到，请重新关联媒体。", bundle: voxlineLocalizationBundle)
                 return
             }
             guard generation == loadID else { return }
@@ -112,7 +112,7 @@ public final class MediaPlaybackController {
                         self.isLoading = false
                         self.isPlaying = false
                         self.isMediaUnavailable = true
-                        self.errorMessage = reason ?? "系统播放器无法播放此媒体。"
+                        self.errorMessage = reason ?? String(localized: "系统播放器无法播放此媒体。", bundle: voxlineLocalizationBundle)
                     default: break
                     }
                 }
@@ -150,7 +150,7 @@ public final class MediaPlaybackController {
                     self.isPlaying = false
                     self.isLoading = false
                     self.isMediaUnavailable = true
-                    self.errorMessage = reason ?? "媒体播放中断，未播放到结束。"
+                    self.errorMessage = reason ?? String(localized: "媒体播放中断，未播放到结束。", bundle: voxlineLocalizationBundle)
                 }
             })
         } catch {

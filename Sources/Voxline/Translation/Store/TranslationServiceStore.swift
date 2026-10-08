@@ -38,14 +38,14 @@ public enum TranslationServiceError: Error, LocalizedError, Equatable {
     case emptyName, invalidBaseURL, busy, unknownService, changedEndpoint, duplicateService, configurationUnavailable, rollbackFailed(String)
     public var errorDescription: String? {
         switch self {
-        case .emptyName: "服务名称不能为空。"
-        case .invalidBaseURL: "请输入有效的 HTTP 或 HTTPS 服务地址。"
-        case .busy: "服务配置正在读取或保存，请稍后再试。"
-        case .unknownService: "本次任务引用的翻译服务未在此设备配置，请配置本次服务或将任务绑定到已有服务。"
-        case .changedEndpoint: "服务地址与任务参数不同，请调整任务翻译参数或恢复服务地址。"
-        case .duplicateService: "服务配置包含重复 ID，未加载损坏配置。"
-        case .configurationUnavailable: "服务配置读取失败，请重新读取或保存有效配置后再处理。"
-        case .rollbackFailed(let reason): "配置未保存，旧密钥恢复也失败：\(reason)。请重新配置密钥。"
+        case .emptyName: String(localized: "服务名称不能为空。", bundle: voxlineLocalizationBundle)
+        case .invalidBaseURL: String(localized: "请输入有效的 HTTP 或 HTTPS 服务地址。", bundle: voxlineLocalizationBundle)
+        case .busy: String(localized: "服务配置正在读取或保存，请稍后再试。", bundle: voxlineLocalizationBundle)
+        case .unknownService: String(localized: "本次任务引用的翻译服务未在此设备配置，请配置本次服务或将任务绑定到已有服务。", bundle: voxlineLocalizationBundle)
+        case .changedEndpoint: String(localized: "服务地址与任务参数不同，请调整任务翻译参数或恢复服务地址。", bundle: voxlineLocalizationBundle)
+        case .duplicateService: String(localized: "服务配置包含重复 ID，未加载损坏配置。", bundle: voxlineLocalizationBundle)
+        case .configurationUnavailable: String(localized: "服务配置读取失败，请重新读取或保存有效配置后再处理。", bundle: voxlineLocalizationBundle)
+        case .rollbackFailed(let reason): String(localized: "配置未保存，旧密钥恢复也失败：\(reason)。请重新配置密钥。", bundle: voxlineLocalizationBundle)
         }
     }
 }
@@ -107,7 +107,7 @@ public final class TranslationServiceStore {
             services = metadata
             credentialPresence = presence
             errorMessage = nil
-        } catch { errorMessage = "服务配置读取失败：\(error.localizedDescription)" }
+        } catch { errorMessage = String(localized: "服务配置读取失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle) }
     }
 
     public func addOrUpdate(_ service: TranslationServiceConfig, apiKey: String) async throws {
@@ -198,7 +198,7 @@ public final class TranslationServiceStore {
             let cue = try SubtitleCue(id: UUID(), startMilliseconds: 0, endMilliseconds: 1000, sourceText: "Connection check.")
             let input = try SubtitleTranslationRequest(inputs: [.init(cue)], cues: [cue])
             _ = try await client.translate(settings: settings, apiKey: key, request: input)
-            let result = "模型 \(service.modelID) 的聊天接口可用"
+            let result = String(localized: "模型 \(service.modelID) 的聊天接口可用", bundle: voxlineLocalizationBundle)
             testResult[service.id] = .success(result)
             return result
         } catch { testResult[service.id] = .failure(error); throw error }

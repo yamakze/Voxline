@@ -215,6 +215,16 @@ struct AudioExtractionTests {
             mediaID: UUID(uuidString: "FA8D85AC-1BB5-4725-BEDE-820C09985EA8")!, identity: identity)
         #expect(!audio.chunks.isEmpty)
         #expect(audio.chunks.allSatisfy { $0.durationMilliseconds > 0 && $0.durationMilliseconds <= 120_000 })
+        let mediaEnd = try await AVURLAsset(url: url).load(.duration)
+        let finalFrame = CMTimeConvertScale(mediaEnd, timescale: 16_000, method: .roundTowardZero).value
+        for chunk in audio.chunks {
+            let frames = try AVAudioFile(forReading: chunk.localURL).length
+            #expect(chunk.sourceStartMilliseconds * 16 + frames <= finalFrame)
+        }
+        let reused = try await AudioExtractor(directory: directory).extract(mediaURL: url,
+            mediaID: UUID(uuidString: "FA8D85AC-1BB5-4725-BEDE-820C09985EA8")!, identity: identity)
+        #expect(reused.reusedCache)
+        #expect(reused.chunks.map(\.localURL) == audio.chunks.map(\.localURL))
         print("Real PCM: chunks=\(audio.chunks.count), starts=\(audio.chunks.map(\.sourceStartMilliseconds)), durations=\(audio.chunks.map(\.durationMilliseconds)), reused=\(audio.reusedCache)")
     }
 }

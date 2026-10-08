@@ -9,20 +9,17 @@ enum AppleSubtitleTranslationError: Error, LocalizedError, Equatable {
     case unsupportedLanguagePair(String, String)
     case busy
     case invalidResponse
-    case languagePreparationFailed(String)
     case languagesNotInstalled
     case simulatorUnsupported
 
     var errorDescription: String? {
         switch self {
         case .unsupportedLanguagePair(let source, let target):
-            "Apple Translation 不支持 \(source) → \(target)。请选择支持的语言对。"
-        case .busy: "Apple Translation 正在完成上一批字幕，请稍后重试。"
-        case .invalidResponse: "Apple Translation 返回的字幕 ID 或文本不完整，本批结果未保存。"
-        case .languagePreparationFailed(let reason):
-            "Apple 语言准备未完成：\(reason)。请在系统面板完成下载后重试，原文和已完成译文已保留。"
-        case .languagesNotInstalled: "本机翻译语言尚未安装，请先打开“准备本机语言”完成下载，再继续翻译。原文和已完成译文已保留。"
-        case .simulatorUnsupported: "Apple 本机翻译不支持 iOS 模拟器，请在真实设备准备语言并翻译。"
+            String(localized: "Apple Translation 不支持 \(source) → \(target)。请选择支持的语言对。", bundle: appLocalizationBundle)
+        case .busy: String(localized: "Apple Translation 正在完成上一批字幕，请稍后重试。", bundle: appLocalizationBundle)
+        case .invalidResponse: String(localized: "Apple Translation 返回的字幕 ID 或文本不完整，本批结果未保存。", bundle: appLocalizationBundle)
+        case .languagesNotInstalled: String(localized: "请在语言设置中完成下载后继续翻译。", bundle: appLocalizationBundle)
+        case .simulatorUnsupported: String(localized: "Apple 本机翻译不支持 iOS 模拟器，请在真实设备准备语言并翻译。", bundle: appLocalizationBundle)
         }
     }
 }
@@ -33,14 +30,9 @@ enum AppleSubtitleTranslationError: Error, LocalizedError, Equatable {
 final class AppleTranslationCoordinator {
     static let shared = AppleTranslationCoordinator()
 
-    private enum Purpose {
-        case prepareLanguages
-        case translate([TranslationBatchInput])
-    }
-
     private struct Work {
         let id: UUID
-        let purpose: Purpose
+        let inputs: [TranslationBatchInput]
         let source: Locale.Language
         let target: Locale.Language
         let continuation: CheckedContinuation<[TranslationBatchOutput], any Error>
@@ -62,21 +54,16 @@ final class AppleTranslationCoordinator {
         guard await LanguageAvailability().status(from: source, to: target) == .installed else {
             throw AppleSubtitleTranslationError.languagesNotInstalled
         }
-        return try await requestSession(purpose: .translate(request.inputs), source: source, target: target)
+        return try await requestSession(inputs: request.inputs, source: source, target: target)
     }
 
-    func prepareLanguages(sourceID: String, targetID: String) async throws {
-        let (source, target) = try await Self.languagePair(sourceID: sourceID, targetID: targetID)
-        _ = try await requestSession(purpose: .prepareLanguages, source: source, target: target)
-    }
-
-    private func requestSession(purpose: Purpose, source: Locale.Language, target: Locale.Language) async throws -> [TranslationBatchOutput] {
+    private func requestSession(inputs: [TranslationBatchInput], source: Locale.Language, target: Locale.Language) async throws -> [TranslationBatchOutput] {
         try Task.checkCancellation()
         guard work == nil else { throw AppleSubtitleTranslationError.busy }
         let id = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                work = Work(id: id, purpose: purpose, source: source, target: target, continuation: continuation)
+                work = Work(id: id, inputs: inputs, source: source, target: target, continuation: continuation)
                 var next = lastConfiguration ?? TranslationSession.Configuration(source: source, target: target)
                 if next.source != source || next.target != target {
                     next = TranslationSession.Configuration(source: source, target: target)
@@ -128,37 +115,19 @@ final class AppleTranslationCoordinator {
         let result: Result<[TranslationBatchOutput], any Error>
         do {
             let session: TranslationSession
-            switch current.purpose {
-            case .prepareLanguages:
-                session = viewSession
-                do { try await session.prepareTranslation() }
-                catch {
-                    if Task.isCancelled || work?.cancelled == true { throw CancellationError() }
-                    throw AppleSubtitleTranslationError.languagePreparationFailed(error.localizedDescription)
-                }
-                guard await LanguageAvailability().status(from: current.source, to: current.target) == .installed else {
-                    throw AppleSubtitleTranslationError.languagesNotInstalled
-                }
-            case .translate:
-                guard await LanguageAvailability().status(from: current.source, to: current.target) == .installed else {
-                    throw AppleSubtitleTranslationError.languagesNotInstalled
-                }
-                if #available(macOS 26, iOS 26, *) {
-                    session = TranslationSession(installedSource: current.source, target: current.target)
-                    cancelSession = { session.cancel() }
-                } else { session = viewSession }
+            guard await LanguageAvailability().status(from: current.source, to: current.target) == .installed else {
+                throw AppleSubtitleTranslationError.languagesNotInstalled
             }
+            if #available(macOS 26, iOS 26, *) {
+                session = TranslationSession(installedSource: current.source, target: current.target)
+                cancelSession = { session.cancel() }
+            } else { session = viewSession }
             try Task.checkCancellation()
             if work?.cancelled == true { throw CancellationError() }
-            switch current.purpose {
-            case .prepareLanguages:
-                result = .success([])
-            case .translate(let inputs):
-                let responses = try await session.translations(from: Self.requests(inputs: inputs))
-                try Task.checkCancellation()
-                if work?.cancelled == true { throw CancellationError() }
-                result = .success(try Self.outputs(responses, inputs: inputs))
-            }
+            let responses = try await session.translations(from: Self.requests(inputs: current.inputs))
+            try Task.checkCancellation()
+            if work?.cancelled == true { throw CancellationError() }
+            result = .success(try Self.outputs(responses, inputs: current.inputs))
         } catch {
             result = .failure(work?.cancelled == true ? CancellationError() : error)
         }

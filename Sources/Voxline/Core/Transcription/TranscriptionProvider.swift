@@ -153,8 +153,8 @@ public struct TranscriptionFailure: Error, LocalizedError, Sendable {
     }
 
     public var errorDescription: String? {
-        let reason = evidence.failureReason ?? "转写失败记录缺少原因。"
-        if let storageError { return "\(reason) 原始证据写入失败：\(storageError)" }
+        let reason = evidence.failureReason ?? String(localized: "转写失败记录缺少原因。", bundle: voxlineLocalizationBundle)
+        if let storageError { return String(localized: "\(reason) 原始证据写入失败：\(storageError)", bundle: voxlineLocalizationBundle) }
         return reason
     }
 }

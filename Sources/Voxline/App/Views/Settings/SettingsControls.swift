@@ -90,7 +90,7 @@ public struct PasswordVisibilityField: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help(isRevealed ? "隐藏密钥" : "显示明文密钥")
+            .help(isRevealed ? String(localized: "隐藏密钥", bundle: appLocalizationBundle) : String(localized: "显示明文密钥", bundle: appLocalizationBundle))
         }
     }
 }

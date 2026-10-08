@@ -36,21 +36,21 @@ public struct TaskLibraryView: View {
                     VStack(spacing: 16) {
                         VoxlineAppIconView(size: 72)
                         VStack(spacing: 6) {
-                            Text("暂无任务")
+                            Text(String(localized: "暂无任务", bundle: appLocalizationBundle))
                                 .font(.title3.weight(.medium))
-                            Text("新建任务或打开已有 .voxline 文件以开始逐句转写与校对。")
+                            Text(String(localized: "新建任务或打开已有 .voxline 文件以开始逐句转写与校对。", bundle: appLocalizationBundle))
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
 
                         HStack(spacing: 12) {
-                            Button("新建任务", systemImage: "plus") {
+                            Button(String(localized: "新建任务", bundle: appLocalizationBundle), systemImage: "plus") {
                                 onNewTask?()
                             }
                             .buttonStyle(.borderedProminent)
                             .controlSize(.regular)
 
-                            Button("打开文件…", systemImage: "folder") {
+                            Button(String(localized: "打开文件…", bundle: appLocalizationBundle), systemImage: "folder") {
                                 onOpenFile?()
                             }
                             .buttonStyle(.bordered)
@@ -72,7 +72,7 @@ public struct TaskLibraryView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Text("任务队列")
+                Text(String(localized: "任务队列", bundle: appLocalizationBundle))
                     .font(.headline)
             }
 
@@ -86,21 +86,21 @@ public struct TaskLibraryView: View {
                 } label: {
                     Image(systemName: "folder")
                 }
-                .help("打开已有 .voxline 任务文件")
+                .help(String(localized: "打开已有 .voxline 任务文件", bundle: appLocalizationBundle))
 
                 Button {
                     onNewTask?()
                 } label: {
                     Image(systemName: "plus")
                 }
-                .help("新建任务 (⌘N)")
+                .help(String(localized: "新建任务 (⌘N)", bundle: appLocalizationBundle))
                 .keyboardShortcut("n", modifiers: [.command])
             }
         }
         .onAppear { library.refresh() }
-        .confirmationDialog("删除任务？", isPresented: Binding(
+        .confirmationDialog(String(localized: "删除任务？", bundle: appLocalizationBundle), isPresented: Binding(
             get: { deletingEntry != nil }, set: { if !$0 { deletingEntry = nil } }), titleVisibility: .visible) {
-            Button("删除任务文件", role: .destructive) {
+            Button(String(localized: "删除任务文件", bundle: appLocalizationBundle), role: .destructive) {
                 guard let entry = deletingEntry else { return }
                 do {
                     guard TaskProcessingQueue.shared.taskID != entry.taskID else { throw QueueError.busy }
@@ -108,13 +108,13 @@ public struct TaskLibraryView: View {
                     deletingEntry = nil
                 } catch { errorMessage = error.localizedDescription }
             }
-            Button("取消", role: .cancel) { deletingEntry = nil }
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) { deletingEntry = nil }
         } message: {
-            Text("删除任务文件及其字幕成果，音视频源文件保留。\n\(deletingEntry?.url?.path ?? "")")
+            Text(String(localized: "删除任务文件及其字幕成果，音视频源文件保留。\n\(deletingEntry?.url?.path ?? "")", bundle: appLocalizationBundle))
         }
-        .alert("任务操作失败", isPresented: Binding(
+        .alert(String(localized: "任务操作失败", bundle: appLocalizationBundle), isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-            Button("好", role: .cancel) { errorMessage = nil }
+            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
         .sheet(isPresented: Binding(
             get: { conflictResolutionTaskID != nil },
@@ -154,12 +154,12 @@ public struct TaskLibraryView: View {
 
                 if let task = entry.task {
                     HStack(spacing: 8) {
-                        Text("\(task.items.count) 媒体")
+                        Text(String(localized: "\(task.items.count) 媒体", bundle: appLocalizationBundle))
                         Text("·")
-                        Text("\(task.completedCount) 完成")
+                        Text(String(localized: "\(task.completedCount) 完成", bundle: appLocalizationBundle))
                         if task.failedCount > 0 {
                             Text("·")
-                            Text("\(task.failedCount) 失败").foregroundStyle(.red)
+                            Text(String(localized: "\(task.failedCount) 失败", bundle: appLocalizationBundle)).foregroundStyle(.red)
                         }
                         if let started = task.startedAt {
                             Text("·")
@@ -178,7 +178,7 @@ public struct TaskLibraryView: View {
                         .padding(.top, 2)
                     }
                 } else if isPlaceholder {
-                    Text("云端任务占位，点击下载即可加载完整任务成果与字幕。")
+                    Text(String(localized: "云端任务占位，点击下载即可加载完整任务成果与字幕。", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -191,13 +191,13 @@ public struct TaskLibraryView: View {
             Spacer()
 
             if fileState == .conflict {
-                Button("解决冲突") {
+                Button(String(localized: "解决冲突", bundle: appLocalizationBundle)) {
                     conflictResolutionTaskID = entry.taskID
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             } else if isPlaceholder, let url = entry.url {
-                Button("下载", systemImage: "arrow.down.circle") {
+                Button(String(localized: "下载", bundle: appLocalizationBundle), systemImage: "arrow.down.circle") {
                     do {
                         try syncSettings.requestDownload(url)
                         syncSettings.refresh()
@@ -254,12 +254,12 @@ public struct TaskLibraryView: View {
         }
         .contextMenu {
             if fileState == .conflict {
-                Button("解决版本冲突…", systemImage: "arrow.triangle.merge") {
+                Button(String(localized: "解决版本冲突…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge") {
                     conflictResolutionTaskID = entry.taskID
                 }
             }
             if isPlaceholder, let url = entry.url {
-                Button("请求下载云端任务", systemImage: "icloud.and.arrow.down") {
+                Button(String(localized: "请求下载云端任务", bundle: appLocalizationBundle), systemImage: "icloud.and.arrow.down") {
                     do {
                         try syncSettings.requestDownload(url)
                         syncSettings.refresh()
@@ -269,7 +269,7 @@ public struct TaskLibraryView: View {
                 }
             }
             Divider()
-            Button("删除", systemImage: "trash", role: .destructive) { deletingEntry = entry }
+            Button(String(localized: "删除", bundle: appLocalizationBundle), systemImage: "trash", role: .destructive) { deletingEntry = entry }
                 .disabled(TaskProcessingQueue.shared.taskID == entry.taskID)
         }
         .draggable(entry.id)

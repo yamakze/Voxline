@@ -41,54 +41,54 @@ struct TaskTranslationParametersView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("转写") {
+                Section(String(localized: "转写", bundle: appLocalizationBundle)) {
                     let transcription = original.parameters.transcription
                     if transcription.provider == .openAICompatible {
-                        LabeledContent("转写路线", value: "云端 OpenAI 兼容")
-                        LabeledContent("转写模型", value: transcription.modelID)
+                        LabeledContent(String(localized: "转写路线", bundle: appLocalizationBundle), value: String(localized: "云端 OpenAI 兼容", bundle: appLocalizationBundle))
+                        LabeledContent(String(localized: "转写模型", bundle: appLocalizationBundle), value: transcription.modelID)
                         if let baseURL = transcription.cloud?.baseURL {
-                            LabeledContent("服务地址", value: baseURL.absoluteString)
+                            LabeledContent(String(localized: "服务地址", bundle: appLocalizationBundle), value: baseURL.absoluteString)
                         }
                     } else {
-                        LabeledContent("转写路线", value: "本地 WhisperKit")
-                        LabeledContent("转写模型", value: transcription.modelID)
+                        LabeledContent(String(localized: "转写路线", bundle: appLocalizationBundle), value: String(localized: "本地 WhisperKit", bundle: appLocalizationBundle))
+                        LabeledContent(String(localized: "转写模型", bundle: appLocalizationBundle), value: transcription.modelID)
                     }
-                    LabeledContent("语言识别", value: transcription.languageMode == .specified ? (transcription.languageCode ?? "未指定") : "自动识别")
+                    LabeledContent(String(localized: "语言识别", bundle: appLocalizationBundle), value: transcription.languageMode == .specified ? (transcription.languageCode ?? String(localized: "未指定", bundle: appLocalizationBundle)) : String(localized: "自动识别", bundle: appLocalizationBundle))
                 }
-                Section("字幕翻译") {
-                    Toggle("启用翻译", isOn: $enabled)
+                Section(String(localized: "字幕翻译", bundle: appLocalizationBundle)) {
+                    Toggle(String(localized: "启用翻译", bundle: appLocalizationBundle), isOn: $enabled)
                     if enabled {
-                        Picker("引擎", selection: $apple) {
-                            Text("OpenAI 兼容接口").tag(false)
-                            Text("Apple 本机翻译").tag(true)
+                        Picker(String(localized: "引擎", bundle: appLocalizationBundle), selection: $apple) {
+                            Text(String(localized: "OpenAI 兼容接口", bundle: appLocalizationBundle)).tag(false)
+                            Text(String(localized: "Apple 本机翻译", bundle: appLocalizationBundle)).tag(true)
                         }
                         if apple {
                             AppleTranslationLanguageSettings(source: $source, target: $target, batchSize: $batchSize)
                         } else {
-                            Picker("本机服务", selection: $serviceID) {
-                                Text("请选择服务").tag(nil as UUID?)
+                            Picker(String(localized: "本机服务", bundle: appLocalizationBundle), selection: $serviceID) {
+                                Text(String(localized: "请选择服务", bundle: appLocalizationBundle)).tag(nil as UUID?)
                                 if let serviceID, !store.services.contains(where: { $0.id == serviceID }) {
-                                    Text("原服务未在此设备配置").tag(Optional(serviceID))
+                                    Text(String(localized: "原服务未在此设备配置", bundle: appLocalizationBundle)).tag(Optional(serviceID))
                                 }
                                 ForEach(store.services) { service in Text(service.name).tag(Optional(service.id)) }
                             }
-                            NavigationLink("管理翻译服务") {
+                            NavigationLink(String(localized: "管理翻译服务", bundle: appLocalizationBundle)) {
                                 TranslationServicesSettingsView(referencedSettings: original.parameters.translation)
                             }
-                            TextField("翻译模型", text: $model)
-                            LanguagePicker(title: "目标语言", selection: $target)
-                            TextField("每批字幕数量", value: $batchSize, format: .number)
-                            TextEditor(text: $prompt).frame(minHeight: 100).accessibilityLabel("系统提示词")
+                            TextField(String(localized: "翻译模型", bundle: appLocalizationBundle), text: $model)
+                            LanguagePicker(title: String(localized: "目标语言", bundle: appLocalizationBundle), selection: $target)
+                            TextField(String(localized: "每批字幕数量", bundle: appLocalizationBundle), value: $batchSize, format: .number)
+                            TextEditor(text: $prompt).frame(minHeight: 100).accessibilityLabel(String(localized: "系统提示词", bundle: appLocalizationBundle))
                         }
                     }
                 }
                 if let errorMessage { Section { Text(errorMessage).foregroundStyle(.red) } }
             }
-            .navigationTitle("调整翻译参数")
+            .navigationTitle(String(localized: "调整翻译参数", bundle: appLocalizationBundle))
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") { save() }.disabled(isSaving || store.isLoading || store.isSaving)
+                    Button(String(localized: "保存", bundle: appLocalizationBundle)) { save() }.disabled(isSaving || store.isLoading || store.isSaving)
                 }
             }
             .onChange(of: serviceID) { _, id in
@@ -96,10 +96,10 @@ struct TaskTranslationParametersView: View {
                     model = service.modelID
                 }
             }
-            .confirmationDialog("更换目标语言？", isPresented: $replacement, titleVisibility: .visible) {
-                Button("清除现有译文并保存", role: .destructive) { save(discardingTranslations: true) }
-                Button("取消", role: .cancel) {}
-            } message: { Text("现有译文将清除，原文、时间、转写成果与待校对标记保持。") }
+            .confirmationDialog(String(localized: "更换目标语言？", bundle: appLocalizationBundle), isPresented: $replacement, titleVisibility: .visible) {
+                Button(String(localized: "清除现有译文并保存", bundle: appLocalizationBundle), role: .destructive) { save(discardingTranslations: true) }
+                Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
+            } message: { Text(String(localized: "现有译文将清除，原文、时间、转写成果与待校对标记保持。", bundle: appLocalizationBundle)) }
         }
         .interactiveDismissDisabled(isSaving)
     }

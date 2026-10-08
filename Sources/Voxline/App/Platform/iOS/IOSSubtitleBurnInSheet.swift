@@ -47,17 +47,17 @@ struct IOSSubtitleBurnInSheet: View {
                 }
                 .padding()
             }
-            .navigationTitle("烧录字幕视频")
+            .navigationTitle(String(localized: "烧录字幕视频", bundle: appLocalizationBundle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
                         .disabled(isExporting)
                 }
                 if let exportedURL {
                     ToolbarItem(placement: .confirmationAction) {
                         ShareLink(item: exportedURL) {
-                            Label("分享视频", systemImage: "square.and.arrow.up")
+                            Label(String(localized: "分享视频", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                         }
                     }
                 }
@@ -93,7 +93,7 @@ struct IOSSubtitleBurnInSheet: View {
                         Image(systemName: "film")
                             .font(.system(size: 32))
                             .foregroundStyle(.white.opacity(0.6))
-                        Text(isPreparing ? "正在生成预览…" : "轻点生成画面预览")
+                        Text(isPreparing ? String(localized: "正在生成预览…", bundle: appLocalizationBundle) : String(localized: "轻点生成画面预览", bundle: appLocalizationBundle))
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.8))
                     }
@@ -109,7 +109,7 @@ struct IOSSubtitleBurnInSheet: View {
             .frame(maxHeight: 220)
 
             HStack {
-                Picker("预览字幕位置", selection: $previewTime) {
+                Picker(String(localized: "预览字幕位置", bundle: appLocalizationBundle), selection: $previewTime) {
                     ForEach(item.cues) { cue in
                         Text("\(formatTime(cue.startMilliseconds)) · \(cue.sourceText.prefix(20))")
                             .tag(cue.startMilliseconds)
@@ -124,7 +124,7 @@ struct IOSSubtitleBurnInSheet: View {
                 Button {
                     refreshPreview()
                 } label: {
-                    Label("刷新预览", systemImage: "arrow.clockwise")
+                    Label(String(localized: "刷新预览", bundle: appLocalizationBundle), systemImage: "arrow.clockwise")
                         .font(.caption)
                 }
                 .buttonStyle(.bordered)
@@ -149,23 +149,23 @@ struct IOSSubtitleBurnInSheet: View {
     private var optionsSection: some View {
         VStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("字幕类型")
+                Text(String(localized: "字幕类型", bundle: appLocalizationBundle))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                Picker("字幕类型", selection: $options.kind) {
-                    Text("原文").tag(SRTOutputKind.source)
-                    Text("译文").tag(SRTOutputKind.translation)
-                    Text("双语").tag(SRTOutputKind.bilingual)
+                Picker(String(localized: "字幕类型", bundle: appLocalizationBundle), selection: $options.kind) {
+                    Text(String(localized: "原文", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
+                    Text(String(localized: "译文", bundle: appLocalizationBundle)).tag(SRTOutputKind.translation)
+                    Text(String(localized: "双语", bundle: appLocalizationBundle)).tag(SRTOutputKind.bilingual)
                 }
                 .pickerStyle(.segmented)
             }
 
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("视频编码")
+                    Text(String(localized: "视频编码", bundle: appLocalizationBundle))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                    Picker("视频编码", selection: $options.codec) {
+                    Picker(String(localized: "视频编码", bundle: appLocalizationBundle), selection: $options.codec) {
                         ForEach(BurnInCodec.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
                     .pickerStyle(.menu)
@@ -173,10 +173,10 @@ struct IOSSubtitleBurnInSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("画面质量")
+                    Text(String(localized: "画面质量", bundle: appLocalizationBundle))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                    Picker("画面质量", selection: $options.quality) {
+                    Picker(String(localized: "画面质量", bundle: appLocalizationBundle), selection: $options.quality) {
                         ForEach(BurnInQuality.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
                     .pickerStyle(.menu)
@@ -186,7 +186,7 @@ struct IOSSubtitleBurnInSheet: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("字幕字号（1080p 基准）")
+                    Text(String(localized: "字幕字号（1080p 基准）", bundle: appLocalizationBundle))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -217,11 +217,11 @@ struct IOSSubtitleBurnInSheet: View {
                 VStack(spacing: 8) {
                     ProgressView(value: progress)
                     HStack {
-                        Text(String(format: "正在导出 %.0f%%", progress * 100))
+                        Text(String(format: String(localized: "正在导出 %.0f%%", bundle: appLocalizationBundle), locale: .current, progress * 100))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("取消") { operation?.cancel() }
+                        Button(String(localized: "取消", bundle: appLocalizationBundle)) { operation?.cancel() }
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
@@ -232,7 +232,7 @@ struct IOSSubtitleBurnInSheet: View {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
-                        Text("导出完成")
+                        Text(String(localized: "导出完成", bundle: appLocalizationBundle))
                             .font(.subheadline.bold())
                     }
 
@@ -240,12 +240,12 @@ struct IOSSubtitleBurnInSheet: View {
                         Button {
                             showPreviewPlayer = true
                         } label: {
-                            Label("预览视频", systemImage: "play.circle")
+                            Label(String(localized: "预览视频", bundle: appLocalizationBundle), systemImage: "play.circle")
                         }
                         .buttonStyle(.bordered)
 
                         ShareLink(item: exportedURL) {
-                            Label("保存或分享", systemImage: "square.and.arrow.up")
+                            Label(String(localized: "保存或分享", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                         }
                         .buttonStyle(.borderedProminent)
                     }
@@ -257,7 +257,7 @@ struct IOSSubtitleBurnInSheet: View {
                 } label: {
                     HStack {
                         Spacer()
-                        Label("开始烧录导出", systemImage: "arrow.down.circle.fill")
+                        Label(String(localized: "开始烧录导出", bundle: appLocalizationBundle), systemImage: "arrow.down.circle.fill")
                             .font(.headline)
                         Spacer()
                     }
@@ -292,7 +292,7 @@ struct IOSSubtitleBurnInSheet: View {
                 previewImage = UIImage(cgImage: image)
             } catch {
                 previewImage = nil
-                errorMessage = error is CancellationError ? "已取消预览。" : error.localizedDescription
+                errorMessage = error is CancellationError ? String(localized: "已取消预览。", bundle: appLocalizationBundle) : error.localizedDescription
             }
         }
     }
@@ -322,7 +322,7 @@ struct IOSSubtitleBurnInSheet: View {
                 }
                 exportedURL = destination
             } catch {
-                errorMessage = error is CancellationError ? "已取消导出。" : error.localizedDescription
+                errorMessage = error is CancellationError ? String(localized: "已取消导出。", bundle: appLocalizationBundle) : error.localizedDescription
             }
         }
     }
@@ -340,11 +340,11 @@ private struct VideoPlayerView: View {
         NavigationStack {
             VideoPlayer(player: AVPlayer(url: url))
                 .ignoresSafeArea()
-                .navigationTitle("视频预览")
+                .navigationTitle(String(localized: "视频预览", bundle: appLocalizationBundle))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("完成") { dismiss() }
+                        Button(String(localized: "完成", bundle: appLocalizationBundle)) { dismiss() }
                     }
                 }
         }

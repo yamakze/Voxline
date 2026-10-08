@@ -67,7 +67,7 @@ public struct OpenAITranscriptionProvider: TranscriptionProvider {
             var reason = error.localizedDescription
             if let uploadURL {
                 do { try FileManager.default.removeItem(at: uploadURL) }
-                catch let cleanupError { reason += " 上传临时文件清理失败：\(cleanupError.localizedDescription)" }
+                catch let cleanupError { reason += String(localized: " 上传临时文件清理失败：\(cleanupError.localizedDescription)", bundle: voxlineLocalizationBundle) }
             }
             evidence.outcome = Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled ? .cancelled : .failed
             evidence.failureReason = reason

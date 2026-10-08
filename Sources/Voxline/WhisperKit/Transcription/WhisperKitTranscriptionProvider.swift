@@ -33,7 +33,7 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
         guard original.settings.provider == .whisperKit, original.outcome == .completed,
               original.failureReason == nil, original.partialDecodedText == nil, original.partialDecodedTokens == nil,
               !original.windows.isEmpty, original.durationMilliseconds <= 120_000 else {
-            throw WhisperTranscriptionError.invalidAlignment("没有完整的本地识别结果可恢复。")
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "没有完整的本地识别结果可恢复。", bundle: voxlineLocalizationBundle))
         }
         guard original.windows.allSatisfy({ $0.seekFrame >= 0 && $0.seekFrame <= 1_920_000 &&
             $0.frameCount > 0 && $0.frameCount <= 480_000 && $0.seekFrame + $0.frameCount <= 1_920_000 }) else {
@@ -45,7 +45,7 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
             ($0.alignedSegments ?? $0.segmentsBeforeAlignment) }
         guard selected.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ==
                 original.segments.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
-            throw WhisperTranscriptionError.invalidAlignment("保存的识别结果遗漏或改变了窗口文本。")
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "保存的识别结果遗漏或改变了窗口文本。", bundle: voxlineLocalizationBundle))
         }
         var evidence = original
         let offset = Double(evidence.sourceStartMilliseconds) / 1000
@@ -90,7 +90,7 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
         do { _ = try persist(evidence) }
         catch {
             evidence.outcome = .failed
-            evidence.failureReason = "推理完成，但原始证据无法保存。"
+            evidence.failureReason = String(localized: "推理完成，但原始证据无法保存。", bundle: voxlineLocalizationBundle)
             throw TranscriptionFailure(cause: error, evidence: evidence, evidenceURL: nil, storageError: error.localizedDescription)
         }
         onProgress(.completed(segmentCount: evidence.segments.count))
@@ -120,9 +120,9 @@ public enum WhisperTranscriptionError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .busy: "模型正在下载、加载或转写，请等待当前操作结束。"
-        case .unsupportedLanguage(let code): "WhisperKit 不支持语言代码 \(code)。"
-        case .invalidAudio: "转写输入必须是最多 120 秒的非空 16 kHz 单声道 Float32 PCM，且时长与参数一致。"
+        case .busy: String(localized: "模型正在下载、加载或转写，请等待当前操作结束。", bundle: voxlineLocalizationBundle)
+        case .unsupportedLanguage(let code): String(localized: "WhisperKit 不支持语言代码 \(code)。", bundle: voxlineLocalizationBundle)
+        case .invalidAudio: String(localized: "转写输入必须是最多 120 秒的非空 16 kHz 单声道 Float32 PCM，且时长与参数一致。", bundle: voxlineLocalizationBundle)
         case .invalidAlignment(let reason), .invalidTiming(let reason): reason
         }
     }

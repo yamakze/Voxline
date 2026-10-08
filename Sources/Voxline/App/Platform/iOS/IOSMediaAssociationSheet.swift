@@ -35,38 +35,38 @@ struct IOSMediaAssociationSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("所选媒体") {
+                Section(String(localized: "所选媒体", bundle: appLocalizationBundle)) {
                     Text(selectedURL.lastPathComponent)
                     if let inspection {
-                        LabeledContent("时长", value: "\((Double(inspection.durationMilliseconds) / 1000).formatted(.number.precision(.fractionLength(1)))) 秒")
-                        Picker("播放音轨", selection: $trackID) {
-                            Text("请选择音轨").tag(nil as Int32?)
+                        LabeledContent(String(localized: "时长", bundle: appLocalizationBundle), value: String(localized: "\((Double(inspection.durationMilliseconds) / 1000).formatted(.number.precision(.fractionLength(1)))) 秒", bundle: appLocalizationBundle))
+                        Picker(String(localized: "播放音轨", bundle: appLocalizationBundle), selection: $trackID) {
+                            Text(String(localized: "请选择音轨", bundle: appLocalizationBundle)).tag(nil as Int32?)
                             ForEach(inspection.audioTracks) { track in
-                                Text("音轨 \(track.id) · \(track.language ?? "未标明语言") · \(track.codecs.joined(separator: ", "))")
+                                Text(String(localized: "音轨 \(track.id) · \(track.language ?? String(localized: "未标明语言", bundle: appLocalizationBundle)) · \(track.codecs.joined(separator: ", "))", bundle: appLocalizationBundle))
                                     .tag(Optional(track.id))
                                     .disabled(!track.isDecodable || candidate.item.media.map { $0.audioTrackID != track.id } == true)
                             }
                         }
-                    } else if isInspecting { ProgressView("检查媒体…") }
-                    Button("重新选择…") { isSelectingMedia = true }
+                    } else if isInspecting { ProgressView(String(localized: "检查媒体…", bundle: appLocalizationBundle)) }
+                    Button(String(localized: "重新选择…", bundle: appLocalizationBundle)) { isSelectingMedia = true }
                         .disabled(isInspecting || isSaving)
                 }
                 if let errorMessage {
                     Section {
                         Text(errorMessage).foregroundStyle(.red)
                         if inspection == nil, canRetryInspection {
-                            Button("重试检查") { inspectionRequestID = UUID() }
+                            Button(String(localized: "重试检查", bundle: appLocalizationBundle)) { inspectionRequestID = UUID() }
                                 .disabled(isInspecting || isSaving)
                         }
                     }
                 }
             }
-            .navigationTitle("关联媒体")
+            .navigationTitle(String(localized: "关联媒体", bundle: appLocalizationBundle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(isSaving) }
+                ToolbarItem(placement: .cancellationAction) { Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }.disabled(isSaving) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("关联") {
+                    Button(String(localized: "关联", bundle: appLocalizationBundle)) {
                         Task {
                             isSaving = true
                             defer { isSaving = false }
@@ -111,7 +111,7 @@ struct IOSMediaAssociationSheet: View {
                     if let media = candidate.item.media { trackID = media.audioTrackID }
                     else if value.audioTracks.count == 1 { trackID = value.audioTracks[0].id }
                 } catch is CancellationError {
-                    errorMessage = "媒体检查已取消。"
+                    errorMessage = String(localized: "媒体检查已取消。", bundle: appLocalizationBundle)
                     canRetryInspection = true
                 } catch {
                     errorMessage = error.localizedDescription

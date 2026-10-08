@@ -71,7 +71,7 @@ public final class CloudTranscriptionServiceStore {
             self.services = services
             credentialPresence = presence
             errorMessage = nil
-        } catch { errorMessage = "转写服务读取失败：\(error.localizedDescription)" }
+        } catch { errorMessage = String(localized: "转写服务读取失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle) }
     }
 
     public func addOrUpdate(_ service: CloudTranscriptionServiceConfig, apiKey: String) async throws {

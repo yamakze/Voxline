@@ -28,10 +28,10 @@ public struct TranslationServicesSettingsView: View {
                     HStack(spacing: 10) {
                         Image(systemName: "info.circle")
                             .foregroundStyle(.blue)
-                        Text("当前任务引用的服务尚未在此设备配置")
+                        Text(String(localized: "当前任务引用的服务尚未在此设备配置", bundle: appLocalizationBundle))
                             .font(.subheadline)
                         Spacer()
-                        Button("配置此服务") { editingService = referencedService }
+                        Button(String(localized: "配置此服务", bundle: appLocalizationBundle)) { editingService = referencedService }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                     }
@@ -40,7 +40,7 @@ public struct TranslationServicesSettingsView: View {
                 }
 
                 if store.isLoading {
-                    ProgressView("正在读取服务…")
+                    ProgressView(String(localized: "正在读取服务…", bundle: appLocalizationBundle))
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 20)
                 }
@@ -49,21 +49,21 @@ public struct TranslationServicesSettingsView: View {
                     HStack {
                         Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
                         Spacer()
-                        Button("重试") { Task { await store.load() } }.disabled(store.isLoading || store.isSaving)
+                        Button(String(localized: "重试", bundle: appLocalizationBundle)) { Task { await store.load() } }.disabled(store.isLoading || store.isSaving)
                     }
                 }
 
                 // Inset Grouped Service Cards
                 if store.services.isEmpty {
                     ContentUnavailableView {
-                        Label("尚未配置翻译服务", systemImage: "character.bubble")
+                        Label(String(localized: "尚未配置翻译服务", bundle: appLocalizationBundle), systemImage: "character.bubble")
                     } description: {
-                        Text("配置 OpenAI 兼容接口或本地模型服务以启用字幕翻译。")
+                        Text(String(localized: "配置 OpenAI 兼容接口或本地模型服务以启用字幕翻译。", bundle: appLocalizationBundle))
                     } actions: {
                         Button {
                             isAddingService = true
                         } label: {
-                            Label("添加翻译服务", systemImage: "plus")
+                            Label(String(localized: "添加翻译服务", bundle: appLocalizationBundle), systemImage: "plus")
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(store.isLoading || store.isSaving)
@@ -72,14 +72,14 @@ public struct TranslationServicesSettingsView: View {
                     .frame(maxWidth: .infinity)
                 } else {
                     HStack {
-                        Text("已配置服务")
+                        Text(String(localized: "已配置服务", bundle: appLocalizationBundle))
                             .font(.headline)
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button {
                             isAddingService = true
                         } label: {
-                            Label("添加服务", systemImage: "plus")
+                            Label(String(localized: "添加服务", bundle: appLocalizationBundle), systemImage: "plus")
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
@@ -96,7 +96,7 @@ public struct TranslationServicesSettingsView: View {
             .padding(24)
         }
         #if os(iOS)
-        .navigationTitle("翻译服务")
+        .navigationTitle(String(localized: "翻译服务", bundle: appLocalizationBundle))
         #endif
         .onDisappear { connectionTask?.cancel() }
         .sheet(isPresented: $isAddingService) {
@@ -109,21 +109,21 @@ public struct TranslationServicesSettingsView: View {
                 try await store.addOrUpdate(updated, apiKey: key)
             }
         }
-        .confirmationDialog("本次任务使用此服务？", isPresented: Binding(
+        .confirmationDialog(String(localized: "本次任务使用此服务？", bundle: appLocalizationBundle), isPresented: Binding(
             get: { bindingService != nil }, set: { if !$0 { bindingService = nil } }), titleVisibility: .visible) {
-            Button("绑定到本次任务") {
+            Button(String(localized: "绑定到本次任务", bundle: appLocalizationBundle)) {
                 do {
                     if let bindingService { try onBindService?(bindingService) }
                     bindingService = nil
                 } catch { errorMessage = error.localizedDescription }
             }
-            Button("取消", role: .cancel) { bindingService = nil }
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) { bindingService = nil }
         } message: {
-            Text("本次任务将使用所选服务地址和模型，保留原目标语言、批量数量、提示词与已有译文。\n\(bindingService?.name ?? "") · \(bindingService?.modelID ?? "")\n\(bindingService?.baseURL.absoluteString ?? "")")
+            Text(String(localized: "本次任务将使用所选服务地址和模型，保留原目标语言、批量数量、提示词与已有译文。\n\(bindingService?.name ?? "") · \(bindingService?.modelID ?? "")\n\(bindingService?.baseURL.absoluteString ?? "")", bundle: appLocalizationBundle))
         }
-        .confirmationDialog("删除翻译服务？", isPresented: Binding(
+        .confirmationDialog(String(localized: "删除翻译服务？", bundle: appLocalizationBundle), isPresented: Binding(
             get: { deletingService != nil }, set: { if !$0 { deletingService = nil } }), titleVisibility: .visible) {
-            Button("删除服务与本地密钥", role: .destructive) {
+            Button(String(localized: "删除服务与本地密钥", bundle: appLocalizationBundle), role: .destructive) {
                 guard let service = deletingService else { return }
                 Task {
                     do {
@@ -134,12 +134,12 @@ public struct TranslationServicesSettingsView: View {
                     }
                 }
             }
-            Button("取消", role: .cancel) { deletingService = nil }
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) { deletingService = nil }
         } message: {
-            Text("将从本设备删除该服务配置及钥匙串密钥。")
+            Text(String(localized: "将从本设备删除该服务配置及钥匙串密钥。", bundle: appLocalizationBundle))
         }
-        .alert("服务配置未修改", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-            Button("好", role: .cancel) { errorMessage = nil }
+        .alert(String(localized: "服务配置未修改", bundle: appLocalizationBundle), isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
     }
 
@@ -175,7 +175,7 @@ public struct TranslationServicesSettingsView: View {
                     Image(systemName: store.credentialPresence[service.id] == true ? "key.fill" : "key.slash")
                         .font(.caption2)
                         .foregroundStyle(store.credentialPresence[service.id] == true ? .green : .secondary)
-                    Text(store.credentialPresence[service.id] == true ? "已存入钥匙串" : "无密钥")
+                    Text(store.credentialPresence[service.id] == true ? String(localized: "已存入钥匙串", bundle: appLocalizationBundle) : String(localized: "无密钥", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -185,7 +185,7 @@ public struct TranslationServicesSettingsView: View {
 
             HStack(spacing: 8) {
                 if onBindService != nil {
-                    Button(referencedService?.id == service.id ? "已绑定" : "使用") {
+                    Button(referencedService?.id == service.id ? String(localized: "已绑定", bundle: appLocalizationBundle) : String(localized: "使用", bundle: appLocalizationBundle)) {
                         bindingService = service
                     }
                     .buttonStyle(.bordered)
@@ -193,11 +193,11 @@ public struct TranslationServicesSettingsView: View {
                     .disabled(referencedService?.id == service.id || store.isLoading || store.isSaving)
                 }
 
-                Button("编辑") { editingService = service }
+                Button(String(localized: "编辑", bundle: appLocalizationBundle)) { editingService = service }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
 
-                Button("删除", role: .destructive) { deletingService = service }
+                Button(String(localized: "删除", bundle: appLocalizationBundle), role: .destructive) { deletingService = service }
                     .buttonStyle(.borderless)
                     .foregroundStyle(.red)
                     .controlSize(.small)
@@ -247,7 +247,7 @@ private struct ServiceEditorModal: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(original == nil ? "添加翻译服务" : "编辑翻译服务")
+                Text(original == nil ? String(localized: "添加翻译服务", bundle: appLocalizationBundle) : String(localized: "编辑翻译服务", bundle: appLocalizationBundle))
                     .font(.headline)
                 Spacer()
             }
@@ -258,11 +258,11 @@ private struct ServiceEditorModal: View {
             Divider()
 
             Form {
-                Section("服务接入") {
-                    TextField("名称", text: $name, prompt: Text("例如 OpenAI / DeepSeek"))
-                    TextField("接口地址", text: $baseURLString, prompt: Text("https://api.openai.com/v1"))
-                    TextField("模型", text: $modelID, prompt: Text("gpt-4o-mini"))
-                    PasswordVisibilityField("API 密钥（选填）", text: $apiKey)
+                Section(String(localized: "服务接入", bundle: appLocalizationBundle)) {
+                    TextField(String(localized: "名称", bundle: appLocalizationBundle), text: $name, prompt: Text(String(localized: "例如 OpenAI / DeepSeek", bundle: appLocalizationBundle)))
+                    TextField(String(localized: "接口地址", bundle: appLocalizationBundle), text: $baseURLString, prompt: Text("https://api.openai.com/v1"))
+                    TextField(String(localized: "模型", bundle: appLocalizationBundle), text: $modelID, prompt: Text("gpt-4o-mini"))
+                    PasswordVisibilityField(String(localized: "API 密钥（选填）", bundle: appLocalizationBundle), text: $apiKey)
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             isAdvancedExpanded.toggle()
@@ -271,7 +271,7 @@ private struct ServiceEditorModal: View {
                         HStack(spacing: 4) {
                             Image(systemName: isAdvancedExpanded ? "chevron.down" : "chevron.right")
                                 .font(.caption2.bold())
-                            Text("高级选项")
+                            Text(String(localized: "高级选项", bundle: appLocalizationBundle))
                                 .font(.subheadline)
                         }
                         .foregroundStyle(.secondary)
@@ -280,7 +280,7 @@ private struct ServiceEditorModal: View {
                     .padding(.vertical, 2)
 
                     if isAdvancedExpanded {
-                        LabeledContent("每批字幕数") {
+                        LabeledContent(String(localized: "每批字幕数", bundle: appLocalizationBundle)) {
                             TextField("", text: $batchSizeText)
                                 .multilineTextAlignment(.trailing)
                                 #if os(iOS)
@@ -300,7 +300,7 @@ private struct ServiceEditorModal: View {
                                             .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
                                     )
 
-                                Button("恢复默认") {
+                                Button(String(localized: "恢复默认", bundle: appLocalizationBundle)) {
                                     systemPrompt = TranslationSettings.defaultSystemPrompt
                                 }
                                 .buttonStyle(.borderless)
@@ -308,7 +308,7 @@ private struct ServiceEditorModal: View {
                                 .foregroundStyle(.tint)
                             }
                         } label: {
-                            Text("系统提示词")
+                            Text(String(localized: "系统提示词", bundle: appLocalizationBundle))
                         }
                     }
                 }
@@ -317,11 +317,11 @@ private struct ServiceEditorModal: View {
             .disabled(isLoadingKey || isSaving)
 
             if isLoadingKey {
-                ProgressView("正在读取密钥…")
+                ProgressView(String(localized: "正在读取密钥…", bundle: appLocalizationBundle))
                     .padding(.vertical, 8)
             }
             if keyReadFailed {
-                Button("重新读取密钥") { Task { await loadCredential() } }
+                Button(String(localized: "重新读取密钥", bundle: appLocalizationBundle)) { Task { await loadCredential() } }
                     .padding(.vertical, 4)
             }
 
@@ -353,28 +353,28 @@ private struct ServiceEditorModal: View {
             Divider()
 
             HStack {
-                Button("测试连接") {
+                Button(String(localized: "测试连接", bundle: appLocalizationBundle)) {
                     testConnection()
                 }
                 .disabled(isTesting || isLoadingKey || isSaving)
 
                 if isTesting {
                     ProgressView().controlSize(.small)
-                    Button("取消测试") { connectionTask?.cancel() }
+                    Button(String(localized: "取消测试", bundle: appLocalizationBundle)) { connectionTask?.cancel() }
                         .buttonStyle(.borderless)
                         .font(.caption)
                 }
 
                 Spacer()
 
-                Button("取消") {
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
                     connectionTask?.cancel()
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
                 .disabled(isSaving)
 
-                Button("保存") {
+                Button(String(localized: "保存", bundle: appLocalizationBundle)) {
                     saveService()
                 }
                 .buttonStyle(.borderedProminent)
@@ -432,7 +432,7 @@ private struct ServiceEditorModal: View {
 
     private func saveService() {
         guard !keyReadFailed || !apiKey.isEmpty else {
-            errorMessage = "旧密钥尚未读取，重试读取或填写新密钥后再保存。"
+            errorMessage = String(localized: "旧密钥尚未读取，重试读取或填写新密钥后再保存。", bundle: appLocalizationBundle)
             return
         }
         isSaving = true

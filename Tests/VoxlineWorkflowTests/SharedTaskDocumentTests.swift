@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import VoxlineCore
+@testable import VoxlineCore
 import VoxlineMedia
 @testable import VoxlineWorkflow
 
@@ -28,7 +28,7 @@ struct SharedTaskDocumentTests {
         #expect(copy.items == draft.items)
         library.refresh()
         #expect(library.task(for: initial.id) == remote)
-        #expect(library.task(for: copy.id)?.title == "Unsaved local edit 副本")
+        #expect(library.task(for: copy.id)?.title == "Unsaved local edit" + String(localized: " 副本", bundle: VoxlineCore.voxlineLocalizationBundle))
         let reopened = TaskLibrary(tasksDirectory: root.appendingPathComponent("other-device"))
         reopened.connectSharedDocuments(try SharedTaskDocuments(directory: shared.directory))
         #expect(Set(reopened.entries.map(\.taskID)) == [initial.id, copy.id])
@@ -95,7 +95,7 @@ struct SharedTaskDocumentTests {
         try settings.disable()
         #expect(!settings.isEnabled)
         #expect(library.task(for: initial.id) == changed)
-        #expect(library.entries.contains { $0.task?.title == "Original 副本" })
+        #expect(library.entries.contains { $0.task?.title == "Original" + String(localized: " 副本", bundle: VoxlineCore.voxlineLocalizationBundle) })
         let cloudFile = folder.appendingPathComponent("Tasks/\(initial.id).voxline")
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: cloudFile)) == changed)
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("settings.json").path))

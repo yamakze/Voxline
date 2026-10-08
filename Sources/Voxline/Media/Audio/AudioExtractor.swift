@@ -41,7 +41,13 @@ public actor AudioExtractor {
         let segments = try await track.load(.segments)
         guard let firstContent = segments.first(where: { !$0.isEmpty }) else { throw AudioExtractionError.emptyAudio }
         let trackRange = try await track.load(.timeRange)
-        let sourceRange = CMTimeRange(start: firstContent.timeMapping.target.start, end: trackRange.end)
+        let mediaDuration = try await asset.load(.duration)
+        let sourceRange = CMTimeRange(start: firstContent.timeMapping.target.start,
+            end: CMTimeMinimum(trackRange.end, mediaDuration))
+        guard sourceRange.isValid, sourceRange.duration > .zero else { throw AudioExtractionError.emptyAudio }
+        // Decoders can return a complete final AAC packet past the requested media endpoint.
+        // Only PCM frames within the native source range belong to the transcription timeline.
+        let sourceEndFrame = CMTimeConvertScale(sourceRange.end, timescale: Self.sampleRate, method: .roundTowardZero).value
         try Task.checkCancellation()
         let base: URL
         if let directory { base = directory }
@@ -96,11 +102,11 @@ public actor AudioExtractor {
                 }
                 return try record.audio(in: root, reusedCache: true)
             } catch is DecodingError {
-                onProgress(.cacheInvalidated(reason: "音频缓存记录损坏，重新提取。"))
+                onProgress(.cacheInvalidated(reason: String(localized: "音频缓存记录损坏，重新提取。", bundle: voxlineLocalizationBundle)))
             } catch AudioExtractionError.invalidCache {
-                onProgress(.cacheInvalidated(reason: "音频缓存与媒体不符或不完整，重新提取。"))
+                onProgress(.cacheInvalidated(reason: String(localized: "音频缓存与媒体不符或不完整，重新提取。", bundle: voxlineLocalizationBundle)))
             } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-                onProgress(.cacheInvalidated(reason: "音频缓存文件缺失，重新提取。"))
+                onProgress(.cacheInvalidated(reason: String(localized: "音频缓存文件缺失，重新提取。", bundle: voxlineLocalizationBundle)))
             }
             try Task.checkCancellation()
             try FileManager.default.removeItem(at: root)
@@ -156,15 +162,16 @@ public actor AudioExtractor {
             let packetStart: Int64
             if let expectedFrame, abs(presentation - expectedFrame) <= 1 { packetStart = expectedFrame }
             else { packetStart = presentation }
+            let playableFrames = min(frames, Int(max(0, sourceEndFrame - packetStart)))
             var offset = 0
-            while offset < frames {
+            while offset < playableFrames {
                 try Task.checkCancellation()
                 if writer == nil {
                     chunkStart = packetStart + Int64(offset)
                     writer = try AVAudioFile(forWriting: Self.chunkURL(in: root, index: records.count),
                                              settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
                 }
-                let count = min(frames - offset, Int(Self.maximumChunkFrames - chunkFrames), Int(buffer.frameCapacity))
+                let count = min(playableFrames - offset, Int(Self.maximumChunkFrames - chunkFrames), Int(buffer.frameCapacity))
                 guard CMBlockBufferCopyDataBytes(block, atOffset: offset * MemoryLayout<Float>.size,
                     dataLength: count * MemoryLayout<Float>.size, destination: destination) == kCMBlockBufferNoErr else {
                     throw AudioExtractionError.invalidPCM
@@ -176,8 +183,8 @@ public actor AudioExtractor {
                 chunkFrames += Int64(count)
                 if chunkFrames == Self.maximumChunkFrames { finishChunk() }
             }
-            expectedFrame = packetStart + Int64(frames)
-            let sourceEndMilliseconds = Double(packetStart + Int64(frames)) / 16
+            expectedFrame = packetStart + Int64(playableFrames)
+            let sourceEndMilliseconds = Double(packetStart + Int64(playableFrames)) / 16
             guard sourceEndMilliseconds <= Double(identity.durationMilliseconds) + 1 else {
                 throw AudioExtractionError.outsideMedia
             }
@@ -225,13 +232,13 @@ public enum AudioExtractionError: Error, LocalizedError, Equatable {
     case invalidCache, cannotDecode, invalidPCM, backwardTimeline, outsideMedia, incompleteDecode, emptyAudio
     public var errorDescription: String? {
         switch self {
-        case .invalidCache: "音频缓存不完整或与媒体不符。"
-        case .cannotDecode: "无法将所选音轨解码为转写音频。"
-        case .invalidPCM: "解码输出不是有效的 16 kHz 单声道 Float32 PCM。"
-        case .backwardTimeline: "音轨时间发生回退，提取已停止。"
-        case .outsideMedia: "提取音频的时间超出源媒体范围。"
-        case .incompleteDecode: "音轨解码未完整结束，未提交缓存。"
-        case .emptyAudio: "所选音轨没有可处理的音频。"
+        case .invalidCache: String(localized: "音频缓存不完整或与媒体不符。", bundle: voxlineLocalizationBundle)
+        case .cannotDecode: String(localized: "无法将所选音轨解码为转写音频。", bundle: voxlineLocalizationBundle)
+        case .invalidPCM: String(localized: "解码输出不是有效的 16 kHz 单声道 Float32 PCM。", bundle: voxlineLocalizationBundle)
+        case .backwardTimeline: String(localized: "音轨时间发生回退，提取已停止。", bundle: voxlineLocalizationBundle)
+        case .outsideMedia: String(localized: "提取音频的时间超出源媒体范围。", bundle: voxlineLocalizationBundle)
+        case .incompleteDecode: String(localized: "音轨解码未完整结束，未提交缓存。", bundle: voxlineLocalizationBundle)
+        case .emptyAudio: String(localized: "所选音轨没有可处理的音频。", bundle: voxlineLocalizationBundle)
         }
     }
 }

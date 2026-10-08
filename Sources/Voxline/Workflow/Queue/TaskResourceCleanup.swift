@@ -47,7 +47,7 @@ public struct TaskResourceCleanup: Sendable {
                         if removedEvidence.contains(evidence), !retainedEvidence.contains(evidence) {
                             try FileManager.default.removeItem(at: file)
                         }
-                    } catch { failures.append("\(file.path)：无法核对或清理旧转写证据：\(error.localizedDescription)") }
+                    } catch { failures.append(String(localized: "\(file.path)：无法核对或清理旧转写证据：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)) }
                 }
             } catch { failures.append("\(transcription.path)：\(error.localizedDescription)") }
         }
@@ -70,7 +70,7 @@ public enum TaskDeletionError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .cleanupFailed(let failures):
-            "删除未完成，任务文件保留。部分缓存可能已清理，可修复后重试删除：\n" + failures.joined(separator: "\n")
+            String(localized: "删除未完成，任务文件保留。部分缓存可能已清理，可修复后重试删除：\n", bundle: voxlineLocalizationBundle) + failures.joined(separator: "\n")
         }
     }
 }

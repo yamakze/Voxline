@@ -63,10 +63,10 @@ public struct MainWindowView: View {
                 try library.save(prepared)
             }
         }
-        .alert("任务未保存或无法打开", isPresented: Binding(
+        .alert(String(localized: "任务未保存或无法打开", bundle: appLocalizationBundle), isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
         )) {
-            Button("好", role: .cancel) { errorMessage = nil }
+            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
         .onAppear {
             library.refresh()
@@ -76,10 +76,10 @@ public struct MainWindowView: View {
     // MARK: - Sidebar
     private var sidebarContent: some View {
         List(selection: $selectedTab) {
-            Section("任务") {
+            Section(String(localized: "任务", bundle: appLocalizationBundle)) {
                 NavigationLink(value: NavigationItem.allTasks) {
                     HStack {
-                        Label("全部任务", systemImage: "tray.full")
+                        Label(String(localized: "全部任务", bundle: appLocalizationBundle), systemImage: "tray.full")
                         Spacer()
                         if !library.entries.isEmpty {
                             Text("\(library.entries.count)")
@@ -90,9 +90,9 @@ public struct MainWindowView: View {
                 }
             }
 
-            Section("系统") {
+            Section(String(localized: "系统", bundle: appLocalizationBundle)) {
                 NavigationLink(value: NavigationItem.settings) {
-                    Label("设置", systemImage: "gearshape")
+                    Label(String(localized: "设置", bundle: appLocalizationBundle), systemImage: "gearshape")
                 }
             }
         }
@@ -102,7 +102,7 @@ public struct MainWindowView: View {
                 Button {
                     newTaskDraft = ProcessingTask()
                 } label: {
-                    Label("新建任务", systemImage: "plus")
+                    Label(String(localized: "新建任务", bundle: appLocalizationBundle), systemImage: "plus")
                         .font(.system(size: 13, weight: .medium))
                 }
                 .buttonStyle(.plain)
@@ -118,7 +118,7 @@ public struct MainWindowView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help("打开已有 .voxline 任务文件")
+                .help(String(localized: "打开已有 .voxline 任务文件", bundle: appLocalizationBundle))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -148,7 +148,7 @@ public struct MainWindowView: View {
             if let task = library.task(for: taskID) {
                 taskWorkspaceView(task: task)
             } else {
-                ContentUnavailableView("任务未找到", systemImage: "exclamationmark.triangle")
+                ContentUnavailableView(String(localized: "任务未找到", bundle: appLocalizationBundle), systemImage: "exclamationmark.triangle")
             }
 
         case .settings:
@@ -189,7 +189,7 @@ public struct MainWindowView: View {
                         } label: {
                             Image(systemName: "chevron.left")
                         }
-                        .help("返回全部任务")
+                        .help(String(localized: "返回全部任务", bundle: appLocalizationBundle))
                     }
 
                     ToolbarItem(placement: .principal) {
@@ -200,13 +200,13 @@ public struct MainWindowView: View {
 
                     ToolbarItemGroup(placement: .primaryAction) {
                         if TaskProcessingQueue.shared.taskID == task.id {
-                            Button(TaskProcessingQueue.shared.isCancelling ? "正在取消…" : "取消任务", systemImage: "stop.fill") {
+                            Button(TaskProcessingQueue.shared.isCancelling ? String(localized: "正在取消…", bundle: appLocalizationBundle) : String(localized: "取消任务", bundle: appLocalizationBundle), systemImage: "stop.fill") {
                                 do { try TaskProcessingQueue.shared.cancel() }
                                 catch { errorMessage = error.localizedDescription }
                             }
                             .disabled(TaskProcessingQueue.shared.isCancelling)
                         } else {
-                            Button(task.startedAt == nil ? "开始处理" : "继续处理", systemImage: "play.fill") {
+                            Button(task.startedAt == nil ? String(localized: "开始处理", bundle: appLocalizationBundle) : String(localized: "继续处理", bundle: appLocalizationBundle), systemImage: "play.fill") {
                                 do { try TaskProcessingQueue.shared.start(taskID: task.id) }
                                 catch { errorMessage = error.localizedDescription }
                             }
@@ -215,7 +215,7 @@ public struct MainWindowView: View {
                         }
 
                         if TaskProcessingQueue.shared.taskID != task.id {
-                            Button("调整参数", systemImage: "slider.horizontal.3") {
+                            Button(String(localized: "调整参数", bundle: appLocalizationBundle), systemImage: "slider.horizontal.3") {
                                 configurationTask = task
                             }
                         }

@@ -80,7 +80,7 @@ public struct MediaDetailProofreadingView: View {
                     Button(action: onBack) {
                         Image(systemName: "chevron.left")
                     }
-                    .help("返回任务队列")
+                    .help(String(localized: "返回任务队列", bundle: appLocalizationBundle))
                 }
             }
 
@@ -92,19 +92,19 @@ public struct MediaDetailProofreadingView: View {
 
             ToolbarItemGroup(placement: .primaryAction) {
                 if queue.taskID == taskID, queue.mediaID == item.id {
-                    Text(queue.progressText ?? "处理中").font(.caption)
-                    Button(queue.isCancelling ? "正在取消…" : "取消处理") {
+                    Text(queue.progressText ?? String(localized: "处理中", bundle: appLocalizationBundle)).font(.caption)
+                    Button(queue.isCancelling ? String(localized: "正在取消…", bundle: appLocalizationBundle) : String(localized: "取消处理", bundle: appLocalizationBundle)) {
                         do { try queue.cancel(mediaID: item.id) }
                         catch { errorMessage = error.localizedDescription }
                     }
                     .disabled(queue.isCancelling)
                 } else {
-                    Button("重译字幕…", systemImage: "character.bubble") { retranslationCues = item.cues }
+                    Button(String(localized: "重译字幕…", bundle: appLocalizationBundle), systemImage: "character.bubble") { retranslationCues = item.cues }
                         .disabled(item.cues.isEmpty || editingCueID != nil || queue.taskID != nil)
                 }
 
                 if item.media == nil || playbackController.isMediaUnavailable {
-                    Button("重新关联", systemImage: "link.badge.plus") {
+                    Button(String(localized: "重新关联", bundle: appLocalizationBundle), systemImage: "link.badge.plus") {
                         showRelinkSheet = true
                     }
                 }
@@ -119,53 +119,53 @@ public struct MediaDetailProofreadingView: View {
                             errorMessage = error.localizedDescription
                         }
                     } label: {
-                        Label("一键校对 (\(pendingReviewCuesCount))", systemImage: "checkmark.seal.fill")
+                        Label(String(localized: "一键校对 (\(pendingReviewCuesCount))", bundle: appLocalizationBundle), systemImage: "checkmark.seal.fill")
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.orange)
-                    .help("批量确认并清除全部待校对标记（共 \(pendingReviewCuesCount) 处）")
+                    .help(String(localized: "批量确认并清除全部待校对标记（共 \(pendingReviewCuesCount) 处）", bundle: appLocalizationBundle))
                 }
 
-                Button("偏移行…", systemImage: "timer") {
+                Button(String(localized: "偏移行…", bundle: appLocalizationBundle), systemImage: "timer") {
                     showTimeOffsetSheet = true
                 }
                 .disabled(item.cues.isEmpty || editingCueID != nil)
 
                 Menu {
-                    Section("外挂字幕") {
+                    Section(String(localized: "外挂字幕", bundle: appLocalizationBundle)) {
                         Button {
                             showSRTExportSheet = true
                         } label: {
-                            Label("导出字幕文件…", systemImage: "doc.text")
+                            Label(String(localized: "导出字幕文件…", bundle: appLocalizationBundle), systemImage: "doc.text")
                         }
                     }
 
                     if item.kind == .video {
-                        Section("视频内嵌") {
+                        Section(String(localized: "视频内嵌", bundle: appLocalizationBundle)) {
                             Button {
                                 showEmbeddingSheet = true
                             } label: {
-                                Label("内封软字幕…", systemImage: "captions.bubble")
+                                Label(String(localized: "内封软字幕…", bundle: appLocalizationBundle), systemImage: "captions.bubble")
                             }
 
                             Button {
                                 showBurnInSheet = true
                             } label: {
-                                Label("烧录硬字幕…", systemImage: "film.stack")
+                                Label(String(localized: "烧录硬字幕…", bundle: appLocalizationBundle), systemImage: "film.stack")
                             }
                         }
                     }
                 } label: {
-                    Label("导出", systemImage: "square.and.arrow.up")
+                    Label(String(localized: "导出", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                 }
                 .disabled(item.cues.isEmpty || editingCueID != nil)
-                .help("导出字幕或包含字幕的媒体文件")
+                .help(String(localized: "导出字幕或包含字幕的媒体文件", bundle: appLocalizationBundle))
             }
         }
-        .alert("无法完成操作", isPresented: Binding(
+        .alert(String(localized: "无法完成操作", bundle: appLocalizationBundle), isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
         )) {
-            Button("好", role: .cancel) { errorMessage = nil }
+            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
         .task(id: item.id) {
             await playbackController.loadMedia(for: item)
@@ -217,8 +217,8 @@ public struct MediaDetailProofreadingView: View {
     }
 
     private func translationStatus(for cue: SubtitleCue) -> String {
-        if case .failed = cue.translation { return "翻译失败" }
-        return "未翻译"
+        if case .failed = cue.translation { return String(localized: "翻译失败", bundle: appLocalizationBundle) }
+        return String(localized: "未翻译", bundle: appLocalizationBundle)
     }
 
     // MARK: - QuickTime Player Pane (with Floating Glass Capsule)
@@ -247,7 +247,7 @@ public struct MediaDetailProofreadingView: View {
                                 }
                                 Text(item.title)
                                     .font(.title3.bold())
-                                Text("本地原生音频 · 逐句同步")
+                                Text(String(localized: "本地原生音频 · 逐句同步", bundle: appLocalizationBundle))
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                         }
@@ -259,23 +259,23 @@ public struct MediaDetailProofreadingView: View {
                         Color.black.opacity(0.9)
                         VStack(spacing: 12) {
                             if playbackController.isLoading {
-                                ProgressView("正在加载媒体…")
+                                ProgressView(String(localized: "正在加载媒体…", bundle: appLocalizationBundle))
                                     .foregroundStyle(.white)
                             } else {
                                 Image(systemName: item.kind == .video ? "video.badge.plus" : "waveform.badge.plus")
                                     .font(.system(size: 48))
                                     .foregroundStyle(.white.opacity(0.6))
-                                Text(item.media == nil ? "媒体待关联" : "无法播放媒体")
+                                Text(item.media == nil ? String(localized: "媒体待关联", bundle: appLocalizationBundle) : String(localized: "无法播放媒体", bundle: appLocalizationBundle))
                                     .font(.headline).foregroundStyle(.white)
-                                Text(playbackController.errorMessage ?? "请点击重新关联指定本地原文件。")
+                                Text(playbackController.errorMessage ?? String(localized: "请点击重新关联指定本地原文件。", bundle: appLocalizationBundle))
                                     .font(.caption).foregroundStyle(.white.opacity(0.7))
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal, 24)
 
                                 HStack {
-                                    Button("重新关联", systemImage: "link") { showRelinkSheet = true }
+                                    Button(String(localized: "重新关联", bundle: appLocalizationBundle), systemImage: "link") { showRelinkSheet = true }
                                     if item.media != nil {
-                                        Button("重试播放", systemImage: "arrow.clockwise") {
+                                        Button(String(localized: "重试播放", bundle: appLocalizationBundle), systemImage: "arrow.clockwise") {
                                             Task { await playbackController.loadMedia(for: item) }
                                         }
                                     }
@@ -291,12 +291,12 @@ public struct MediaDetailProofreadingView: View {
             // Top Media Metadata Pill (Native Floating HUD)
             VStack {
                 HStack(spacing: 8) {
-                    Label(item.kind == .video ? "视频" : "音频", systemImage: item.kind == .video ? "film" : "waveform")
+                    Label(item.kind == .video ? String(localized: "视频", bundle: appLocalizationBundle) : String(localized: "音频", bundle: appLocalizationBundle), systemImage: item.kind == .video ? "film" : "waveform")
                     if let media = item.media {
                         Text(String(format: "%.1fs", Double(media.durationMilliseconds) / 1000.0))
-                        Text("轨 \(media.audioTrackID)")
+                        Text(String(localized: "轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
                     }
-                    Text("\(item.cues.count) 句字幕")
+                    Text(String(localized: "\(item.cues.count) 句字幕", bundle: appLocalizationBundle))
                     MediaStatusBadge(status: item.status)
                 }
                 .font(.caption2)
@@ -341,7 +341,7 @@ public struct MediaDetailProofreadingView: View {
                         }
                     }
                     if previewMode != .source, case .succeeded = activeCue.translation, !activeCue.hasCurrentTranslation {
-                        Text("译文待更新").font(.caption2).foregroundStyle(.orange)
+                        Text(String(localized: "译文待更新", bundle: appLocalizationBundle)).font(.caption2).foregroundStyle(.orange)
                     }
                 }
                 .multilineTextAlignment(.center)
@@ -373,7 +373,7 @@ public struct MediaDetailProofreadingView: View {
                     .frame(width: 32, height: 32)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(playbackController.isPlaying ? "暂停" : "播放")
+            .accessibilityLabel(playbackController.isPlaying ? String(localized: "暂停", bundle: appLocalizationBundle) : String(localized: "播放", bundle: appLocalizationBundle))
 
             // Skip -5s / +5s
             Button {
@@ -406,7 +406,7 @@ public struct MediaDetailProofreadingView: View {
                 in: 0...max(playbackController.durationSeconds, 1.0)
             )
             .controlSize(.mini)
-            .accessibilityLabel("播放进度")
+            .accessibilityLabel(String(localized: "播放进度", bundle: appLocalizationBundle))
             .frame(minWidth: 100)
 
             Text(playbackController.formattedDuration)
@@ -417,7 +417,7 @@ public struct MediaDetailProofreadingView: View {
             Menu {
                 Button("0.5x") { playbackController.setRate(0.5) }
                 Button("0.75x") { playbackController.setRate(0.75) }
-                Button("1.0x (正常)") { playbackController.setRate(1.0) }
+                Button(String(localized: "1.0x (正常)", bundle: appLocalizationBundle)) { playbackController.setRate(1.0) }
                 Button("1.25x") { playbackController.setRate(1.25) }
                 Button("1.5x") { playbackController.setRate(1.5) }
                 Button("2.0x") { playbackController.setRate(2.0) }
@@ -441,10 +441,10 @@ public struct MediaDetailProofreadingView: View {
         VStack(spacing: 0) {
             // Transcript Controls Toolbar (Podcasts style)
             HStack(spacing: 12) {
-                Picker("模式", selection: $previewMode) {
-                    Text("原文").tag(SRTOutputKind.source)
-                    Text("译文").tag(SRTOutputKind.translation)
-                    Text("双语").tag(SRTOutputKind.bilingual)
+                Picker(String(localized: "模式", bundle: appLocalizationBundle), selection: $previewMode) {
+                    Text(String(localized: "原文", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
+                    Text(String(localized: "译文", bundle: appLocalizationBundle)).tag(SRTOutputKind.translation)
+                    Text(String(localized: "双语", bundle: appLocalizationBundle)).tag(SRTOutputKind.bilingual)
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 180)
@@ -455,7 +455,7 @@ public struct MediaDetailProofreadingView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("在字幕中搜索…", text: $searchQuery)
+                    TextField(String(localized: "在字幕中搜索…", bundle: appLocalizationBundle), text: $searchQuery)
                         .textFieldStyle(.plain)
                         .font(.caption)
                     if !searchQuery.isEmpty {
@@ -473,7 +473,7 @@ public struct MediaDetailProofreadingView: View {
                 .frame(width: 170)
 
                 if previewMode != .source, item.cues.contains(where: { !$0.hasCurrentTranslation }) {
-                    Text("未完成翻译可返回队列重试")
+                    Text(String(localized: "未完成翻译可返回队列重试", bundle: appLocalizationBundle))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -486,9 +486,9 @@ public struct MediaDetailProofreadingView: View {
             // Lyrics / Transcript Stream with Focus Centering
             if item.cues.isEmpty {
                 ContentUnavailableView(
-                    "暂无逐句字幕",
+                    String(localized: "暂无逐句字幕", bundle: appLocalizationBundle),
                     systemImage: "quote.bubble",
-                    description: Text("当前媒体条目尚未转写生成字幕。")
+                    description: Text(String(localized: "当前媒体条目尚未转写生成字幕。", bundle: appLocalizationBundle))
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -566,11 +566,11 @@ public struct MediaDetailProofreadingView: View {
 
                 // Status chip
                 if cue.requiresTimingReview == true {
-                    Text("待校对")
+                    Text(String(localized: "待校对", bundle: appLocalizationBundle))
                         .font(.caption2.bold())
                         .foregroundStyle(.orange)
-                        .help("词对齐不可用，使用原始段时间。请播放核对文字与时间。")
-                    Button("确认校对") {
+                        .help(String(localized: "词对齐不可用，使用原始段时间。请播放核对文字与时间。", bundle: appLocalizationBundle))
+                    Button(String(localized: "确认校对", bundle: appLocalizationBundle)) {
                         do {
                             var updated = item
                             try updated.confirmTimingReview(cueID: cue.id)
@@ -582,7 +582,7 @@ public struct MediaDetailProofreadingView: View {
                     .font(.caption)
                 }
                 if case .succeeded = cue.translation, !cue.hasCurrentTranslation {
-                    Text("待重译")
+                    Text(String(localized: "待重译", bundle: appLocalizationBundle))
                         .font(.system(size: 9, weight: .bold))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
@@ -593,7 +593,7 @@ public struct MediaDetailProofreadingView: View {
                 Spacer()
 
                 if isEditing {
-                    Button("取消编辑") { editingCueID = nil; editingSnapshot = nil }
+                    Button(String(localized: "取消编辑", bundle: appLocalizationBundle)) { editingCueID = nil; editingSnapshot = nil }
                         .buttonStyle(.plain)
                 }
                 Button {
@@ -619,11 +619,11 @@ public struct MediaDetailProofreadingView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .accessibilityLabel(isEditing ? "保存编辑" : "编辑字幕")
-                .help(isEditing ? "保存编辑" : "编辑本句")
+                .accessibilityLabel(isEditing ? String(localized: "保存编辑", bundle: appLocalizationBundle) : String(localized: "编辑字幕", bundle: appLocalizationBundle))
+                .help(isEditing ? String(localized: "保存编辑", bundle: appLocalizationBundle) : String(localized: "编辑本句", bundle: appLocalizationBundle))
                 .disabled(editingCueID != nil && !isEditing)
 
-                Button("重译本句") { retranslationCues = [cue] }
+                Button(String(localized: "重译本句", bundle: appLocalizationBundle)) { retranslationCues = [cue] }
                     .buttonStyle(.plain)
                     .font(.caption)
                     .disabled(editingCueID != nil || queue.taskID != nil)
@@ -637,7 +637,7 @@ public struct MediaDetailProofreadingView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .help("复制原文")
+                    .help(String(localized: "复制原文", bundle: appLocalizationBundle))
                 }
             }
 
@@ -645,7 +645,7 @@ public struct MediaDetailProofreadingView: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Source Text
                 if isEditing {
-                    TextField("原文内容", text: $sourceDraft)
+                    TextField(String(localized: "原文内容", bundle: appLocalizationBundle), text: $sourceDraft)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 16, weight: .medium))
                 } else if previewMode != .translation {
@@ -661,7 +661,7 @@ public struct MediaDetailProofreadingView: View {
                 // Translation Text
                 if isEditing || previewMode == .translation || previewMode == .bilingual {
                     if isEditing {
-                        TextField("译文内容", text: $translationDraft)
+                        TextField(String(localized: "译文内容", bundle: appLocalizationBundle), text: $translationDraft)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 15))
                     } else {
@@ -675,9 +675,9 @@ public struct MediaDetailProofreadingView: View {
                                     playbackController.seek(toMilliseconds: cue.startMilliseconds)
                                 }
                         } else if case .failed(let reason) = cue.translation {
-                            Text("翻译失败：\(reason)").font(.caption).foregroundStyle(.red)
+                            Text(String(localized: "翻译失败：\(reason)", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.red)
                         } else {
-                            Text("未翻译")
+                            Text(String(localized: "未翻译", bundle: appLocalizationBundle))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

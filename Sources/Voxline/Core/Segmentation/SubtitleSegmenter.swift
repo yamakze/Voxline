@@ -46,13 +46,13 @@ public enum SubtitleSegmentationError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidPolicy: "字幕切分参数无效。"
-        case .invalidRange: "字幕切分的源范围无效或超出媒体。"
-        case .incompleteTranscription: "转写未完成，请保留失败证据并重新识别或人工校时。"
-        case .invalidSegment(let index): "第 \(index + 1) 个原始段时间无效、重叠或越界，需重新识别或人工校时。"
-        case .invalidWords(let index): "第 \(index + 1) 个原始段词时间无效、重叠或越界，需重新识别或人工校时。"
-        case .textMismatch(let index): "第 \(index + 1) 个原始段与词文本不一致，不能生成遗漏原文的字幕。"
-        case .invalidCueTiming(let index): "第 \(index + 1) 个原始段不能生成有效的毫秒字幕时间，需人工校时。"
+        case .invalidPolicy: String(localized: "字幕切分参数无效。", bundle: voxlineLocalizationBundle)
+        case .invalidRange: String(localized: "字幕切分的源范围无效或超出媒体。", bundle: voxlineLocalizationBundle)
+        case .incompleteTranscription: String(localized: "转写未完成，请保留失败证据并重新识别或人工校时。", bundle: voxlineLocalizationBundle)
+        case .invalidSegment(let index): String(localized: "第 \(index + 1) 个原始段时间无效、重叠或越界，需重新识别或人工校时。", bundle: voxlineLocalizationBundle)
+        case .invalidWords(let index): String(localized: "第 \(index + 1) 个原始段词时间无效、重叠或越界，需重新识别或人工校时。", bundle: voxlineLocalizationBundle)
+        case .textMismatch(let index): String(localized: "第 \(index + 1) 个原始段与词文本不一致，不能生成遗漏原文的字幕。", bundle: voxlineLocalizationBundle)
+        case .invalidCueTiming(let index): String(localized: "第 \(index + 1) 个原始段不能生成有效的毫秒字幕时间，需人工校时。", bundle: voxlineLocalizationBundle)
         }
     }
 }

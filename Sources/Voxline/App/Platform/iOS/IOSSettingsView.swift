@@ -5,40 +5,20 @@ import VoxlineCore
 struct IOSSettingsView: View {
     var body: some View {
         Form {
-            Section("本地处理") {
-                NavigationLink { ModelManagementView() } label: { Label("模型管理", systemImage: "cpu") }
-                NavigationLink { IOSAppleLanguagesView() } label: { Label("Apple 本机翻译", systemImage: "character.book.closed") }
+            Section(String(localized: "本地处理", bundle: appLocalizationBundle)) {
+                NavigationLink { ModelManagementView() } label: { Label(String(localized: "模型管理", bundle: appLocalizationBundle), systemImage: "cpu") }
+                NavigationLink { AppleTranslationLanguagesView() } label: { Label(String(localized: "Apple 本机翻译", bundle: appLocalizationBundle), systemImage: "character.book.closed") }
             }
-            Section("同步") {
-                NavigationLink { TaskSyncSettingsView() } label: { Label("iCloud 同步", systemImage: "arrow.triangle.2.circlepath") }
+            Section(String(localized: "同步", bundle: appLocalizationBundle)) {
+                NavigationLink { TaskSyncSettingsView() } label: { Label(String(localized: "iCloud 同步", bundle: appLocalizationBundle), systemImage: "arrow.triangle.2.circlepath") }
             }
-            Section("云端服务") {
-                NavigationLink { CloudTranscriptionServicesSettingsView() } label: { Label("云端转写服务", systemImage: "waveform.badge.mic") }
-                NavigationLink { TranslationServicesSettingsView() } label: { Label("翻译服务", systemImage: "character.book.closed") }
+            Section(String(localized: "云端服务", bundle: appLocalizationBundle)) {
+                NavigationLink { CloudTranscriptionServicesSettingsView() } label: { Label(String(localized: "云端转写服务", bundle: appLocalizationBundle), systemImage: "waveform.badge.mic") }
+                NavigationLink { TranslationServicesSettingsView() } label: { Label(String(localized: "翻译服务", bundle: appLocalizationBundle), systemImage: "character.book.closed") }
             }
         }
-        .navigationTitle("设置")
+        .navigationTitle(String(localized: "设置", bundle: appLocalizationBundle))
     }
 }
 
-struct IOSAppleLanguagesView: View {
-    var settings: TranslationSettings?
-    @State private var source = "en"
-    @State private var target = "zh-Hans"
-    @State private var batchSize = TranslationSettings.defaultBatchSize
-
-    var body: some View {
-        Form {
-            Section("语言准备") {
-                if let settings, case .appleTranslation(let sourceID) = settings.engine {
-                    AppleTranslationLanguageSettings(source: .constant(sourceID), target: .constant(settings.targetLanguage),
-                                                     batchSize: .constant(settings.batchSize), allowsEditing: false)
-                } else {
-                    AppleTranslationLanguageSettings(source: $source, target: $target, batchSize: $batchSize)
-                }
-            }
-        }
-        .navigationTitle("Apple 本机翻译")
-    }
-}
 #endif
