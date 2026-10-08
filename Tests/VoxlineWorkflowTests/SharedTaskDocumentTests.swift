@@ -6,6 +6,86 @@ import VoxlineMedia
 
 @Suite("Shared Task documents", .serialized) @MainActor
 struct SharedTaskDocumentTests {
+    @Test func localCheckpointsSurviveRestartAndRemoteChangesStayProtected() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let local = root.appendingPathComponent("local")
+        let cloud = root.appendingPathComponent("cloud")
+        let recovery = local.appendingPathComponent("SyncRecovery")
+        let documents = try SharedTaskDocuments(directory: cloud, recoveryDirectory: recovery)
+        let library = TaskLibrary(tasksDirectory: local)
+        library.connectSharedDocuments(documents)
+        let initial = ProcessingTask(title: "Initial")
+        try library.save(initial)
+        let url = try #require(library.url(for: initial.id))
+        try library.commitCheckpoint(taskID: initial.id) { $0.title = "First checkpoint" }
+        try library.commitCheckpoint(taskID: initial.id) { $0.title = "Latest checkpoint" }
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == initial)
+        library.refresh()
+        #expect(library.task(for: initial.id)?.title == "Latest checkpoint")
+        let restarted = TaskLibrary(tasksDirectory: local)
+        let restored = try SharedTaskDocuments(directory: cloud, recoveryDirectory: recovery)
+        restarted.connectSharedDocuments(restored)
+        #expect(restarted.task(for: initial.id)?.title == "Latest checkpoint")
+        var remote = initial
+        remote.title = "Other device"
+        try TaskDocumentCodec.encode(remote).write(to: url, options: .atomic)
+        #expect(throws: SharedDocumentError.self) { try restarted.publishSharedCheckpoints() }
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == remote)
+        #expect(restored.pendingURLs.count == 1)
+        #expect(restarted.errorMessage != nil)
+        let again = try SharedTaskDocuments(directory: cloud, recoveryDirectory: recovery)
+        #expect(try TaskDocumentCodec.decode(again.read(url)).title == "Latest checkpoint")
+        // Explicitly selecting the cloud version preserves unpublished local work as a copy.
+        let versions = try restarted.conflictVersions(taskID: initial.id)
+        try restarted.keepConflictVersion(try #require(versions.first).id, taskID: initial.id)
+        #expect(restarted.task(for: initial.id) == remote)
+        #expect(restarted.entries.contains { $0.task?.title == "Latest checkpoint" + String(localized: " 副本", bundle: VoxlineCore.voxlineLocalizationBundle) })
+        #expect(restored.pendingURLs.isEmpty)
+    }
+
+    @Test func processingUpdatesCoalesceUntilTimerAndManualSavePublishesImmediately() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let local = root.appendingPathComponent("local")
+        let documents = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"),
+            recoveryDirectory: local.appendingPathComponent("SyncRecovery"))
+        let library = TaskLibrary(tasksDirectory: local, sharedPublicationInterval: .milliseconds(100))
+        library.connectSharedDocuments(documents)
+        let initial = ProcessingTask(title: "Initial")
+        try library.save(initial)
+        let url = try #require(library.url(for: initial.id))
+        for i in 0..<20 { try library.commitCheckpoint(taskID: initial.id) { $0.title = "Checkpoint \(i)" } }
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == initial)
+        #expect(documents.pendingURLs.count == 1)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)).title == "Checkpoint 19")
+        #expect(documents.pendingURLs.isEmpty)
+        try library.commitCheckpoint(taskID: initial.id) { $0.title = "New pending checkpoint" }
+        var edit = try #require(library.task(for: initial.id))
+        edit.title = "Proofread edit"
+        try library.save(edit)
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == edit)
+        #expect(documents.pendingURLs.isEmpty)
+    }
+
+    @Test func missingLocalRecoveryFileStorageDoesNotPublishOrAdvanceMemory() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let local = root.appendingPathComponent("local")
+        let recovery = local.appendingPathComponent("SyncRecovery")
+        let documents = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"), recoveryDirectory: recovery)
+        let library = TaskLibrary(tasksDirectory: local)
+        library.connectSharedDocuments(documents)
+        let initial = ProcessingTask(title: "Initial")
+        try library.save(initial)
+        let url = try #require(library.url(for: initial.id))
+        try FileManager.default.removeItem(at: recovery)
+        #expect(throws: (any Error).self) { try library.commitCheckpoint(taskID: initial.id) { $0.title = "Unsaved" } }
+        #expect(library.task(for: initial.id) == initial)
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == initial)
+    }
+
     @Test func remoteChangeRejectsDraftAndKeepsBothVersionsRecoverable() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

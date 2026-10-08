@@ -79,7 +79,7 @@ public final class TaskProcessingQueue {
                 isCancelling = true
                 mediaWork?.cancel()
             } else {
-                try updateMedia(taskID: taskID, mediaID: requestedID) { $0.status = .cancelled }
+                try updateMedia(taskID: taskID, mediaID: requestedID, publishingImmediately: true) { $0.status = .cancelled }
                 cancelledIDs.insert(requestedID)
             }
         } else {
@@ -88,7 +88,7 @@ public final class TaskProcessingQueue {
             isCancelling = true
             mediaWork?.cancel()
             do {
-                try library.commitCheckpoint(taskID: taskID) { task in
+                try library.commitCheckpoint(taskID: taskID, publishingImmediately: true) { task in
                     for index in task.items.indices where queuedIDs.contains(task.items[index].id) &&
                         task.items[index].id != mediaID && task.items[index].status != .completed {
                         task.items[index].status = .cancelled
@@ -140,6 +140,8 @@ public final class TaskProcessingQueue {
 
     private func consume(taskID: UUID, parameters: TaskParameters, translationBatchIDs: [UUID]? = nil) async {
         defer {
+            do { try library.publishSharedCheckpoints() }
+            catch { errorMessage = library.errorMessage ?? error.localizedDescription }
             progressID = nil
             progressText = nil
             extractionFraction = nil
@@ -186,6 +188,8 @@ public final class TaskProcessingQueue {
                 }
                 break
             }
+            do { try library.publishSharedCheckpoints() }
+            catch { errorMessage = library.errorMessage ?? error.localizedDescription; break }
             mediaWork = nil
             progressID = nil
         }
@@ -215,7 +219,7 @@ public final class TaskProcessingQueue {
             audio = try await pipeline.speechChunks(from: extracted, settings: parameters.transcription)
             try Task.checkCancellation()
         } catch {
-            try updateMedia(taskID: taskID, mediaID: mediaID) {
+            try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
                 $0.status = Task.isCancelled || error is CancellationError ? .cancelled : .failed(reason: error.localizedDescription)
             }
             return
@@ -231,12 +235,12 @@ public final class TaskProcessingQueue {
                 return try item.recoveryPlan(media: media, parameters: parameters, ranges: ranges).transcriptionChunkIDs
             }
         } catch let error as CheckpointError {
-            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .failed(reason: error.localizedDescription) }
+            try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .failed(reason: error.localizedDescription) }
             return
         }
         for chunkID in chunkIDs {
             if Task.isCancelled {
-                try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .cancelled }
+                try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .cancelled }
                 return
             }
             guard let chunks = library.task(for: taskID)?.items.first(where: { $0.id == mediaID })?.checkpoint?.chunks,
@@ -284,12 +288,12 @@ public final class TaskProcessingQueue {
                 if Task.isCancelled || error is CancellationError || failure?.isCancelled == true {
                     var cancelledEvidence = failure?.evidence
                     cancelledEvidence?.outcome = .cancelled
-                    try updateMedia(taskID: taskID, mediaID: mediaID) {
+                    try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
                         try $0.recordTranscriptionCancellation(chunkID, sourceID: sourceID, evidence: cancelledEvidence)
                     }
                     return
                 }
-                try updateMedia(taskID: taskID, mediaID: mediaID) {
+                try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
                     try $0.recordTranscriptionFailure(chunkID, sourceID: sourceID, reason: error.localizedDescription, evidence: failure?.evidence ?? savedRecognition)
                 }
                 if let failure, case .http(let status, _) = failure.cause as? CloudTranscriptionError,
@@ -301,7 +305,7 @@ public final class TaskProcessingQueue {
                 var cancelledEvidence = evidence
                 cancelledEvidence.outcome = .cancelled
                 cancelledEvidence.failureReason = String(localized: "处理已取消，保留未提交的转写证据。", bundle: voxlineLocalizationBundle)
-                try updateMedia(taskID: taskID, mediaID: mediaID) {
+                try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
                     try $0.recordTranscriptionCancellation(chunkID, sourceID: sourceID, evidence: cancelledEvidence)
                 }
                 return
@@ -309,7 +313,7 @@ public final class TaskProcessingQueue {
             let result: SubtitleSegmentationResult
             do { result = try SubtitleSegmenter.segment(evidence, sourceID: sourceID, mediaDurationMilliseconds: media.durationMilliseconds) }
             catch {
-                try updateMedia(taskID: taskID, mediaID: mediaID) {
+                try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
                     try $0.recordTranscriptionFailure(chunkID, sourceID: sourceID, reason: error.localizedDescription, evidence: evidence)
                 }
                 continue
@@ -321,7 +325,7 @@ public final class TaskProcessingQueue {
             } catch let error as ProjectValidationError {
                 // A newly submitted range can conflict with manual timing. Keep the edit and the
                 // raw inference, fail this range, and let the other media continue.
-                try updateMedia(taskID: taskID, mediaID: mediaID) {
+                try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
                     try $0.recordTranscriptionFailure(chunkID, sourceID: sourceID, reason: error.localizedDescription, evidence: evidence)
                 }
             }
@@ -339,7 +343,7 @@ public final class TaskProcessingQueue {
               let checkpoint = item.checkpoint else { throw CheckpointError.missingCheckpoint }
         guard checkpoint.chunks.allSatisfy(\.isCompleted) else { return }
         if Task.isCancelled {
-            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .cancelled }
+            try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .cancelled }
             return
         }
         let plan = try item.recoveryPlan(media: checkpoint.media, parameters: checkpoint.parameters, ranges: checkpoint.chunks.map(\.range))
@@ -353,7 +357,7 @@ public final class TaskProcessingQueue {
             newBatches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: pendingIDs,
                 targetLanguage: settings.targetLanguage, batchSize: settings.batchSize)
         } catch {
-            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .failed(reason: error.localizedDescription) }
+            try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .failed(reason: error.localizedDescription) }
             return
         }
         let batchIDs = try updateMedia(taskID: taskID, mediaID: mediaID) { item in
@@ -372,7 +376,7 @@ public final class TaskProcessingQueue {
         defer { translationRetryWait = nil }
         for batchID in batchIDs {
             if Task.isCancelled {
-                try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .cancelled }
+                try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .cancelled }
                 return
             }
             let request: SubtitleTranslationRequest
@@ -385,7 +389,7 @@ public final class TaskProcessingQueue {
                     return try SubtitleTranslationRequest(inputs: batch.inputs, cues: item.cues)
                 }
             } catch let error as CheckpointError {
-                try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .failed(reason: error.localizedDescription) }
+                try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .failed(reason: error.localizedDescription) }
                 return
             }
             guard let current = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }),
@@ -407,12 +411,12 @@ public final class TaskProcessingQueue {
                     try Task.checkCancellation()
                 } catch {
                     if Task.isCancelled || error is CancellationError {
-                        try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationCancellation(batchID) }
+                        try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { try $0.recordTranslationCancellation(batchID) }
                         return
                     }
                     let delay = (error as? SubtitleTranslationError)?.retryDelay(attempt: retries + 1, jitter: retryJitter())
                     guard let delay, retries < 3 else {
-                        try updateMedia(taskID: taskID, mediaID: mediaID) {
+                        try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
                             try $0.recordTranslationFailure(batchID, reason: error.localizedDescription, pauseForRetry: delay != nil)
                         }
                         return
@@ -425,9 +429,9 @@ public final class TaskProcessingQueue {
                         try Task.checkCancellation()
                     } catch {
                         if Task.isCancelled || error is CancellationError {
-                            try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationCancellation(batchID) }
+                            try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { try $0.recordTranslationCancellation(batchID) }
                         } else {
-                            try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationFailure(batchID, reason: error.localizedDescription) }
+                            try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { try $0.recordTranslationFailure(batchID, reason: error.localizedDescription) }
                         }
                         return
                     }
@@ -438,15 +442,15 @@ public final class TaskProcessingQueue {
             do {
                 try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.commitTranslationBatch(batchID, outputs: outputs) }
             } catch let error as CheckpointError {
-                try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.recordTranslationFailure(batchID, reason: error.localizedDescription) }
+                try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { try $0.recordTranslationFailure(batchID, reason: error.localizedDescription) }
                 return
             }
         }
     }
 
     @discardableResult
-    private func updateMedia<Result>(taskID: UUID, mediaID: UUID, mutation: (inout TaskMediaItem) throws -> Result) throws -> Result {
-        try library.commitCheckpoint(taskID: taskID) { task in
+    private func updateMedia<Result>(taskID: UUID, mediaID: UUID, publishingImmediately: Bool = false, mutation: (inout TaskMediaItem) throws -> Result) throws -> Result {
+        try library.commitCheckpoint(taskID: taskID, publishingImmediately: publishingImmediately) { task in
             guard let index = task.items.firstIndex(where: { $0.id == mediaID }) else { throw CheckpointError.unknownWork }
             return try mutation(&task.items[index])
         }

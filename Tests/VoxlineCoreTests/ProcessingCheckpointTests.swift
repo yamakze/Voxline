@@ -4,6 +4,50 @@ import Testing
 
 @Suite("Durable processing checkpoints")
 struct ProcessingCheckpointTests {
+    @Test func coarseCloudTimingUsesTheSameAbsoluteMillisecondEndpoint() throws {
+        let settings = TranscriptionSettings(provider: .openAICompatible, modelID: "qwen3-asr-flash",
+            cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://example.test/v1")!, protocolKind: .qwenAudioChat))
+        let audio = try TranscriptionAudio(localURL: URL(fileURLWithPath: "/unused.wav"),
+            sourceStartMilliseconds: 234520, durationMilliseconds: 740)
+        var evidence = TranscriptionEvidence(settings: settings, audio: audio)
+        evidence.cloudResult = .init(text: "はい。", segments: nil, timingSource: .audioRange)
+        let completed = try CloudTranscriptionAlignment.completedEvidence(from: evidence)
+        let result = try SubtitleSegmenter.segment(completed, sourceID: UUID(), mediaDurationMilliseconds: 235260)
+        #expect(result.cues.count == 1)
+        #expect(result.cues.first?.startMilliseconds == 234520)
+        #expect(result.cues.first?.endMilliseconds == 235260)
+        #expect(result.cues.first?.requiresTimingReview == true)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_CLOUD_TASK_FIXTURE"] != nil))
+    func realCloudFailedRangesRecoverWithoutChangingCommittedCues() throws {
+        let path = try #require(ProcessInfo.processInfo.environment["VOXLINE_CLOUD_TASK_FIXTURE"])
+        let original = try TaskDocumentCodec.decode(Data(contentsOf: URL(fileURLWithPath: path)))
+        var recovered = original
+        var count = 0
+        for index in recovered.items.indices {
+            let chunks = try #require(recovered.items[index].checkpoint?.chunks)
+            for chunk in chunks {
+                guard case .failed(_, let evidence) = chunk.state, let evidence, evidence.cloudResult != nil else { continue }
+                let completed = try CloudTranscriptionAlignment.completedEvidence(from: evidence)
+                let sourceID = try recovered.items[index].beginTranscriptionChunk(chunk.id)
+                let result = try SubtitleSegmenter.segment(completed, sourceID: sourceID,
+                    mediaDurationMilliseconds: recovered.items[index].media!.durationMilliseconds)
+                try recovered.items[index].commitTranscriptionChunk(chunk.id, result: result)
+                count += 1
+            }
+            for cue in original.items[index].cues {
+                #expect(recovered.items[index].cues.first(where: { $0.id == cue.id }) == cue)
+            }
+            for chunk in chunks where chunk.isCompleted {
+                #expect(recovered.items[index].checkpoint?.chunks.first(where: { $0.id == chunk.id }) == chunk)
+            }
+        }
+        #expect(count == 36)
+        #expect(recovered.parameters == original.parameters)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(recovered)) == recovered)
+    }
+
     private let ranges = [TranscriptionChunkRange(sourceStartMilliseconds: 0, durationMilliseconds: 2000),
                           TranscriptionChunkRange(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)]
 

@@ -29,16 +29,19 @@ public final class TaskLibrary {
     private let noteRecentDocument: @MainActor (URL) -> Void
     private let forgetRecentDocument: @MainActor (URL) -> Void
     private let resourceCleanup: TaskResourceCleanup
+    private let sharedPublicationInterval: Duration
+    @ObservationIgnored private var publicationWork: Task<Void, Never>?
 
     public init(tasksDirectory: URL, recentDocumentURLs: @escaping @MainActor () -> [URL] = { [] },
                 noteRecentDocument: @escaping @MainActor (URL) -> Void = { _ in },
                 forgetRecentDocument: @escaping @MainActor (URL) -> Void = { _ in },
-                resourceCleanup: TaskResourceCleanup = .init()) {
+                resourceCleanup: TaskResourceCleanup = .init(), sharedPublicationInterval: Duration = .seconds(60)) {
         self.tasksDirectory = tasksDirectory
         self.recentDocumentURLs = recentDocumentURLs
         self.noteRecentDocument = noteRecentDocument
         self.forgetRecentDocument = forgetRecentDocument
         self.resourceCleanup = resourceCleanup
+        self.sharedPublicationInterval = sharedPublicationInterval
         refresh()
     }
 
@@ -69,12 +72,16 @@ public final class TaskLibrary {
         (sharedDocuments?.directory ?? tasksDirectory).appendingPathComponent(taskID.uuidString).appendingPathExtension("voxline")
     }
 
-    public func save(_ task: ProcessingTask, at url: URL? = nil) throws {
+    public func save(_ task: ProcessingTask, at url: URL? = nil, publishingImmediately: Bool = true) throws {
         let targetURL = url ?? self.url(for: task.id) ?? defaultURL(for: task.id)
         let previousMedia = self.task(for: task.id)?.items.map(\.media)
         try persist(task, to: targetURL)
         register(task, at: targetURL)
         if previousMedia != task.items.map(\.media) { onMediaSourcesSaved?(task) }
+        if sharedDocuments?.contains(targetURL) == true {
+            if publishingImmediately { try sharedDocuments?.publishCheckpoint(at: targetURL) }
+            scheduleSharedPublication()
+        }
     }
 
     /// Editing views keep their draft until this validated, atomic save succeeds.
@@ -88,11 +95,11 @@ public final class TaskLibrary {
 
     /// Apply worker results to the latest published edits; publish only after the whole document is saved.
     @discardableResult
-    public func commitCheckpoint<Result>(taskID: UUID, mutation: (inout ProcessingTask) throws -> Result) throws -> Result {
+    public func commitCheckpoint<Result>(taskID: UUID, publishingImmediately: Bool = false, mutation: (inout ProcessingTask) throws -> Result) throws -> Result {
         guard var current = task(for: taskID) else { throw CheckpointError.taskUnavailable }
         let result = try mutation(&current)
         guard current.id == taskID else { throw TaskValidationError.taskChanged }
-        try save(current)
+        try save(current, publishingImmediately: publishingImmediately)
         return result
     }
 
@@ -100,9 +107,41 @@ public final class TaskLibrary {
         let data = try TaskDocumentCodec.encode(task)
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let sharedDocuments, sharedDocuments.contains(url) { try sharedDocuments.write(data, to: url) }
-        else { try data.write(to: url, options: .atomic) }
+        if let sharedDocuments, sharedDocuments.contains(url) {
+            if sharedDocuments.savesCheckpointsLocally { try sharedDocuments.saveCheckpoint(data, to: url) }
+            else { try sharedDocuments.write(data, to: url) }
+        }
+        else {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Flushes actual pending documents; a failure leaves local recovery intact and visible.
+    public func publishSharedCheckpoints() throws {
+        guard let documents = sharedDocuments else { return }
+        do {
+            for url in documents.pendingURLs { try documents.publishCheckpoint(at: url) }
+            publicationWork?.cancel()
+            publicationWork = nil
+        } catch {
+            errorMessage = String(localized: "iCloud 同步失败，已保留本地成果：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)
+            throw error
+        }
+    }
+
+    private func scheduleSharedPublication() {
+        guard publicationWork == nil, let documents = sharedDocuments, !documents.pendingURLs.isEmpty else { return }
+        let interval = sharedPublicationInterval
+        publicationWork = Task { [weak self, weak documents] in
+            do { try await Task.sleep(for: interval) }
+            catch is CancellationError { return }
+            catch { self?.errorMessage = error.localizedDescription; return }
+            guard let self, let documents, self.sharedDocuments === documents else { return }
+            self.publicationWork = nil
+            do { try self.publishSharedCheckpoints() }
+            catch { return } // publishSharedCheckpoints exposes the error; recovery is retained.
+        }
     }
 
     public func delete(taskID: UUID) throws {
@@ -118,6 +157,7 @@ public final class TaskLibrary {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         if let sharedDocuments, sharedDocuments.contains(url), let task = entry.task {
+            try sharedDocuments.publishCheckpoint(at: url)
             var current = try TaskDocumentCodec.decode(sharedDocuments.read(url, recordSnapshot: false))
             current.interruptRunningItems()
             guard current == task else { throw SharedDocumentError.changed }
@@ -205,11 +245,14 @@ public final class TaskLibrary {
     }
 
     public func connectSharedDocuments(_ documents: SharedTaskDocuments?) {
+        publicationWork?.cancel()
+        publicationWork = nil
         if let previous = sharedDocuments {
             openTasks = openTasks.filter { $0.value.url.map { !previous.contains($0) } ?? true }
         }
         sharedDocuments = documents
         refresh()
+        scheduleSharedPublication()
     }
 
     public func refresh() {
@@ -229,7 +272,7 @@ public final class TaskLibrary {
             }
             do {
                 let files = try FileManager.default.contentsOfDirectory(at: sharedDocuments.directory, includingPropertiesForKeys: nil)
-                for url in Set(files + sharedDocuments.discoveredURLs) where url.pathExtension == "voxline" {
+                for url in Set(files + sharedDocuments.discoveredURLs + sharedDocuments.pendingURLs) where url.pathExtension == "voxline" {
                     if let protected = openTasks.values.first(where: { $0.url?.standardizedFileURL == url.standardizedFileURL && $0.taskID == protectedTaskID }) {
                         seenIDs.insert(protected.taskID); foundEntries.append(protected); continue
                     }

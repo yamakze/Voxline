@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import VoxlineCore
 
 public enum SharedDocumentError: Error, LocalizedError {
@@ -20,11 +21,36 @@ public final class SharedTaskDocuments {
     public let directory: URL
     public var discoveredURLs: [URL] = []
     private var snapshots: [URL: Data] = [:]
+    private struct LocalCheckpoint: Codable {
+        let url: URL
+        let expectedCloudData: Data?
+        let data: Data
+    }
+    private let recoveryDirectory: URL?
+    private var pending: [URL: LocalCheckpoint] = [:]
+    public private(set) var publicationErrors: [URL: String] = [:]
+    public var pendingURLs: [URL] { Array(pending.keys) }
+    public var savesCheckpointsLocally: Bool { recoveryDirectory != nil }
 
-    public init(directory: URL) throws {
+    public init(directory: URL, recoveryDirectory: URL? = nil) throws {
         guard directory.isFileURL else { throw SharedDocumentError.missingFolder }
         self.directory = directory
+        // A separate local directory per selected shared folder keeps pending work across restart.
+        self.recoveryDirectory = recoveryDirectory.map {
+            $0.appendingPathComponent(SHA256.hash(data: Data(directory.standardizedFileURL.path.utf8))
+                .map { String(format: "%02x", $0) }.joined(), isDirectory: true)
+        }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        if let local = self.recoveryDirectory {
+            try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
+            for file in try FileManager.default.contentsOfDirectory(at: local, includingPropertiesForKeys: nil) where file.pathExtension == "json" {
+                let checkpoint = try JSONDecoder().decode(LocalCheckpoint.self, from: Data(contentsOf: file))
+                guard contains(checkpoint.url) else { throw SharedDocumentError.changed }
+                _ = try TaskDocumentCodec.decode(checkpoint.data)
+                pending[checkpoint.url.standardizedFileURL] = checkpoint
+                snapshots[checkpoint.url.standardizedFileURL] = checkpoint.expectedCloudData
+            }
+        }
     }
 
     public func contains(_ url: URL) -> Bool {
@@ -33,6 +59,7 @@ public final class SharedTaskDocuments {
     }
 
     public func read(_ url: URL, recordSnapshot: Bool = true) throws -> Data {
+        if let checkpoint = pending[url.standardizedFileURL] { return checkpoint.data }
         let data = try coordinatedRead(url)
         _ = try TaskDocumentCodec.decode(data)
         if recordSnapshot { snapshots[url.standardizedFileURL] = data }
@@ -48,7 +75,49 @@ public final class SharedTaskDocuments {
         snapshots[url.standardizedFileURL] = data
     }
 
+    /// Durable local recovery precedes cloud publication. The first cloud version remains the baseline.
+    public func saveCheckpoint(_ data: Data, to url: URL) throws {
+        guard let recoveryDirectory else { throw SharedDocumentError.missingFolder }
+        _ = try TaskDocumentCodec.decode(data)
+        let key = url.standardizedFileURL
+        let expected: Data?
+        if let previous = pending[key] { expected = previous.expectedCloudData }
+        else { expected = snapshots[key] }
+        let checkpoint = LocalCheckpoint(url: key, expectedCloudData: expected, data: data)
+        try JSONEncoder().encode(checkpoint).write(to: recoveryDirectory.appendingPathComponent(url.lastPathComponent).appendingPathExtension("json"), options: .atomic)
+        pending[key] = checkpoint
+    }
+
+    public func publishCheckpoint(at url: URL) throws {
+        let key = url.standardizedFileURL
+        guard let checkpoint = pending[key], let recoveryDirectory else { return }
+        do {
+            try coordinateWrite(url, options: []) { destination in
+                try self.requireDownloaded(destination, allowingMissing: checkpoint.expectedCloudData == nil)
+                guard NSFileVersion.unresolvedConflictVersionsOfItem(at: destination)?.isEmpty != false else {
+                    throw SharedDocumentError.conflict
+                }
+                // A crash after cloud write but before removing the recovery record is already published.
+                let current: Data?
+                do { current = try Data(contentsOf: destination) }
+                catch let error as CocoaError where error.code == .fileReadNoSuchFile { current = nil }
+                if current != checkpoint.data {
+                    guard current == checkpoint.expectedCloudData else { throw SharedDocumentError.changed }
+                    try checkpoint.data.write(to: destination, options: .atomic)
+                }
+            }
+            snapshots[key] = checkpoint.data
+            try FileManager.default.removeItem(at: recoveryDirectory.appendingPathComponent(url.lastPathComponent).appendingPathExtension("json"))
+            pending[key] = nil
+            publicationErrors[key] = nil
+        } catch {
+            publicationErrors[key] = error.localizedDescription
+            throw error
+        }
+    }
+
     public func remove(_ url: URL) throws {
+        try publishCheckpoint(at: url)
         try coordinateWrite(url, options: .forDeleting) { coordinatedURL in
             try self.checkCurrentVersion(at: coordinatedURL, expected: self.snapshots[url.standardizedFileURL])
             try FileManager.default.removeItem(at: coordinatedURL)
@@ -98,6 +167,10 @@ public final class SharedTaskDocuments {
               let original = presentedVersions.values.first(where: { $0.url == url && $0.version == nil }) else {
             throw SharedDocumentError.changed
         }
+        if let local = pending[url.standardizedFileURL], local.data != selected.data {
+            let copy = try TaskDocumentCodec.decode(local.data).duplicated()
+            try write(TaskDocumentCodec.encode(copy), to: directory.appendingPathComponent(copy.id.uuidString).appendingPathExtension("voxline"))
+        }
         var chosen = try TaskDocumentCodec.decode(selected.data)
         chosen.interruptRunningItems()
         let data = try TaskDocumentCodec.encode(chosen)
@@ -119,6 +192,11 @@ public final class SharedTaskDocuments {
             try NSFileVersion.removeOtherVersionsOfItem(at: coordinatedURL)
         }
         snapshots[url.standardizedFileURL] = data
+        if let local = pending[url.standardizedFileURL], let recoveryDirectory {
+            try FileManager.default.removeItem(at: recoveryDirectory.appendingPathComponent(url.lastPathComponent).appendingPathExtension("json"))
+            pending[url.standardizedFileURL] = nil
+            publicationErrors[url.standardizedFileURL] = nil
+        }
         presentedVersions = [:]
         return chosen
     }

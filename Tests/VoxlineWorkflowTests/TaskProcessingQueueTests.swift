@@ -24,12 +24,18 @@ struct TaskProcessingQueueTests {
     @Test func failuresContinueInOrderAndRetrySkipsCommittedChunksAndKeepsEdits() async throws {
         let (directory, library, task) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
+        let documents = try SharedTaskDocuments(directory: directory.appendingPathComponent("cloud"),
+            recoveryDirectory: directory.appendingPathComponent("SyncRecovery"))
+        library.connectSharedDocuments(documents)
+        try library.save(task, at: documents.directory.appendingPathComponent(task.id.uuidString).appendingPathExtension("voxline"))
         let pipeline = ControlledPipeline(failFirstChunkOf: task.items[0].id)
         let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try queue.start(taskID: task.id)
         await queue.waitUntilIdle()
         let processed = try #require(library.task(for: task.id))
         #expect(processed.status == .partiallyFailed)
+        #expect(documents.pendingURLs.isEmpty)
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id))) == processed)
         #expect(processed.items[1].status == .completed)
         #expect(processed.items[0].checkpoint?.chunks[0].isCompleted == false)
         let failedTranscription = processed.items[0]

@@ -37,3 +37,4 @@
 "转写重试 %lld／3，等待 %lld 秒" = "Transcription retry %1$lld/3 in %2$lld seconds";
 "队列停止，未提交的工作需要恢复：%@" = "The queue stopped. Uncommitted work requires recovery: %1$@";
 "音频缓存失效，重新提取：%@" = "Audio cache invalidated. Extracting again: %1$@";
+"iCloud 同步失败，已保留本地成果：%@" = "iCloud sync failed. Local results are preserved: %@";

@@ -84,7 +84,8 @@ public final class TaskSyncSettings {
             if isEnabled { try disable() }
             let access = folder.startAccessingSecurityScopedResource()
             defer { if access { folder.stopAccessingSecurityScopedResource() } }
-            let documents = try SharedTaskDocuments(directory: folder.appendingPathComponent("Tasks", isDirectory: true))
+            let documents = try SharedTaskDocuments(directory: folder.appendingPathComponent("Tasks", isDirectory: true),
+                recoveryDirectory: library.tasksDirectory.appendingPathComponent("SyncRecovery", isDirectory: true))
             let tasks = try library.entries.map { entry in
                 guard let task = entry.task, entry.error == nil else { throw SharedDocumentError.downloadRequired }
                 return task
@@ -105,6 +106,7 @@ public final class TaskSyncSettings {
 
     public func disable() throws {
         guard originalMediaWork == nil, library.protectedTaskID == nil else { throw SharedDocumentError.busy }
+        try library.publishSharedCheckpoints()
         // Downloaded complete copies are required before revoking directory access.
         for entry in library.entries where entry.url.map({ library.sharedDocuments?.contains($0) == true }) == true {
             guard let task = entry.task, entry.error == nil else { throw SharedDocumentError.downloadRequired }
@@ -204,7 +206,8 @@ public final class TaskSyncSettings {
     private func activate(_ folder: URL, originals: Bool) throws {
         let access = folder.startAccessingSecurityScopedResource()
         do {
-            let documents = try SharedTaskDocuments(directory: folder.appendingPathComponent("Tasks", isDirectory: true))
+            let documents = try SharedTaskDocuments(directory: folder.appendingPathComponent("Tasks", isDirectory: true),
+                recoveryDirectory: library.tasksDirectory.appendingPathComponent("SyncRecovery", isDirectory: true))
             stopObserving()
             if let scopedURL { scopedURL.stopAccessingSecurityScopedResource() }
             scopedURL = access ? folder : nil
@@ -366,6 +369,10 @@ public final class TaskSyncSettings {
     }
 
     private func state(of url: URL) throws -> FileState {
+        if let documents = library.sharedDocuments {
+            if let error = documents.publicationErrors[url.standardizedFileURL] { return .failed(error) }
+            if documents.pendingURLs.contains(url.standardizedFileURL) { return .waitingForUpload }
+        }
         let values = try url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemHasUnresolvedConflictsKey,
             .ubiquitousItemIsDownloadingKey, .ubiquitousItemDownloadingStatusKey, .ubiquitousItemIsUploadingKey,
             .ubiquitousItemIsUploadedKey, .ubiquitousItemDownloadingErrorKey, .ubiquitousItemUploadingErrorKey])

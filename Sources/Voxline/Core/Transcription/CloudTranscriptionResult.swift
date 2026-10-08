@@ -50,7 +50,7 @@ public enum CloudTranscriptionAlignment {
         } else {
             guard result.timingSource == .audioRange else { throw CloudTranscriptionError.invalidResponse }
             evidence.segments = text.isEmpty ? [] : [.init(startSeconds: offset,
-                endSeconds: offset + Double(evidence.durationMilliseconds) / 1000,
+                endSeconds: Double(rangeEnd) / 1000,
                 text: text, words: nil, timingSource: .audioRange)]
         }
         evidence.partialDecodedText = nil
