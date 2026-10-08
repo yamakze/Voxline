@@ -104,3 +104,5 @@
 "（请求 %@）" = "(Request %1$@)";
 
 "待翻译" = "Translation pending";
+
+"请选择相邻字幕合并。" = "Select adjacent subtitles to merge.";

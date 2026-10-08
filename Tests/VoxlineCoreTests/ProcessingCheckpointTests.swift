@@ -94,6 +94,101 @@ struct ProcessingCheckpointTests {
         #expect(reopened.items[0].cues == processing.items[0].cues)
     }
 
+    @Test func structuralEditsSurviveReloadWithoutRewritingRecognitionOrTranslationHistory() throws {
+        var value = try task(translates: true)
+        _ = try complete(&value, index: 0)
+        _ = try complete(&value, index: 1)
+        let ids = value.items[0].cues.map(\.id)
+        let batch = try value.items[0].prepareTranslationBatch(cueIDs: ids)
+        try value.items[0].beginTranslationBatch(batch)
+        try value.items[0].commitTranslationBatch(batch, outputs: ids.map { .init(cueID: $0, text: "人工译文") })
+        let history = value.items[0].checkpoint
+        let original = value.items[0].cues
+        let first = original[0]
+        try value.items[0].splitSubtitle(comparedTo: first,
+            atMilliseconds: (first.startMilliseconds + first.endMilliseconds) / 2,
+            firstSourceText: "First", secondSourceText: "Second", firstTranslationText: "第一", secondTranslationText: "第二")
+        #expect(value.items[0].cues.count == 3)
+        #expect(!value.items[0].cues.contains { $0.id == first.id })
+        try value.items[0].mergeSubtitles(comparedTo: Array(value.items[0].cues.prefix(2)),
+            sourceText: "First Second", translationText: "第一，第二")
+        try value.items[0].deleteSubtitles(comparedTo: [value.items[0].cues[1]])
+        let added = try SubtitleCue(id: UUID(), startMilliseconds: 4400, endMilliseconds: 4800, sourceText: "Added")
+        try value.items[0].insertSubtitle(added)
+        #expect(value.items[0].status == .needsTranslation)
+        let reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(value))
+        #expect(reopened == value)
+        #expect(reopened.items[0].checkpoint == history)
+        #expect(try SubtitleExporter.generateSRT(cues: reopened.items[0].cues, kind: .source).contains("First Second"))
+        try value.items[0].replaceSubtitles(original, comparedTo: value.items[0].cues)
+        #expect(value.items[0].status == .completed)
+        #expect(value.items[0].checkpoint == history)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(value)) == value)
+    }
+
+    @Test func deletedSubtitleRejectsLateTranslationAndRecoveryOnlyTargetsCurrentCues() throws {
+        var value = try task(translates: true)
+        _ = try complete(&value, index: 0)
+        _ = try complete(&value, index: 1)
+        let deleted = value.items[0].cues[0]
+        let batch = try value.items[0].prepareTranslationBatch(cueIDs: [deleted.id])
+        try value.items[0].beginTranslationBatch(batch)
+        try value.items[0].deleteSubtitles(comparedTo: [deleted])
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(value)) == value)
+        let before = value
+        #expect(throws: CheckpointError.editedCue) {
+            try value.items[0].commitTranslationBatch(batch, outputs: [.init(cueID: deleted.id, text: "Late")])
+        }
+        #expect(value == before)
+        try value.items[0].recordTranslationFailure(batch, reason: "Subtitle deleted")
+        var reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(value))
+        let plan = try reopened.items[0].recoveryPlan(media: reopened.items[0].media!,
+            parameters: reopened.parameters, ranges: ranges)
+        #expect(plan.translationBatchIDs.isEmpty)
+        #expect(plan.outdatedTranslationBatchIDs == [batch])
+        #expect(plan.untranslatedCueIDs == reopened.items[0].cues.map(\.id))
+        let fresh = try reopened.items[0].prepareTranslationBatch(cueIDs: plan.untranslatedCueIDs)
+        try reopened.items[0].beginTranslationBatch(fresh)
+        try reopened.items[0].commitTranslationBatch(fresh, outputs: plan.untranslatedCueIDs.map { .init(cueID: $0, text: "Current") })
+        #expect(reopened.items[0].status == .completed)
+        #expect(!reopened.items[0].cues.contains { $0.id == deleted.id })
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(reopened)) == reopened)
+    }
+
+    @Test func earlierRecognitionCanResumeAfterFollowingSubtitleWasReplaced() throws {
+        var value = try task()
+        _ = try complete(&value, index: 1)
+        let following = value.items[0].cues[0]
+        try value.items[0].splitSubtitle(comparedTo: following,
+            atMilliseconds: (following.startMilliseconds + following.endMilliseconds) / 2,
+            firstSourceText: "Manual first", secondSourceText: "Manual second", firstTranslationText: "", secondTranslationText: "")
+        let manual = value.items[0].cues
+        _ = try complete(&value, index: 0)
+        #expect(value.items[0].cues.count == 3)
+        #expect(Array(value.items[0].cues.suffix(2)) == manual)
+        #expect(value.items[0].status == .completed)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(value)) == value)
+    }
+
+    @Test func invalidOrStaleTimelineEditsLeaveTheWholeTaskUntouched() throws {
+        var value = try task()
+        _ = try complete(&value, index: 0)
+        _ = try complete(&value, index: 1)
+        let original = value.items[0].cues[0]
+        let before = value
+        #expect(throws: ProjectValidationError.overlappingOrUnorderedCue(value.items[0].cues[1].id)) {
+            try value.items[0].setSubtitleTiming(comparedTo: original, startMilliseconds: 0, endMilliseconds: 4000)
+        }
+        #expect(value == before)
+        try value.items[0].setSubtitleTiming(comparedTo: original,
+            startMilliseconds: original.startMilliseconds + 10, endMilliseconds: original.endMilliseconds + 10)
+        let timed = value
+        #expect(throws: CheckpointError.editedCue) {
+            try value.items[0].deleteSubtitles(comparedTo: [original])
+        }
+        #expect(value == timed)
+    }
+
     private let ranges = [TranscriptionChunkRange(sourceStartMilliseconds: 0, durationMilliseconds: 2000),
                           TranscriptionChunkRange(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)]
 

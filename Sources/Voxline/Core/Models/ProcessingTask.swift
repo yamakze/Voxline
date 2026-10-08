@@ -259,7 +259,7 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
         updateProofreadingStatus()
     }
 
-    private mutating func updateProofreadingStatus() {
+    internal mutating func updateProofreadingStatus() {
         guard status == .completed || status == .needsTranslation,
               let checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted) else { return }
         status = checkpoint.parameters.translation == nil || cues.allSatisfy(\.hasTranslation)

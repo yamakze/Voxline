@@ -97,6 +97,7 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
             case .completed(let result):
                 try validateEvidence(result.evidence, range: chunk.range)
                 guard sourceIDs.insert(result.sourceID).inserted else { throw CheckpointError.invalidRecord }
+                try SubtitleCue.validateTimeline(result.cues, within: media)
                 for cue in result.cues {
                     guard generatedIDs.insert(cue.id).inserted else { throw CheckpointError.invalidRecord }
                 }
@@ -110,17 +111,14 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
                 }
             }
         }
-        guard generatedIDs == Set(cues.map(\.id)) else { throw CheckpointError.invalidRecord }
-        let currentCues = Dictionary(uniqueKeysWithValues: cues.map { ($0.id, $0) })
+        // Recognition and translation snapshots describe past work, not the editable timeline.
         var batchIDs = Set<UUID>()
         var activeIDs = Set<UUID>()
         for batch in translationBatches {
             guard parameters.translation != nil, chunks.allSatisfy(\.isCompleted), batchIDs.insert(batch.id).inserted,
                   !batch.inputs.isEmpty, Set(batch.inputs.map(\.cueID)).count == batch.inputs.count else { throw CheckpointError.invalidRecord }
             for input in batch.inputs {
-                guard let current = currentCues[input.cueID],
-                      input.sourceRevision > 0, input.sourceRevision <= current.sourceRevision,
-                      input.sourceRevision != current.sourceRevision || input.sourceText == current.sourceText,
+                guard input.sourceRevision > 0,
                       !input.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CheckpointError.invalidRecord }
                 try input.previousTranslation.validate(cueID: input.cueID, sourceRevision: input.sourceRevision)
             }
@@ -228,12 +226,8 @@ public extension TaskMediaItem {
         let subtitled = result.cues.map(\.sourceText).joined().precomposedStringWithCanonicalMapping.filter { !$0.isWhitespace }
         guard recognized == subtitled else { throw CheckpointError.invalidRecord }
         var updated = self
-        let followingIDs = Set(record.chunks.dropFirst(index + 1).flatMap { chunk -> [UUID] in
-            if case .completed(let result) = chunk.state { return result.cues.map(\.id) }
-            return []
-        })
-        let insertion = updated.cues.firstIndex { followingIDs.contains($0.id) } ?? updated.cues.endIndex
-        updated.cues.insert(contentsOf: result.cues, at: insertion)
+        updated.cues.append(contentsOf: result.cues)
+        updated.cues.sort { $0.startMilliseconds < $1.startMilliseconds }
         record.chunks[index].state = .completed(result)
         updated.checkpoint = record
         if let reason = record.chunks.compactMap({ chunk -> String? in

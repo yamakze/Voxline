@@ -19,7 +19,7 @@ let package = Package(
         .testTarget(name: "VoxlineTranslationTests", dependencies: ["VoxlineTranslation", "VoxlineCore"]),
         .testTarget(name: "VoxlineCoreTests", dependencies: ["VoxlineCore"]),
         .testTarget(name: "VoxlineMediaTests", dependencies: ["VoxlineMedia", "VoxlineCore"], resources: [.copy("Fixtures")]),
-        .testTarget(name: "VoxlineAppTests", dependencies: ["VoxlineApp", "VoxlineCore"]),
+        .testTarget(name: "VoxlineAppTests", dependencies: ["VoxlineApp", "VoxlineCore", "VoxlineMedia", "VoxlineTranslation", "VoxlineWhisperKit", "VoxlineWorkflow"]),
         .testTarget(name: "VoxlineWorkflowTests", dependencies: ["VoxlineWorkflow", "VoxlineCore", "VoxlineMedia", "VoxlineWhisperKit", "VoxlineTranslation"]),
         .testTarget(name: "VoxlineWhisperKitTests", dependencies: ["VoxlineWhisperKit"])
     ]

@@ -12,16 +12,9 @@ public struct MediaDetailProofreadingView: View {
     let item: TaskMediaItem
     let onCommit: (TaskMediaItem, TaskMediaItem) throws -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var session: ProofreadingSession
     @State private var playbackController = MediaPlaybackController()
-    @State private var previewMode: SRTOutputKind = .bilingual
-    @State private var searchQuery: String = ""
     @State private var hoveredCueID: UUID?
-    @State private var errorMessage: String?
-    @State private var editingCueID: UUID?
-    @State private var editingSnapshot: SubtitleCue?
-    @State private var sourceDraft = ""
-    @State private var translationDraft = ""
-    @State private var retranslationCues: [SubtitleCue]?
     @State private var queue = TaskProcessingQueue.shared
 
     // Sheets
@@ -39,21 +32,7 @@ public struct MediaDetailProofreadingView: View {
         self.item = item
         self.onCommit = onCommit
         self.onBack = onBack
-        let hasTranslation = item.cues.contains { cue in
-            if case .succeeded = cue.translation { return true }
-            return false
-        }
-        _previewMode = State(initialValue: hasTranslation ? .bilingual : .source)
-    }
-
-    private var filteredCues: [SubtitleCue] {
-        if searchQuery.isEmpty { return item.cues }
-        let q = searchQuery.lowercased()
-        return item.cues.filter { cue in
-            if cue.sourceText.lowercased().contains(q) { return true }
-            if case .succeeded(let trans, _) = cue.translation, trans.lowercased().contains(q) { return true }
-            return false
-        }
+        _session = State(initialValue: ProofreadingSession(item: item))
     }
 
     public var body: some View {
@@ -91,12 +70,12 @@ public struct MediaDetailProofreadingView: View {
                     Text(queue.progressText ?? String(localized: "处理中", bundle: appLocalizationBundle)).font(.caption)
                     Button(queue.isCancelling ? String(localized: "正在取消…", bundle: appLocalizationBundle) : String(localized: "取消处理", bundle: appLocalizationBundle)) {
                         do { try queue.cancel(mediaID: item.id) }
-                        catch { errorMessage = error.localizedDescription }
+                        catch { session.errorMessage = error.localizedDescription }
                     }
                     .disabled(queue.isCancelling)
                 } else {
-                    Button(String(localized: "重译字幕…", bundle: appLocalizationBundle), systemImage: "character.bubble") { retranslationCues = item.cues }
-                        .disabled(item.cues.isEmpty || editingCueID != nil || queue.taskID != nil)
+                    Button(String(localized: "重译字幕…", bundle: appLocalizationBundle), systemImage: "character.bubble") { session.retranslatingCues = item.cues }
+                        .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil || queue.taskID != nil)
                 }
 
                 Button(String(localized: "重新关联", bundle: appLocalizationBundle), systemImage: "link.badge.plus") {
@@ -107,7 +86,7 @@ public struct MediaDetailProofreadingView: View {
                 Button(String(localized: "偏移行…", bundle: appLocalizationBundle), systemImage: "timer") {
                     showTimeOffsetSheet = true
                 }
-                .disabled(item.cues.isEmpty || editingCueID != nil)
+                .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil)
 
                 Menu {
                     Section(String(localized: "外挂字幕", bundle: appLocalizationBundle)) {
@@ -136,15 +115,15 @@ public struct MediaDetailProofreadingView: View {
                 } label: {
                     Label(String(localized: "导出", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                 }
-                .disabled(item.cues.isEmpty || editingCueID != nil)
+                .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil)
                 .help(String(localized: "导出字幕或包含字幕的媒体文件", bundle: appLocalizationBundle))
             }
         }
         .alert(String(localized: "无法完成操作", bundle: appLocalizationBundle), isPresented: Binding(
-            get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
+            get: { session.errorMessage != nil }, set: { if !$0 { session.errorMessage = nil } }
         )) {
-            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { errorMessage = nil }
-        } message: { Text(errorMessage ?? "") }
+            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { session.errorMessage = nil }
+        } message: { Text(session.errorMessage ?? "") }
         .task(id: MediaPlaybackController.SourceIdentity(item: item)) {
             await playbackController.loadMedia(for: item)
         }
@@ -158,8 +137,8 @@ public struct MediaDetailProofreadingView: View {
             ) { shifted, originalCues in
                 guard item.cues == originalCues else { throw CheckpointError.editedCue }
                 var updated = item
-                updated.cues = shifted
-                try onCommit(updated, item)
+                try updated.replaceSubtitles(shifted, comparedTo: originalCues)
+                try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
             }
         }
         .sheet(isPresented: $showSRTExportSheet) {
@@ -178,11 +157,11 @@ public struct MediaDetailProofreadingView: View {
             MediaRelinkSheet(item: item, onCommit: onCommit)
         }
         .confirmationDialog(String(localized: "重新翻译全部字幕？", bundle: appLocalizationBundle),
-                            isPresented: Binding(get: { retranslationCues != nil }, set: { if !$0 { retranslationCues = nil } }), titleVisibility: .visible) {
-            if let selected = retranslationCues {
+                            isPresented: Binding(get: { session.retranslatingCues != nil }, set: { if !$0 { session.retranslatingCues = nil } }), titleVisibility: .visible) {
+            if let selected = session.retranslatingCues {
                 Button(String(localized: "重新翻译", bundle: appLocalizationBundle)) {
                     do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: selected.map(\.id)) }
-                    catch { errorMessage = error.localizedDescription }
+                    catch { session.errorMessage = error.localizedDescription }
                 }
             }
             Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
@@ -287,7 +266,7 @@ public struct MediaDetailProofreadingView: View {
             // Active Subtitle HUD Overlay (QuickTime cinema subtitle overlay)
             if playbackController.isReady, let activeCue = activeCue {
                 VStack(spacing: 4) {
-                    switch previewMode {
+                    switch session.previewKind {
                     case .source:
                         Text(activeCue.sourceText)
                             .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -412,7 +391,7 @@ public struct MediaDetailProofreadingView: View {
         VStack(spacing: 0) {
             // Transcript Controls Toolbar (Podcasts style)
             HStack(spacing: 12) {
-                Picker(String(localized: "模式", bundle: appLocalizationBundle), selection: $previewMode) {
+                Picker(String(localized: "模式", bundle: appLocalizationBundle), selection: $session.previewKind) {
                     Text(String(localized: "原文", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
                     Text(String(localized: "译文", bundle: appLocalizationBundle)).tag(SRTOutputKind.translation)
                     Text(String(localized: "双语", bundle: appLocalizationBundle)).tag(SRTOutputKind.bilingual)
@@ -426,12 +405,12 @@ public struct MediaDetailProofreadingView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField(String(localized: "在字幕中搜索…", bundle: appLocalizationBundle), text: $searchQuery)
+                    TextField(String(localized: "在字幕中搜索…", bundle: appLocalizationBundle), text: $session.searchQuery)
                         .textFieldStyle(.plain)
                         .font(.caption)
-                    if !searchQuery.isEmpty {
+                    if !session.searchQuery.isEmpty {
                         Button {
-                            searchQuery = ""
+                            session.searchQuery = ""
                         } label: {
                             Image(systemName: "xmark.circle.fill").font(.caption).foregroundStyle(.secondary)
                         }
@@ -443,7 +422,7 @@ public struct MediaDetailProofreadingView: View {
                 .background(Color.secondary.opacity(0.1), in: .capsule)
                 .frame(width: 170)
 
-                if previewMode != .source, item.cues.contains(where: { !$0.hasTranslation }) {
+                if session.previewKind != .source, item.cues.contains(where: { !$0.hasTranslation }) {
                     Text(String(localized: "未完成翻译可返回队列重试", bundle: appLocalizationBundle))
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -466,10 +445,10 @@ public struct MediaDetailProofreadingView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 16) {
-                            ForEach(filteredCues) { cue in
+                            ForEach(session.filteredCues(in: item)) { cue in
                                 let isActive = cue.id == activeCueID
                                 let isHovered = cue.id == hoveredCueID
-                                let isEditing = cue.id == editingCueID
+                                let isEditing = cue.id == session.editingSnapshot?.id
                                 let isPast = Double(cue.endMilliseconds) <= playbackController.currentTimeSeconds * 1000
 
                                 transcriptRow(
@@ -538,25 +517,16 @@ public struct MediaDetailProofreadingView: View {
                 Spacer()
 
                 if isEditing {
-                    Button(String(localized: "取消编辑", bundle: appLocalizationBundle)) { editingCueID = nil; editingSnapshot = nil }
+                    Button(String(localized: "取消编辑", bundle: appLocalizationBundle)) { session.cancelEditing() }
                         .buttonStyle(.plain)
                 }
                 Button {
                     if isEditing {
                         do {
-                            guard let snapshot = editingSnapshot else { throw CheckpointError.editedCue }
-                            var updated = item
-                            try updated.editSubtitle(comparedTo: snapshot, sourceText: sourceDraft, translationText: translationDraft)
-                            try onCommit(updated, item)
-                            editingCueID = nil
-                            editingSnapshot = nil
-                        } catch { errorMessage = error.localizedDescription }
+                            try session.saveEditing(in: item, onCommit: onCommit)
+                        } catch { session.errorMessage = error.localizedDescription }
                     } else {
-                        editingCueID = cue.id
-                        editingSnapshot = cue
-                        sourceDraft = cue.sourceText
-                        if case .succeeded(let text, _) = cue.translation { translationDraft = text }
-                        else { translationDraft = "" }
+                        session.beginEditing(cue)
                     }
                 } label: {
                     Image(systemName: isEditing ? "checkmark.circle.fill" : "pencil")
@@ -566,15 +536,15 @@ public struct MediaDetailProofreadingView: View {
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(isEditing ? String(localized: "保存编辑", bundle: appLocalizationBundle) : String(localized: "编辑字幕", bundle: appLocalizationBundle))
                 .help(isEditing ? String(localized: "保存编辑", bundle: appLocalizationBundle) : String(localized: "编辑本句", bundle: appLocalizationBundle))
-                .disabled(editingCueID != nil && !isEditing)
+                .disabled(session.editingSnapshot?.id != nil && !isEditing)
 
                 Button(String(localized: "重译本句", bundle: appLocalizationBundle)) {
                     do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: [cue.id]) }
-                    catch { errorMessage = error.localizedDescription }
+                    catch { session.errorMessage = error.localizedDescription }
                 }
                     .buttonStyle(.plain)
                     .font(.caption)
-                    .disabled(editingCueID != nil || queue.taskID != nil)
+                    .disabled(session.editingSnapshot?.id != nil || queue.taskID != nil)
 
                 if isHovered {
                     Button {
@@ -593,10 +563,10 @@ public struct MediaDetailProofreadingView: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Source Text
                 if isEditing {
-                    TextField(String(localized: "原文内容", bundle: appLocalizationBundle), text: $sourceDraft)
+                    TextField(String(localized: "原文内容", bundle: appLocalizationBundle), text: $session.sourceDraft)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 16, weight: .medium))
-                } else if previewMode != .translation {
+                } else if session.previewKind != .translation {
                     Text(cue.sourceText)
                         .font(.system(size: isActive ? 18 : 16, weight: isActive ? .bold : .medium, design: .default))
                         .lineSpacing(3)
@@ -607,9 +577,9 @@ public struct MediaDetailProofreadingView: View {
                 }
 
                 // Translation Text
-                if isEditing || previewMode == .translation || previewMode == .bilingual {
+                if isEditing || session.previewKind == .translation || session.previewKind == .bilingual {
                     if isEditing {
-                        TextField(String(localized: "译文内容", bundle: appLocalizationBundle), text: $translationDraft)
+                        TextField(String(localized: "译文内容", bundle: appLocalizationBundle), text: $session.translationDraft)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 15))
                     } else {

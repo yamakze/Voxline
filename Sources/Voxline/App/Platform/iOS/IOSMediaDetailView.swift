@@ -10,24 +10,26 @@ struct IOSMediaDetailView: View {
     let taskID: UUID
     let mediaID: UUID
 
+    @State private var session: ProofreadingSession
     @State private var playback = MediaPlaybackController()
     @State private var importingMedia = false
     @State private var association: IOSMediaAssociationCandidate?
-    @State private var editingCue: SubtitleCue?
     @State private var showingOffset = false
-    @State private var errorMessage: String?
-    @State private var previewKind: SRTOutputKind = .bilingual
 
     // 多选重译
-    @State private var isSelecting = false
-    @State private var selectedCueIDs = Set<UUID>()
-    @State private var retranslatingCues: [SubtitleCue]?
 
     // 导出与烧录
     @State private var sharingURL: URL?
     @State private var showingEmbedding = false
     @State private var showingBurnIn = false
     @State private var editingParameters = false
+
+    init(library: IOSTaskLibrary, taskID: UUID, mediaID: UUID) {
+        self.library = library
+        self.taskID = taskID
+        self.mediaID = mediaID
+        _session = State(initialValue: ProofreadingSession(item: library.task(taskID)?.items.first { $0.id == mediaID }))
+    }
 
     private var task: ProcessingTask? { library.task(taskID) }
     private var item: TaskMediaItem? { library.task(taskID)?.items.first { $0.id == mediaID } }
@@ -56,7 +58,7 @@ struct IOSMediaDetailView: View {
                     ZStack(alignment: .bottom) {
                         subtitlesList(item, activeCue: activeCue)
 
-                        if isSelecting {
+                        if session.isSelecting {
                             selectionActionBar(item)
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
@@ -69,10 +71,10 @@ struct IOSMediaDetailView: View {
                 ToolbarItemGroup(placement: .primaryAction) {
 
                     if !item.cues.isEmpty {
-                        Button(isSelecting ? String(localized: "完成", bundle: appLocalizationBundle) : String(localized: "选择", bundle: appLocalizationBundle)) {
+                        Button(session.isSelecting ? String(localized: "完成", bundle: appLocalizationBundle) : String(localized: "选择", bundle: appLocalizationBundle)) {
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                isSelecting.toggle()
-                                if !isSelecting { selectedCueIDs.removeAll() }
+                                session.isSelecting.toggle()
+                                if !session.isSelecting { session.selectedCueIDs.removeAll() }
                             }
                         }
                     }
@@ -85,7 +87,7 @@ struct IOSMediaDetailView: View {
             ]) { result in
                 switch result {
                 case .success(let url): association = .init(url: url, item: item)
-                case .failure(let error): errorMessage = error.localizedDescription
+                case .failure(let error): session.errorMessage = error.localizedDescription
                 }
             }
             .sheet(item: $association, onDismiss: { Task { if let item = self.item { await playback.loadMedia(for: item) } } }) { candidate in
@@ -93,21 +95,24 @@ struct IOSMediaDetailView: View {
                     try library.storage.updateItem(updated, taskID: taskID, comparedTo: candidate.item)
                 }
             }
-            .sheet(item: $editingCue) { cue in
-                IOSSubtitleEditor(cue: cue) { source, translation in
-                    guard var updated = self.item else { throw TaskValidationError.taskChanged }
-                    let original = updated
-                    try updated.editSubtitle(comparedTo: cue, sourceText: source, translationText: translation)
-                    try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
+            .sheet(item: $session.editingSnapshot) { cue in
+                IOSSubtitleEditor(session: session) {
+                    guard let current = self.item else { throw TaskValidationError.taskChanged }
+                    try session.saveEditing(in: current) { updated, original in
+                        try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
+                    }
                 }
             }
             .sheet(isPresented: $showingOffset) {
                 IOSSubtitleOffsetEditor { milliseconds in
                     guard var updated = self.item else { throw TaskValidationError.taskChanged }
                     let original = updated
-                    updated.cues = try SubtitleTimeOffset.shifted(updated.cues, by: milliseconds,
+                    let shifted = try SubtitleTimeOffset.shifted(updated.cues, by: milliseconds,
                                                                  withinDuration: updated.media?.durationMilliseconds)
-                    try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
+                    try updated.replaceSubtitles(shifted, comparedTo: original.cues)
+                    try session.saveChanges(updated, comparedTo: original) { updated, original in
+                        try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
+                    }
                 }
             }
             .sheet(isPresented: $showingEmbedding) {
@@ -120,14 +125,14 @@ struct IOSMediaDetailView: View {
                 ShareActivitySheet(activityItems: [payload.url])
             }
             .confirmationDialog(String(localized: "重新翻译所选字幕？", bundle: appLocalizationBundle),
-                                isPresented: Binding(get: { retranslatingCues != nil }, set: { if !$0 { retranslatingCues = nil } }), titleVisibility: .visible) {
-                if let selected = retranslatingCues {
+                                isPresented: Binding(get: { session.retranslatingCues != nil }, set: { if !$0 { session.retranslatingCues = nil } }), titleVisibility: .visible) {
+                if let selected = session.retranslatingCues {
                     Button(String(localized: "重新翻译", bundle: appLocalizationBundle)) {
                         do {
                             try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: selected.map(\.id))
-                            isSelecting = false
-                            selectedCueIDs.removeAll()
-                        } catch { errorMessage = error.localizedDescription }
+                            session.isSelecting = false
+                            session.selectedCueIDs.removeAll()
+                        } catch { session.errorMessage = error.localizedDescription }
                     }
                 }
                 Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
@@ -141,9 +146,9 @@ struct IOSMediaDetailView: View {
                 }
             }
             .alert(String(localized: "操作异常", bundle: appLocalizationBundle), isPresented: Binding(
-                get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-                Button(String(localized: "好", bundle: appLocalizationBundle)) { errorMessage = nil }
-            } message: { Text(errorMessage ?? "") }
+                get: { session.errorMessage != nil }, set: { if !$0 { session.errorMessage = nil } })) {
+                Button(String(localized: "好", bundle: appLocalizationBundle)) { session.errorMessage = nil }
+            } message: { Text(session.errorMessage ?? "") }
             .task(id: MediaPlaybackController.SourceIdentity(item: item)) { await playback.loadMedia(for: item) }
             .onDisappear { playback.releaseMedia() }
         } else {
@@ -184,11 +189,11 @@ struct IOSMediaDetailView: View {
                 // 悬浮字幕预览
                 if let cue = activeCue {
                     VStack(spacing: 3) {
-                        if previewKind != .translation {
+                        if session.previewKind != .translation {
                             Text(cue.sourceText)
                                 .font(.subheadline.weight(.medium))
                         }
-                        if previewKind != .source {
+                        if session.previewKind != .source {
                             if case .succeeded(let text, _) = cue.translation, cue.hasTranslation {
                                 Text(text)
                                     .font(.footnote)
@@ -286,7 +291,7 @@ struct IOSMediaDetailView: View {
     // MARK: - 预览与倍速切换栏
     private var previewControlBar: some View {
         HStack(spacing: 12) {
-            Picker(String(localized: "字幕预览", bundle: appLocalizationBundle), selection: $previewKind) {
+            Picker(String(localized: "字幕预览", bundle: appLocalizationBundle), selection: $session.previewKind) {
                 Text(String(localized: "原文", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
                 Text(String(localized: "译文", bundle: appLocalizationBundle)).tag(SRTOutputKind.translation)
                 Text(String(localized: "双语", bundle: appLocalizationBundle)).tag(SRTOutputKind.bilingual)
@@ -326,7 +331,7 @@ struct IOSMediaDetailView: View {
                         Spacer()
                         Button(library.queue.isCancelling ? String(localized: "取消中", bundle: appLocalizationBundle) : String(localized: "取消", bundle: appLocalizationBundle)) {
                             do { try library.queue.cancel(mediaID: mediaID) }
-                            catch { errorMessage = error.localizedDescription }
+                            catch { session.errorMessage = error.localizedDescription }
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.mini)
@@ -341,7 +346,7 @@ struct IOSMediaDetailView: View {
                         .padding(.vertical, 30)
                 }
 
-                ForEach(item.cues) { cue in
+                ForEach(session.filteredCues(in: item)) { cue in
                     cueRow(cue: cue, item: item, isActive: activeCue?.id == cue.id)
                         .id(cue.id)
                 }
@@ -361,17 +366,17 @@ struct IOSMediaDetailView: View {
     @ViewBuilder
     private func cueRow(cue: SubtitleCue, item: TaskMediaItem, isActive: Bool) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            if isSelecting {
+            if session.isSelecting {
                 Button {
-                    if selectedCueIDs.contains(cue.id) {
-                        selectedCueIDs.remove(cue.id)
+                    if session.selectedCueIDs.contains(cue.id) {
+                        session.selectedCueIDs.remove(cue.id)
                     } else {
-                        selectedCueIDs.insert(cue.id)
+                        session.selectedCueIDs.insert(cue.id)
                     }
                 } label: {
-                    Image(systemName: selectedCueIDs.contains(cue.id) ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: session.selectedCueIDs.contains(cue.id) ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
-                        .foregroundStyle(selectedCueIDs.contains(cue.id) ? Color.voxlineAccent : .secondary)
+                        .foregroundStyle(session.selectedCueIDs.contains(cue.id) ? Color.voxlineAccent : .secondary)
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 4)
@@ -398,10 +403,10 @@ struct IOSMediaDetailView: View {
 
                     Spacer()
 
-                    if task?.parameters.translation != nil && !isSelecting {
+                    if task?.parameters.translation != nil && !session.isSelecting {
                         Button {
                             do { try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: [cue.id]) }
-                            catch { errorMessage = error.localizedDescription }
+                            catch { session.errorMessage = error.localizedDescription }
                         } label: {
                             Image(systemName: "arrow.triangle.2.circlepath")
                                 .font(.caption)
@@ -411,9 +416,9 @@ struct IOSMediaDetailView: View {
                         .disabled(library.queue.taskID != nil)
                     }
 
-                    if !isSelecting {
+                    if !session.isSelecting {
                         Button {
-                            editingCue = cue
+                            session.beginEditing(cue)
                         } label: {
                             Image(systemName: "pencil")
                                 .font(.caption)
@@ -459,31 +464,31 @@ struct IOSMediaDetailView: View {
     private func selectionActionBar(_ item: TaskMediaItem) -> some View {
         HStack(spacing: 16) {
             Button(String(localized: "全选", bundle: appLocalizationBundle)) {
-                selectedCueIDs = Set(item.cues.map(\.id))
+                session.selectedCueIDs = Set(item.cues.map(\.id))
             }
             .font(.subheadline)
 
             Button(String(localized: "取消全选", bundle: appLocalizationBundle)) {
-                selectedCueIDs.removeAll()
+                session.selectedCueIDs.removeAll()
             }
             .font(.subheadline)
 
             Spacer()
 
-            Text(String(localized: "已选 \(selectedCueIDs.count) 句", bundle: appLocalizationBundle))
+            Text(String(localized: "已选 \(session.selectedCueIDs.count) 句", bundle: appLocalizationBundle))
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
 
             Button {
-                let targets = item.cues.filter { selectedCueIDs.contains($0.id) }
-                retranslatingCues = targets
+                let targets = item.cues.filter { session.selectedCueIDs.contains($0.id) }
+                session.retranslatingCues = targets
             } label: {
                 Label(String(localized: "重译所选", bundle: appLocalizationBundle), systemImage: "arrow.triangle.2.circlepath")
                     .font(.subheadline.bold())
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .disabled(selectedCueIDs.isEmpty || library.queue.taskID != nil)
+            .disabled(session.selectedCueIDs.isEmpty || library.queue.taskID != nil)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -556,14 +561,14 @@ struct IOSMediaDetailView: View {
                 if !item.cues.isEmpty && !item.cues.allSatisfy(\.hasTranslation) {
                     Button(String(localized: "继续翻译未完成", bundle: appLocalizationBundle), systemImage: "character.bubble") {
                         do { try library.startTranslation(taskID: taskID, mediaID: mediaID) }
-                        catch { errorMessage = error.localizedDescription }
+                        catch { session.errorMessage = error.localizedDescription }
                     }
                     .disabled(library.queue.taskID != nil || !item.hasCompletedTranscription)
                 }
 
                 if !item.cues.isEmpty {
                     Button(String(localized: "重译全部字幕…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.2.circlepath") {
-                        retranslatingCues = item.cues
+                        session.retranslatingCues = item.cues
                     }
                     .disabled(library.queue.taskID != nil)
                 }
@@ -594,7 +599,7 @@ struct IOSMediaDetailView: View {
             let url = try IOSExportHelper.prepareSRT(for: item, kind: kind)
             sharingURL = url
         } catch {
-            errorMessage = error.localizedDescription
+            session.errorMessage = error.localizedDescription
         }
     }
 
@@ -603,7 +608,7 @@ struct IOSMediaDetailView: View {
             let url = try IOSExportHelper.prepareTaskArchive(for: task)
             sharingURL = url
         } catch {
-            errorMessage = error.localizedDescription
+            session.errorMessage = error.localizedDescription
         }
     }
 
@@ -622,30 +627,20 @@ private struct SharePayload: Identifiable {
 }
 
 private struct IOSSubtitleEditor: View {
-    let cue: SubtitleCue
-    let onSave: (String, String) throws -> Void
+    @Bindable var session: ProofreadingSession
+    let onSave: () throws -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var source: String
-    @State private var translation: String
     @State private var errorMessage: String?
-
-    init(cue: SubtitleCue, onSave: @escaping (String, String) throws -> Void) {
-        self.cue = cue
-        self.onSave = onSave
-        _source = State(initialValue: cue.sourceText)
-        if case .succeeded(let text, _) = cue.translation { _translation = State(initialValue: text) }
-        else { _translation = State(initialValue: "") }
-    }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section(String(localized: "原文", bundle: appLocalizationBundle)) {
-                    TextEditor(text: $source)
+                    TextEditor(text: $session.sourceDraft)
                         .frame(minHeight: 100)
                 }
                 Section(String(localized: "译文", bundle: appLocalizationBundle)) {
-                    TextEditor(text: $translation)
+                    TextEditor(text: $session.translationDraft)
                         .frame(minHeight: 100)
                 }
                 if let errorMessage {
@@ -663,7 +658,7 @@ private struct IOSSubtitleEditor: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "保存", bundle: appLocalizationBundle)) {
                         do {
-                            try onSave(source, translation)
+                            try onSave()
                             dismiss()
                         } catch {
                             errorMessage = error.localizedDescription
