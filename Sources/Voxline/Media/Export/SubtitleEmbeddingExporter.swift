@@ -137,7 +137,8 @@ public enum SubtitleEmbeddingExporter {
                 if !advanced { try await Task.sleep(for: .milliseconds(5)) }
             }
             guard reader.status == .completed else { throw reader.error ?? SubtitleEmbeddingError.invalidOutput }
-            writer.endSession(atSourceTime: duration)
+            // Track edits can outlast the asset duration; ending at the movie time drops tail packets.
+            writer.endSession(atSourceTime: CMTimeMaximum(duration, CMTimeMaximum(videoRange.end, audioRange.end)))
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 writer.finishWriting { continuation.resume() }
             }
