@@ -124,7 +124,7 @@ struct IOSMediaDetailView: View {
                 if let selected = retranslatingCues {
                     Button(String(localized: "重新翻译", bundle: appLocalizationBundle)) {
                         do {
-                            try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: selected.map(\.id), replacingExistingTranslations: true)
+                            try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: selected.map(\.id))
                             isSelecting = false
                             selectedCueIDs.removeAll()
                         } catch { errorMessage = error.localizedDescription }
@@ -144,7 +144,7 @@ struct IOSMediaDetailView: View {
                 get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
                 Button(String(localized: "好", bundle: appLocalizationBundle)) { errorMessage = nil }
             } message: { Text(errorMessage ?? "") }
-            .task(id: mediaID) { await playback.loadMedia(for: item) }
+            .task(id: MediaPlaybackController.SourceIdentity(item: item)) { await playback.loadMedia(for: item) }
             .onDisappear { playback.releaseMedia() }
         } else {
             ContentUnavailableView(String(localized: "媒体不存在", bundle: appLocalizationBundle), systemImage: "film")
@@ -400,7 +400,7 @@ struct IOSMediaDetailView: View {
 
                     if task?.parameters.translation != nil && !isSelecting {
                         Button {
-                            do { try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: [cue.id], replacingExistingTranslations: true) }
+                            do { try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: [cue.id]) }
                             catch { errorMessage = error.localizedDescription }
                         } label: {
                             Image(systemName: "arrow.triangle.2.circlepath")

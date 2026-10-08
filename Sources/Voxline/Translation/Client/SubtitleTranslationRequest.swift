@@ -13,10 +13,15 @@ public struct SubtitleTranslationRequest: Sendable {
     public let contextAfter: [TranslationContextCue]
 
     public init(inputs: [TranslationBatchInput], cues: [SubtitleCue]) throws {
+        let positions = Dictionary(cues.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        guard positions.count == cues.count else { throw SubtitleTranslationError.invalidRequest }
+        try self.init(inputs: inputs, cues: cues, positions: positions)
+    }
+
+    fileprivate init(inputs: [TranslationBatchInput], cues: [SubtitleCue], positions: [UUID: Int]) throws {
         guard !inputs.isEmpty, Set(inputs.map(\.cueID)).count == inputs.count,
-              inputs.allSatisfy({ input in cues.contains { input.matches($0) } }),
-              let first = cues.firstIndex(where: { $0.id == inputs.first?.cueID }),
-              let last = cues.firstIndex(where: { $0.id == inputs.last?.cueID }), first <= last else {
+              inputs.allSatisfy({ input in positions[input.cueID].map { input.matches(cues[$0]) } == true }),
+              let first = positions[inputs[0].cueID], let last = positions[inputs[inputs.count - 1].cueID], first <= last else {
             throw SubtitleTranslationError.invalidRequest
         }
         self.inputs = inputs
@@ -45,19 +50,21 @@ public enum SubtitleTranslationBatchPlanner {
         guard batchSize > 0 else { throw ProjectValidationError.invalidTranslationBatchSize }
         guard Set(pendingIDs).count == pendingIDs.count,
               Set(pendingIDs).isSubset(of: Set(cues.map(\.id))) else { throw SubtitleTranslationError.invalidRequest }
+        let positions = Dictionary(cues.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        guard positions.count == cues.count else { throw SubtitleTranslationError.invalidRequest }
         let pending = Set(pendingIDs)
         var result: [[UUID]] = []
         var current: [SubtitleCue] = []
         for cue in cues where pending.contains(cue.id) {
             let candidate = current + [cue]
             // Use the same serialized envelope as the client so context counts toward the limit.
-            let request = try requestForPlanning(candidate, cues: cues)
+            let request = try SubtitleTranslationRequest(inputs: candidate.map(TranslationBatchInput.init), cues: cues, positions: positions)
             let bytes = try request.payload(targetLanguage: targetLanguage).count
             if candidate.count > batchSize || bytes > maximumPayloadBytes {
                 guard !current.isEmpty else { throw SubtitleTranslationError.requestTooLarge }
                 result.append(current.map(\.id))
                 current = [cue]
-                let single = try requestForPlanning(current, cues: cues)
+                let single = try SubtitleTranslationRequest(inputs: current.map(TranslationBatchInput.init), cues: cues, positions: positions)
                 guard try single.payload(targetLanguage: targetLanguage).count <= maximumPayloadBytes else {
                     throw SubtitleTranslationError.requestTooLarge
                 }
@@ -65,10 +72,5 @@ public enum SubtitleTranslationBatchPlanner {
         }
         if !current.isEmpty { result.append(current.map(\.id)) }
         return result
-    }
-
-    private static func requestForPlanning(_ inputs: [SubtitleCue], cues: [SubtitleCue]) throws -> SubtitleTranslationRequest {
-        // The snapshot constructor is shared with persistent translation batches.
-        try SubtitleTranslationRequest(inputs: inputs.map(TranslationBatchInput.init), cues: cues)
     }
 }

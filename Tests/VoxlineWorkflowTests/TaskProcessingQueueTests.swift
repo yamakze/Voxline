@@ -26,7 +26,7 @@ struct TaskProcessingQueueTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let documents = try SharedTaskDocuments(directory: directory.appendingPathComponent("cloud"),
             recoveryDirectory: directory.appendingPathComponent("SyncRecovery"))
-        library.connectSharedDocuments(documents)
+        try library.connectSharedDocuments(documents)
         try library.save(task, at: documents.directory.appendingPathComponent(task.id.uuidString).appendingPathExtension("voxline"))
         let pipeline = ControlledPipeline(failFirstChunkOf: task.items[0].id)
         let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
@@ -60,6 +60,33 @@ struct TaskProcessingQueueTests {
         #expect(saved.items[1] == unchanged)
         #expect(await pipeline.events.suffix(2) == ["extract:\(task.items[0].id)", "decode:\(task.items[0].id):0"])
         #expect(throws: QueueError.noWork) { try queue.start(taskID: task.id) }
+    }
+
+    @Test func publicationConflictKeepsProcessingRemainingMediaAndAllLocalResults() async throws {
+        let (directory, library, task) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let documents = try SharedTaskDocuments(directory: directory.appendingPathComponent("cloud"),
+            recoveryDirectory: directory.appendingPathComponent("SyncRecovery"))
+        try library.connectSharedDocuments(documents)
+        let url = documents.directory.appendingPathComponent(task.id.uuidString).appendingPathExtension("voxline")
+        try library.save(task, at: url)
+        let pipeline = ControlledPipeline()
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
+        try queue.start(taskID: task.id)
+        var remote = task
+        remote.title = "Other device edit"
+        try TaskDocumentCodec.encode(remote).write(to: url, options: .atomic)
+        await queue.waitUntilIdle()
+        let local = try #require(library.task(for: task.id))
+        #expect(local.status == .completed)
+        #expect(local.items.allSatisfy { $0.cues.count == 2 && $0.hasCompletedTranscription })
+        #expect(queue.errorMessage != nil && library.errorMessage != nil)
+        #expect(documents.pendingURLs == [url.standardizedFileURL])
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == remote)
+        let restarted = TaskLibrary(tasksDirectory: directory)
+        try restarted.connectSharedDocuments(SharedTaskDocuments(directory: documents.directory,
+            recoveryDirectory: directory.appendingPathComponent("SyncRecovery")))
+        #expect(restarted.task(for: task.id) == local)
     }
 
     @Test func savedCloudRecognitionRealignsAfterRestartWithoutAnotherProviderRequest() async throws {
@@ -365,7 +392,7 @@ struct TaskProcessingQueueTests {
         #expect(reopened.parameters.translation == settings)
         let previousEvents = await transcription.events
         try queue.startRetranslation(taskID: task.id, mediaID: completed.items[0].id,
-            cueIDs: completed.items[0].cues.map(\.id), replacingExistingTranslations: true)
+            cueIDs: completed.items[0].cues.map(\.id))
         await queue.waitUntilIdle()
         #expect(await translation.requests.map(\.count) == [1, 1, 1, 1, 1, 1])
         #expect(await translation.settingsUsed.allSatisfy { $0 == settings })
@@ -584,7 +611,7 @@ struct TaskProcessingQueueTests {
         if !cancel { #expect(library.task(for: task.id)?.items[0].cues[0].sourceText == "Current edited source") }
     }
 
-    @Test func selectedRetranslationRequiresReplacementChoiceAndDoesNotExtractAgain() async throws {
+    @Test func selectedRetranslationReplacesOnlyChosenCuesAndDoesNotExtractAgain() async throws {
         let (directory, library, task, transcription) = try await translatedFixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let original = task.items[0]
@@ -594,13 +621,8 @@ struct TaskProcessingQueueTests {
         }
         let translation = ControlledTranslationPipeline()
         let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation)
-        let previousFile = try Data(contentsOf: library.defaultURL(for: task.id))
-        #expect(throws: CheckpointError.existingResults) {
-            try queue.startRetranslation(taskID: task.id, mediaID: original.id, cueIDs: [selectedID], replacingExistingTranslations: false)
-        }
-        #expect(try Data(contentsOf: library.defaultURL(for: task.id)) == previousFile)
         let extractionEvents = await transcription.events
-        try queue.startRetranslation(taskID: task.id, mediaID: original.id, cueIDs: [selectedID], replacingExistingTranslations: true)
+        try queue.startRetranslation(taskID: task.id, mediaID: original.id, cueIDs: [selectedID])
         await queue.waitUntilIdle()
         let saved = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
         #expect(saved.status == .completed)
@@ -631,7 +653,7 @@ struct TaskProcessingQueueTests {
         #expect(saved.items[0].cues[0].translation == .succeeded(text: "Keep this manual translation", sourceRevision: 1))
         #expect(await translation.requests.isEmpty)
         try queue.startRetranslation(taskID: task.id, mediaID: task.items[0].id,
-            cueIDs: [task.items[0].cues[0].id], replacingExistingTranslations: true)
+            cueIDs: [task.items[0].cues[0].id])
         await queue.waitUntilIdle()
         #expect(library.task(for: task.id)?.items[0].cues[0].translation == .succeeded(text: "Test-only translation", sourceRevision: 2))
     }
@@ -644,7 +666,7 @@ struct TaskProcessingQueueTests {
         let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation)
         let mediaID = task.items[0].id
         let cueID = task.items[0].cues[0].id
-        try queue.startRetranslation(taskID: task.id, mediaID: mediaID, cueIDs: [cueID], replacingExistingTranslations: true)
+        try queue.startRetranslation(taskID: task.id, mediaID: mediaID, cueIDs: [cueID])
         await translation.waitForRequest()
         if cancel { try queue.cancel(mediaID: mediaID) }
         else {
@@ -653,7 +675,7 @@ struct TaskProcessingQueueTests {
             }
         }
         #expect(throws: QueueError.busy) {
-            try queue.startRetranslation(taskID: task.id, mediaID: mediaID, cueIDs: [cueID], replacingExistingTranslations: true)
+            try queue.startRetranslation(taskID: task.id, mediaID: mediaID, cueIDs: [cueID])
         }
         await translation.releaseRequest()
         await queue.waitUntilIdle()

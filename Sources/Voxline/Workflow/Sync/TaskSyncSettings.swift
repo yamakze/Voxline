@@ -11,7 +11,20 @@ public final class TaskSyncSettings {
     public private(set) var errorMessage: String?
     public private(set) var isChanging = false
     public private(set) var isCopyingOriginalMedia = false
-    public private(set) var fileStates: [URL: FileState] = [:]
+    private var systemFileStates: [URL: FileState] = [:]
+    public var fileStates: [URL: FileState] {
+        var states = systemFileStates
+        if let documents = library.sharedDocuments {
+            for url in documents.pendingURLs where states[url] != .conflict { states[url] = .waitingForUpload }
+            for (url, error) in documents.publicationErrors {
+                switch error {
+                case .conflict: states[url] = .conflict
+                case .failed(let message): if states[url] != .conflict { states[url] = .failed(message) }
+                }
+            }
+        }
+        return states
+    }
     public enum FileState: Equatable, Sendable {
         case available, waitingForUpload, uploading, notDownloaded, downloading, synced, conflict, failed(String)
     }
@@ -115,8 +128,10 @@ public final class TaskSyncSettings {
             current.interruptRunningItems()
             guard current == task else { throw SharedDocumentError.changed }
             let localURL = library.tasksDirectory.appendingPathComponent(task.id.uuidString).appendingPathExtension("voxline")
-            if FileManager.default.fileExists(atPath: localURL.path) {
-                let local = try TaskDocumentCodec.decode(Data(contentsOf: localURL))
+            let backupURL = library.backupsDirectory.appendingPathComponent(localURL.lastPathComponent)
+            let previousURL = FileManager.default.fileExists(atPath: localURL.path) ? localURL : backupURL
+            if FileManager.default.fileExists(atPath: previousURL.path) {
+                let local = try TaskDocumentCodec.decode(Data(contentsOf: previousURL))
                 if local != task {
                     let copy = try local.duplicated()
                     let copyURL = library.tasksDirectory.appendingPathComponent(copy.id.uuidString).appendingPathExtension("voxline")
@@ -127,9 +142,9 @@ public final class TaskSyncSettings {
         }
         if FileManager.default.fileExists(atPath: storageURL.path) { try FileManager.default.removeItem(at: storageURL) }
         stopObserving()
-        library.connectSharedDocuments(nil)
+        try library.connectSharedDocuments(nil)
         if let scopedURL { scopedURL.stopAccessingSecurityScopedResource() }
-        scopedURL = nil; folderURL = nil; isEnabled = false; fileStates = [:]; syncOriginalMedia = false
+        scopedURL = nil; folderURL = nil; isEnabled = false; systemFileStates = [:]; syncOriginalMedia = false
         errorMessage = nil
     }
 
@@ -197,7 +212,7 @@ public final class TaskSyncSettings {
                 }
                 library.sharedDocuments?.discoveredURLs = discovered
             }
-            fileStates = states
+            systemFileStates = states
             library.refresh()
             errorMessage = nil
         } catch { errorMessage = error.localizedDescription }
@@ -212,7 +227,7 @@ public final class TaskSyncSettings {
             if let scopedURL { scopedURL.stopAccessingSecurityScopedResource() }
             scopedURL = access ? folder : nil
             folderURL = folder; isEnabled = true; syncOriginalMedia = originals
-            library.connectSharedDocuments(documents)
+            try library.connectSharedDocuments(documents)
             let presenter = SharedFolderPresenter(directory: folder) { [weak self] in
                 Task { @MainActor in self?.refresh() }
             }
@@ -233,7 +248,7 @@ public final class TaskSyncSettings {
             if access { folder.stopAccessingSecurityScopedResource() }
             scopedURL = nil
             stopObserving()
-            library.connectSharedDocuments(nil)
+            try library.connectSharedDocuments(nil)
             folderURL = nil; isEnabled = false
             throw error
         }
@@ -369,15 +384,11 @@ public final class TaskSyncSettings {
     }
 
     private func state(of url: URL) throws -> FileState {
-        if let documents = library.sharedDocuments {
-            if let error = documents.publicationErrors[url.standardizedFileURL] { return .failed(error) }
-            if documents.pendingURLs.contains(url.standardizedFileURL) { return .waitingForUpload }
-        }
         let values = try url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemHasUnresolvedConflictsKey,
             .ubiquitousItemIsDownloadingKey, .ubiquitousItemDownloadingStatusKey, .ubiquitousItemIsUploadingKey,
             .ubiquitousItemIsUploadedKey, .ubiquitousItemDownloadingErrorKey, .ubiquitousItemUploadingErrorKey])
-        if let error = values.ubiquitousItemDownloadingError ?? values.ubiquitousItemUploadingError { return .failed(error.localizedDescription) }
         if values.ubiquitousItemHasUnresolvedConflicts == true { return .conflict }
+        if let error = values.ubiquitousItemDownloadingError ?? values.ubiquitousItemUploadingError { return .failed(error.localizedDescription) }
         if values.ubiquitousItemIsDownloading == true { return .downloading }
         if values.isUbiquitousItem == true, values.ubiquitousItemDownloadingStatus != .current { return .notDownloaded }
         if values.ubiquitousItemIsUploading == true { return .uploading }

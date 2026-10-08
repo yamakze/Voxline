@@ -103,7 +103,7 @@ public final class TaskProcessingQueue {
 
     func waitUntilIdle() async { await worker?.value }
 
-    public func startRetranslation(taskID: UUID, mediaID: UUID, cueIDs: [UUID], replacingExistingTranslations: Bool) throws {
+    public func startRetranslation(taskID: UUID, mediaID: UUID, cueIDs: [UUID]) throws {
         guard worker == nil else { throw QueueError.busy }
         guard let task = library.task(for: taskID),
               let item = task.items.first(where: { $0.id == mediaID }),
@@ -120,13 +120,9 @@ public final class TaskProcessingQueue {
         let selected = Set(cueIDs)
         guard !selected.isEmpty, selected.count == cueIDs.count,
               selected.isSubset(of: Set(item.cues.map(\.id))) else { throw QueueError.noWork }
-        if !replacingExistingTranslations, item.cues.contains(where: { cue in
-            if case .succeeded = cue.translation { return selected.contains(cue.id) }
-            return false
-        }) { throw CheckpointError.existingResults }
         let batches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: cueIDs, targetLanguage: settings.targetLanguage, batchSize: settings.batchSize)
         let batchIDs = try updateMedia(taskID: taskID, mediaID: mediaID) { current in
-            try batches.map { try current.prepareTranslationBatch(cueIDs: $0, replacingExistingTranslations: replacingExistingTranslations) }
+            try batches.map { try current.prepareTranslationBatch(cueIDs: $0) }
         }
         self.taskID = taskID
         library.protectedTaskID = taskID
@@ -163,10 +159,6 @@ public final class TaskProcessingQueue {
                 if let translationBatchIDs {
                     guard let settings = parameters.translation else { throw QueueError.unavailable(String(localized: "本次任务未配置翻译服务。", bundle: voxlineLocalizationBundle)) }
                     try await self.translateBatches(taskID: taskID, mediaID: id, settings: settings, batchIDs: translationBatchIDs)
-                } else if let settings = parameters.translation,
-                          self.library.task(for: taskID)?.items.first(where: { $0.id == id })?
-                            .checkpoint?.chunks.allSatisfy(\.isCompleted) == true {
-                    try await self.translateMedia(taskID: taskID, mediaID: id, settings: settings)
                 } else {
                     try await self.transcribeMedia(taskID: taskID, mediaID: id, parameters: parameters)
                 }
@@ -189,7 +181,7 @@ public final class TaskProcessingQueue {
                 break
             }
             do { try library.publishSharedCheckpoints() }
-            catch { errorMessage = library.errorMessage ?? error.localizedDescription; break }
+            catch { errorMessage = library.errorMessage ?? error.localizedDescription }
             mediaWork = nil
             progressID = nil
         }

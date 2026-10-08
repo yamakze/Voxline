@@ -8,7 +8,7 @@
 "任务已在另一设备修改，请保留当前草稿并重新读取或另存副本。" = "The task has been modified on another device. Please keep the current draft and re-read or save a copy.";
 "任务正在处理，请停止后调整同步设置。" = "The task is being processed. Please adjust the synchronization settings after stopping.";
 "任务顺序读取失败：%@" = "Failed to read the task sequence: %1$@";
-"删除未完成，任务文件保留。部分缓存可能已清理，可修复后重试删除：\n" = "Deletion did not finish. The task file was retained. Some caches may have been removed. Fix the error and retry deletion:\n";
+"缓存清理未完成：\n" = "Deletion did not finish. The task file was retained. Some caches may have been removed. Fix the error and retry deletion:\n";
 "原媒体同步失败：%@" = "Source media sync failed: %1$@";
 "取消状态保存失败：%@" = "Failed to save cancellation state: %1$@";
 "同步恢复失败：%@" = "Failed to restore sync: %1$@";

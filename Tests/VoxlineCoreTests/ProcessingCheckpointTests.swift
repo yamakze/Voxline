@@ -68,6 +68,32 @@ struct ProcessingCheckpointTests {
         #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(recovered)) == recovered)
     }
 
+    @Test(arguments: [ProcessingStage.audioExtraction, .transcription, .translation])
+    func reopenedWorkShowsPausedCurrentStage(stage: ProcessingStage) throws {
+        var processing = try task(translates: true)
+        switch stage {
+        case .audioExtraction:
+            processing.items[0].checkpoint = nil
+            processing.items[0].status = .running(stage: stage)
+        case .transcription:
+            let chunk = try #require(processing.items[0].checkpoint?.chunks.first)
+            _ = try processing.items[0].beginTranscriptionChunk(chunk.id)
+        case .translation:
+            _ = try complete(&processing, index: 0)
+            _ = try complete(&processing, index: 1)
+            let batch = try processing.items[0].prepareTranslationBatch(cueIDs: processing.items[0].cues.map(\.id))
+            try processing.items[0].beginTranslationBatch(batch)
+        }
+        var reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(processing))
+        reopened.interruptRunningItems()
+        let item = reopened.items[0]
+        #expect(item.status == .interrupted(stage: stage))
+        #expect(item.extractionState == (stage == .audioExtraction ? .paused : .completed))
+        #expect(item.transcriptionState == (stage == .audioExtraction ? .waiting : stage == .transcription ? .paused : .completed))
+        #expect(item.translationState == (stage == .translation ? .paused : .waiting))
+        #expect(reopened.items[0].cues == processing.items[0].cues)
+    }
+
     private let ranges = [TranscriptionChunkRange(sourceStartMilliseconds: 0, durationMilliseconds: 2000),
                           TranscriptionChunkRange(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)]
 

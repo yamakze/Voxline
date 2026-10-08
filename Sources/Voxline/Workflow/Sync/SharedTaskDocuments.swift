@@ -1,8 +1,9 @@
 import Foundation
+import Observation
 import CryptoKit
 import VoxlineCore
 
-public enum SharedDocumentError: Error, LocalizedError {
+public enum SharedDocumentError: Error, LocalizedError, Equatable {
     case changed, conflict, downloadRequired, missingFolder, busy
     public var errorDescription: String? {
         switch self {
@@ -16,7 +17,7 @@ public enum SharedDocumentError: Error, LocalizedError {
 }
 
 /// Coordinates complete Task documents; device order and worker ownership never enter this directory.
-@MainActor
+@Observable @MainActor
 public final class SharedTaskDocuments {
     public let directory: URL
     public var discoveredURLs: [URL] = []
@@ -28,7 +29,16 @@ public final class SharedTaskDocuments {
     }
     private let recoveryDirectory: URL?
     private var pending: [URL: LocalCheckpoint] = [:]
-    public private(set) var publicationErrors: [URL: String] = [:]
+    public enum PublicationFailure: Equatable, Sendable {
+        case conflict, failed(String)
+        public var message: String {
+            switch self {
+            case .conflict: SharedDocumentError.conflict.localizedDescription
+            case .failed(let message): message
+            }
+        }
+    }
+    public private(set) var publicationErrors: [URL: PublicationFailure] = [:]
     public var pendingURLs: [URL] { Array(pending.keys) }
     public var savesCheckpointsLocally: Bool { recoveryDirectory != nil }
 
@@ -76,9 +86,8 @@ public final class SharedTaskDocuments {
     }
 
     /// Durable local recovery precedes cloud publication. The first cloud version remains the baseline.
-    public func saveCheckpoint(_ data: Data, to url: URL) throws {
+    func saveCheckpoint(_ data: Data, to url: URL) throws {
         guard let recoveryDirectory else { throw SharedDocumentError.missingFolder }
-        _ = try TaskDocumentCodec.decode(data)
         let key = url.standardizedFileURL
         let expected: Data?
         if let previous = pending[key] { expected = previous.expectedCloudData }
@@ -93,7 +102,7 @@ public final class SharedTaskDocuments {
         guard let checkpoint = pending[key], let recoveryDirectory else { return }
         do {
             try coordinateWrite(url, options: []) { destination in
-                try self.requireDownloaded(destination, allowingMissing: checkpoint.expectedCloudData == nil)
+                try self.requireDownloaded(destination, allowingMissing: true)
                 guard NSFileVersion.unresolvedConflictVersionsOfItem(at: destination)?.isEmpty != false else {
                     throw SharedDocumentError.conflict
                 }
@@ -111,7 +120,9 @@ public final class SharedTaskDocuments {
             pending[key] = nil
             publicationErrors[key] = nil
         } catch {
-            publicationErrors[key] = error.localizedDescription
+            if let error = error as? SharedDocumentError, error == .changed || error == .conflict {
+                publicationErrors[key] = .conflict
+            } else { publicationErrors[key] = .failed(error.localizedDescription) }
             throw error
         }
     }
@@ -126,7 +137,7 @@ public final class SharedTaskDocuments {
     }
 
     public func checkCurrentVersion(at url: URL, expected: Data?) throws {
-        try requireDownloaded(url, allowingMissing: expected == nil)
+        try requireDownloaded(url, allowingMissing: true)
         guard NSFileVersion.unresolvedConflictVersionsOfItem(at: url)?.isEmpty != false else { throw SharedDocumentError.conflict }
         let current: Data?
         do { current = try Data(contentsOf: url) }
@@ -139,24 +150,39 @@ public final class SharedTaskDocuments {
         public let task: ProcessingTask
         public let modifiedAt: Date?
         public let deviceName: String?
-        public let isCurrent: Bool
+        public enum Origin: Sendable { case shared, localRecovery, conflict }
+        public let origin: Origin
     }
+    private var presentedLocalData: Data?
+    private var presentedCloudData: Data?
     private var presentedVersions: [UUID: (url: URL, data: Data, version: NSFileVersion?)] = [:]
 
     public func versions(at url: URL) throws -> [Version] {
         presentedVersions = [:]
         var versions: [Version] = []
-        let current = try coordinatedRead(url, allowingConflict: true)
-        let currentID = UUID()
-        presentedVersions[currentID] = (url, current, nil)
-        versions.append(.init(id: currentID, task: try TaskDocumentCodec.decode(current), modifiedAt: NSFileVersion.currentVersionOfItem(at: url)?.modificationDate,
-            deviceName: NSFileVersion.currentVersionOfItem(at: url)?.localizedNameOfSavingComputer, isCurrent: true))
+        let current: Data?
+        do { current = try coordinatedRead(url, allowingConflict: true) }
+        catch let error as CocoaError where error.code == .fileReadNoSuchFile { current = nil }
+        presentedCloudData = current
+        presentedLocalData = pending[url.standardizedFileURL]?.data
+        if let current {
+            let currentID = UUID()
+            presentedVersions[currentID] = (url, current, nil)
+            versions.append(.init(id: currentID, task: try TaskDocumentCodec.decode(current), modifiedAt: NSFileVersion.currentVersionOfItem(at: url)?.modificationDate,
+                deviceName: NSFileVersion.currentVersionOfItem(at: url)?.localizedNameOfSavingComputer, origin: .shared))
+        }
+        if let local = pending[url.standardizedFileURL], local.data != current {
+            let id = UUID()
+            presentedVersions[id] = (url, local.data, nil)
+            versions.append(.init(id: id, task: try TaskDocumentCodec.decode(local.data), modifiedAt: nil,
+                deviceName: nil, origin: .localRecovery))
+        }
         for version in NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? [] {
             let data = try Data(contentsOf: version.url)
             let id = UUID()
             presentedVersions[id] = (url, data, version)
             versions.append(.init(id: id, task: try TaskDocumentCodec.decode(data), modifiedAt: version.modificationDate,
-                deviceName: version.localizedNameOfSavingComputer, isCurrent: false))
+                deviceName: version.localizedNameOfSavingComputer, origin: .conflict))
         }
         return versions
     }
@@ -164,18 +190,17 @@ public final class SharedTaskDocuments {
     /// Preserve every unselected complete version before resolving native conflict markers.
     public func keepVersion(_ id: UUID, at url: URL) throws -> ProcessingTask {
         guard let selected = presentedVersions[id], selected.url == url,
-              let original = presentedVersions.values.first(where: { $0.url == url && $0.version == nil }) else {
+              pending[url.standardizedFileURL]?.data == presentedLocalData else {
             throw SharedDocumentError.changed
-        }
-        if let local = pending[url.standardizedFileURL], local.data != selected.data {
-            let copy = try TaskDocumentCodec.decode(local.data).duplicated()
-            try write(TaskDocumentCodec.encode(copy), to: directory.appendingPathComponent(copy.id.uuidString).appendingPathExtension("voxline"))
         }
         var chosen = try TaskDocumentCodec.decode(selected.data)
         chosen.interruptRunningItems()
         let data = try TaskDocumentCodec.encode(chosen)
         try coordinateWrite(url, options: []) { coordinatedURL in
-            guard try Data(contentsOf: coordinatedURL) == original.data else { throw SharedDocumentError.changed }
+            let current: Data?
+            do { current = try Data(contentsOf: coordinatedURL) }
+            catch let error as CocoaError where error.code == .fileReadNoSuchFile { current = nil }
+            guard current == self.presentedCloudData else { throw SharedDocumentError.changed }
             let conflicts = NSFileVersion.unresolvedConflictVersionsOfItem(at: coordinatedURL) ?? []
             let presented = self.presentedVersions.values.filter { $0.url == url }
             guard conflicts.count == presented.filter({ $0.version != nil }).count,
@@ -192,7 +217,7 @@ public final class SharedTaskDocuments {
             try NSFileVersion.removeOtherVersionsOfItem(at: coordinatedURL)
         }
         snapshots[url.standardizedFileURL] = data
-        if let local = pending[url.standardizedFileURL], let recoveryDirectory {
+        if pending[url.standardizedFileURL] != nil, let recoveryDirectory {
             try FileManager.default.removeItem(at: recoveryDirectory.appendingPathComponent(url.lastPathComponent).appendingPathExtension("json"))
             pending[url.standardizedFileURL] = nil
             publicationErrors[url.standardizedFileURL] = nil

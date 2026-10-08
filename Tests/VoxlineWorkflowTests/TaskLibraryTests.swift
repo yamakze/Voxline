@@ -46,7 +46,7 @@ struct TaskLibraryTests {
         #expect(TaskLibrary(tasksDirectory: local, recentDocumentURLs: { recent }).entries.isEmpty)
     }
 
-    @Test func partialCleanupFailureKeepsTaskForRetryAfterRestart() throws {
+    @Test func cacheCleanupFailureDoesNotRestoreDeletedTask() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let support = root.appendingPathComponent("support")
@@ -65,53 +65,45 @@ struct TaskLibraryTests {
         try Data("Blocked record".utf8).write(to: record)
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: associations.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: associations.path) }
-        #expect(throws: TaskDeletionError.self) { try library.delete(taskID: task.id) }
+        try library.delete(taskID: task.id)
         #expect(!FileManager.default.fileExists(atPath: audio.path))
         #expect(FileManager.default.fileExists(atPath: record.path))
-        #expect(library.task(for: task.id) == task)
-        let reopened = TaskLibrary(tasksDirectory: tasks, resourceCleanup: cleanup)
-        #expect(reopened.task(for: task.id) == task)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: associations.path)
-        try reopened.delete(taskID: task.id)
-        #expect(!FileManager.default.fileExists(atPath: record.path))
-        #expect(!FileManager.default.fileExists(atPath: reopened.defaultURL(for: task.id).path))
+        #expect(library.task(for: task.id) == nil)
+        #expect(library.errorMessage?.contains(record.path) == true)
+        #expect(TaskLibrary(tasksDirectory: tasks, resourceCleanup: cleanup).task(for: task.id) == nil)
+
     }
 
-    @Test func legacyEvidenceCleanupRequiresExactCheckpointAttributionAndRetainsOtherTaskEvidence() throws {
+    @Test func corruptHistoricalCacheAndUnreadableOtherTaskDoNotBlockDeletion() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let media = try MediaIdentity(fileName: "source.wav", byteCount: 10, fingerprint: String(repeating: "a", count: 64), durationMilliseconds: 1000, audioTrackID: 1)
-        var task = ProcessingTask(items: [.init(title: "Original", kind: .audio, source: .localFile(fileName: media.fileName), media: media)])
-        try task.freezeParameters()
-        try task.items[0].initializeCheckpoint(parameters: task.parameters, ranges: [.init(sourceStartMilliseconds: 0, durationMilliseconds: 1000)])
-        let chunk = try #require(task.items[0].checkpoint?.chunks.first)
-        let sourceID = try task.items[0].beginTranscriptionChunk(chunk.id)
-        let input = try TranscriptionAudio(localURL: root.appendingPathComponent("source.wav"), sourceStartMilliseconds: 0, durationMilliseconds: 1000)
-        var evidence = TranscriptionEvidence(settings: task.parameters.transcription, audio: input)
-        evidence.outcome = .completed
-        evidence.segments = [.init(startSeconds: 0, endSeconds: 0.5, text: "Original", words: nil)]
-        let result = try SubtitleSegmenter.segment(evidence, sourceID: sourceID, mediaDurationMilliseconds: 1000)
-        try task.items[0].commitTranscriptionChunk(chunk.id, result: result)
         let caches = root.appendingPathComponent("caches")
         let transcription = caches.appendingPathComponent("Voxline/Transcription")
         try FileManager.default.createDirectory(at: transcription, withIntermediateDirectories: true)
-        let attributed = transcription.appendingPathComponent("\(UUID()).json")
-        let unrelated = transcription.appendingPathComponent("\(UUID()).json")
-        try JSONEncoder().encode(evidence).write(to: attributed)
-        var unrelatedEvidence = evidence
-        unrelatedEvidence.segments = [.init(startSeconds: 0, endSeconds: 0.5, text: "Different", words: nil)]
-        try JSONEncoder().encode(unrelatedEvidence).write(to: unrelated)
-        let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("tasks"), resourceCleanup: .init(applicationSupport: root, caches: caches))
+        let historical = transcription.appendingPathComponent("old.json")
+        try Data("broken evidence".utf8).write(to: historical)
+        let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("tasks"),
+            resourceCleanup: .init(applicationSupport: root, caches: caches))
+        let task = ProcessingTask(items: [.init(title: "Audio", kind: .audio, source: .unassociated)])
         try library.save(task)
-        var frozenOther = ProcessingTask(title: "Other", items: [.init(title: "Ready", kind: .audio, source: .localFile(fileName: media.fileName), media: media)], parameters: task.parameters)
-        try frozenOther.freezeParameters()
-        frozenOther.items = task.items
-        try library.save(frozenOther)
+        let owned = transcription.appendingPathComponent(task.items[0].id.uuidString)
+        try FileManager.default.createDirectory(at: owned, withIntermediateDirectories: true)
+        try Data("broken owned evidence".utf8).write(to: owned.appendingPathComponent("record.json"))
         try library.delete(taskID: task.id)
-        #expect(FileManager.default.fileExists(atPath: attributed.path))
-        try library.delete(taskID: frozenOther.id)
-        #expect(!FileManager.default.fileExists(atPath: attributed.path))
-        #expect(FileManager.default.fileExists(atPath: unrelated.path))
+        #expect(!FileManager.default.fileExists(atPath: owned.path))
+        #expect(FileManager.default.fileExists(atPath: historical.path))
+
+        let another = ProcessingTask(items: [.init(title: "Audio", kind: .audio, source: .unassociated)])
+        try library.save(another)
+        let brokenTask = library.tasksDirectory.appendingPathComponent("broken.voxline")
+        try Data("unknown task references".utf8).write(to: brokenTask)
+        library.refresh()
+        let retainedCache = transcription.appendingPathComponent(another.items[0].id.uuidString)
+        try FileManager.default.createDirectory(at: retainedCache, withIntermediateDirectories: true)
+        try library.delete(taskID: another.id)
+        #expect(library.task(for: another.id) == nil)
+        #expect(FileManager.default.fileExists(atPath: retainedCache.path))
+        #expect(library.errorMessage?.contains(brokenTask.path) == true)
     }
 
     @Test func listOrderSurvivesWorkerSavesAndRestartAndDeletionDoesNotTouchMedia() throws {

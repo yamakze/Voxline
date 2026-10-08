@@ -14,7 +14,7 @@ struct SharedTaskDocumentTests {
         let recovery = local.appendingPathComponent("SyncRecovery")
         let documents = try SharedTaskDocuments(directory: cloud, recoveryDirectory: recovery)
         let library = TaskLibrary(tasksDirectory: local)
-        library.connectSharedDocuments(documents)
+        try library.connectSharedDocuments(documents)
         let initial = ProcessingTask(title: "Initial")
         try library.save(initial)
         let url = try #require(library.url(for: initial.id))
@@ -25,7 +25,7 @@ struct SharedTaskDocumentTests {
         #expect(library.task(for: initial.id)?.title == "Latest checkpoint")
         let restarted = TaskLibrary(tasksDirectory: local)
         let restored = try SharedTaskDocuments(directory: cloud, recoveryDirectory: recovery)
-        restarted.connectSharedDocuments(restored)
+        try restarted.connectSharedDocuments(restored)
         #expect(restarted.task(for: initial.id)?.title == "Latest checkpoint")
         var remote = initial
         remote.title = "Other device"
@@ -51,7 +51,7 @@ struct SharedTaskDocumentTests {
         let documents = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"),
             recoveryDirectory: local.appendingPathComponent("SyncRecovery"))
         let library = TaskLibrary(tasksDirectory: local, sharedPublicationInterval: .milliseconds(100))
-        library.connectSharedDocuments(documents)
+        try library.connectSharedDocuments(documents)
         let initial = ProcessingTask(title: "Initial")
         try library.save(initial)
         let url = try #require(library.url(for: initial.id))
@@ -76,7 +76,7 @@ struct SharedTaskDocumentTests {
         let recovery = local.appendingPathComponent("SyncRecovery")
         let documents = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"), recoveryDirectory: recovery)
         let library = TaskLibrary(tasksDirectory: local)
-        library.connectSharedDocuments(documents)
+        try library.connectSharedDocuments(documents)
         let initial = ProcessingTask(title: "Initial")
         try library.save(initial)
         let url = try #require(library.url(for: initial.id))
@@ -91,7 +91,7 @@ struct SharedTaskDocumentTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let shared = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"))
         let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"))
-        library.connectSharedDocuments(shared)
+        try library.connectSharedDocuments(shared)
         let initial = ProcessingTask(title: "Initial")
         try library.save(initial)
         let url = try #require(library.url(for: initial.id))
@@ -110,7 +110,7 @@ struct SharedTaskDocumentTests {
         #expect(library.task(for: initial.id) == remote)
         #expect(library.task(for: copy.id)?.title == "Unsaved local edit" + String(localized: " 副本", bundle: VoxlineCore.voxlineLocalizationBundle))
         let reopened = TaskLibrary(tasksDirectory: root.appendingPathComponent("other-device"))
-        reopened.connectSharedDocuments(try SharedTaskDocuments(directory: shared.directory))
+        try reopened.connectSharedDocuments(try SharedTaskDocuments(directory: shared.directory))
         #expect(Set(reopened.entries.map(\.taskID)) == [initial.id, copy.id])
     }
 
@@ -119,7 +119,7 @@ struct SharedTaskDocumentTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let shared = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"))
         let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"))
-        library.connectSharedDocuments(shared)
+        try library.connectSharedDocuments(shared)
         let initial = ProcessingTask(title: "Working")
         try library.save(initial)
         library.protectedTaskID = initial.id
@@ -144,7 +144,7 @@ struct SharedTaskDocumentTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let shared = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"))
         let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"))
-        library.connectSharedDocuments(shared)
+        try library.connectSharedDocuments(shared)
         let initial = ProcessingTask(title: "Proofread")
         try library.save(initial)
         let url = try #require(library.url(for: initial.id))

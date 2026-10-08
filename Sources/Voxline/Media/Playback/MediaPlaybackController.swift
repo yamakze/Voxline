@@ -6,6 +6,12 @@ import VoxlineCore
 @Observable
 @MainActor
 public final class MediaPlaybackController {
+    public struct SourceIdentity: Equatable, Sendable {
+        public let itemID: UUID
+        public let media: MediaIdentity?
+        public init(item: TaskMediaItem) { itemID = item.id; media = item.media }
+    }
+
     public private(set) var player: AVPlayer?
     public private(set) var isReady = false
     public private(set) var isLoading = false

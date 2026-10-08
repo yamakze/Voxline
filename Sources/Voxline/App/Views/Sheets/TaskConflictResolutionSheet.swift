@@ -39,7 +39,7 @@ public struct TaskConflictResolutionSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(String(localized: "解决版本冲突", bundle: appLocalizationBundle))
                         .font(.headline)
-                    Text(String(localized: "选择保留的主版本，未选版本将解除冲突标记。", bundle: appLocalizationBundle))
+                    Text(String(localized: "未选版本另存副本。", bundle: appLocalizationBundle))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -161,11 +161,12 @@ public struct TaskConflictResolutionSheet: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Text(version.isCurrent ? String(localized: "当前设备版本", bundle: appLocalizationBundle) : String(localized: "云端冲突版本", bundle: appLocalizationBundle))
+                        Text(version.origin == .localRecovery ? String(localized: "本地未上传版本", bundle: appLocalizationBundle) :
+                            version.origin == .shared ? String(localized: "云端当前版本", bundle: appLocalizationBundle) : String(localized: "云端冲突版本", bundle: appLocalizationBundle))
                             .font(.headline)
 
-                        if version.isCurrent {
-                            Text(String(localized: "本地", bundle: appLocalizationBundle))
+                        if version.origin != .conflict {
+                            Text(version.origin == .localRecovery ? String(localized: "本地", bundle: appLocalizationBundle) : String(localized: "云端", bundle: appLocalizationBundle))
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -259,7 +260,7 @@ public struct TaskConflictResolutionSheet: View {
         do {
             versions = try library.conflictVersions(taskID: taskID)
             if selectedVersionID == nil {
-                selectedVersionID = versions.first(where: { $0.isCurrent })?.id ?? versions.first?.id
+                selectedVersionID = versions.first(where: { $0.origin == .localRecovery })?.id ?? versions.first?.id
             }
         } catch {
             errorMessage = error.localizedDescription

@@ -6,7 +6,16 @@ import VoxlineCore
 @MainActor
 public final class TaskLibrary {
     public private(set) var entries: [Entry] = []
-    public private(set) var errorMessage: String?
+    private var libraryError: String?
+    public var errorMessage: String? {
+        if let failure = sharedDocuments?.publicationErrors.values.first {
+            return String(localized: "iCloud 同步失败，已保留本地成果：\(failure.message)", bundle: voxlineLocalizationBundle)
+        }
+        return libraryError
+    }
+    public enum SaveOutcome: Equatable {
+        case local, published, pendingPublication
+    }
     public private(set) var openTasks: [UUID: Entry] = [:]
 
     public struct Entry: Identifiable, Sendable {
@@ -22,6 +31,7 @@ public final class TaskLibrary {
     public var protectedTaskID: UUID?
     public var onMediaSourcesSaved: (@MainActor (ProcessingTask) -> Void)?
 
+    public var backupsDirectory: URL { tasksDirectory.appendingPathComponent("Backups", isDirectory: true) }
     public let tasksDirectory: URL
     private var orderedURLs: [URL] = []
     private var orderURL: URL { tasksDirectory.appendingPathComponent("task-order.json") }
@@ -72,16 +82,21 @@ public final class TaskLibrary {
         (sharedDocuments?.directory ?? tasksDirectory).appendingPathComponent(taskID.uuidString).appendingPathExtension("voxline")
     }
 
-    public func save(_ task: ProcessingTask, at url: URL? = nil, publishingImmediately: Bool = true) throws {
+    @discardableResult
+    public func save(_ task: ProcessingTask, at url: URL? = nil, publishingImmediately: Bool = true) throws -> SaveOutcome {
         let targetURL = url ?? self.url(for: task.id) ?? defaultURL(for: task.id)
         let previousMedia = self.task(for: task.id)?.items.map(\.media)
         try persist(task, to: targetURL)
         register(task, at: targetURL)
         if previousMedia != task.items.map(\.media) { onMediaSourcesSaved?(task) }
-        if sharedDocuments?.contains(targetURL) == true {
-            if publishingImmediately { try sharedDocuments?.publishCheckpoint(at: targetURL) }
-            scheduleSharedPublication()
+        guard let documents = sharedDocuments, documents.contains(targetURL) else { return .local }
+        scheduleSharedPublication()
+        if publishingImmediately {
+            do { try documents.publishCheckpoint(at: targetURL) }
+            catch { return .pendingPublication }
         }
+        return documents.pendingURLs.contains(targetURL.standardizedFileURL)
+            ? .pendingPublication : .published
     }
 
     /// Editing views keep their draft until this validated, atomic save succeeds.
@@ -120,14 +135,9 @@ public final class TaskLibrary {
     /// Flushes actual pending documents; a failure leaves local recovery intact and visible.
     public func publishSharedCheckpoints() throws {
         guard let documents = sharedDocuments else { return }
-        do {
-            for url in documents.pendingURLs { try documents.publishCheckpoint(at: url) }
-            publicationWork?.cancel()
-            publicationWork = nil
-        } catch {
-            errorMessage = String(localized: "iCloud 同步失败，已保留本地成果：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)
-            throw error
-        }
+        for url in documents.pendingURLs { try documents.publishCheckpoint(at: url) }
+        publicationWork?.cancel()
+        publicationWork = nil
     }
 
     private func scheduleSharedPublication() {
@@ -136,7 +146,7 @@ public final class TaskLibrary {
         publicationWork = Task { [weak self, weak documents] in
             do { try await Task.sleep(for: interval) }
             catch is CancellationError { return }
-            catch { self?.errorMessage = error.localizedDescription; return }
+            catch { self?.libraryError = error.localizedDescription; return }
             guard let self, let documents, self.sharedDocuments === documents else { return }
             self.publicationWork = nil
             do { try self.publishSharedCheckpoints() }
@@ -162,33 +172,27 @@ public final class TaskLibrary {
             current.interruptRunningItems()
             guard current == task else { throw SharedDocumentError.changed }
         }
-        if let task = entry.task {
-            // Enumerate known files as well as published entries: two copies can have the same Task ID.
+        var retainedTasks = entries.filter { $0.id != entryID }.compactMap(\.task)
+        var cleanupWarnings: [String] = []
+        if entry.task != nil {
             let localFiles = try FileManager.default.contentsOfDirectory(at: tasksDirectory, includingPropertiesForKeys: nil)
                 .filter { $0.pathExtension == "voxline" }
-            let deletedURL = url.resolvingSymlinksInPath().standardizedFileURL
-            // Canonical paths identify duplicates; file access must keep the original scoped URL.
-            let sharedFiles = try sharedDocuments.map { try FileManager.default.contentsOfDirectory(at: $0.directory, includingPropertiesForKeys: nil).filter { $0.pathExtension == "voxline" } } ?? []
-            let urls = entries.compactMap(\.url) + recentDocumentURLs() + localFiles + sharedFiles
-            var checkedURLs: Set<URL> = [deletedURL]
-            var retainedTasks: [ProcessingTask] = []
-            for otherURL in urls {
-                let canonicalURL = otherURL.resolvingSymlinksInPath().standardizedFileURL
-                guard checkedURLs.insert(canonicalURL).inserted else { continue }
+            let sharedFiles = try sharedDocuments.map {
+                try FileManager.default.contentsOfDirectory(at: $0.directory, includingPropertiesForKeys: nil)
+                    .filter { $0.pathExtension == "voxline" }
+            } ?? []
+            var checked: Set<URL> = [url.resolvingSymlinksInPath().standardizedFileURL]
+            for otherURL in entries.compactMap(\.url) + recentDocumentURLs() + localFiles + sharedFiles {
+                guard checked.insert(otherURL.resolvingSymlinksInPath().standardizedFileURL).inserted else { continue }
                 let access = otherURL.startAccessingSecurityScopedResource()
                 defer { if access { otherURL.stopAccessingSecurityScopedResource() } }
                 do {
-                    let persisted = try TaskDocumentCodec.decode(sharedDocuments?.contains(otherURL) == true ? sharedDocuments!.read(otherURL, recordSnapshot: false) : Data(contentsOf: otherURL))
-                    retainedTasks.append(persisted)
-                    if let published = entries.first(where: { $0.url?.resolvingSymlinksInPath().standardizedFileURL == canonicalURL })?.task {
-                        retainedTasks.append(published)
-                    }
+                    let data = try sharedDocuments?.contains(otherURL) == true
+                        ? sharedDocuments!.read(otherURL, recordSnapshot: false) : Data(contentsOf: otherURL)
+                    retainedTasks.append(try TaskDocumentCodec.decode(data))
                 } catch let error as CocoaError where error.code == .fileReadNoSuchFile { continue }
-                catch { throw TaskDeletionError.cleanupFailed([String(localized: "\(otherURL.path)：无法确认其他任务的资源引用：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)]) }
+                catch { cleanupWarnings.append("\(otherURL.path)：\(error.localizedDescription)") }
             }
-            // Complete cleanup before removing the document. Any partial failure keeps the task and
-            // its IDs available across restart, so deletion can be retried without a second journal.
-            try resourceCleanup.removeResources(of: task, retaining: retainedTasks)
         }
         let remainingOrder = orderedURLs.filter { $0 != url }
         try JSONEncoder().encode(remainingOrder).write(to: orderURL, options: .atomic)
@@ -198,6 +202,12 @@ public final class TaskLibrary {
         openTasks[entry.taskID] = nil
         entries.removeAll { $0.id == entryID }
         forgetRecentDocument(url)
+        // The document is deleted first. Unknown references retain caches; cache failures cannot
+        // turn successful task deletion into a failed edit or remove another task's resources.
+        if let task = entry.task, cleanupWarnings.isEmpty {
+            cleanupWarnings = resourceCleanup.removeResources(of: task, retaining: retainedTasks)
+        }
+        if !cleanupWarnings.isEmpty { libraryError = TaskDeletionError.cleanupFailed(cleanupWarnings).localizedDescription }
     }
 
     /// Persist list order separately from immutable processing results.
@@ -244,7 +254,31 @@ public final class TaskLibrary {
         refresh()
     }
 
-    public func connectSharedDocuments(_ documents: SharedTaskDocuments?) {
+    public func connectSharedDocuments(_ documents: SharedTaskDocuments?) throws {
+        if let documents {
+            let sharedNames = Set(try FileManager.default.contentsOfDirectory(at: documents.directory, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "voxline" }.map(\.lastPathComponent) + documents.pendingURLs.map(\.lastPathComponent))
+            let sharedIDs = Set(sharedNames.compactMap { UUID(uuidString: ($0 as NSString).deletingPathExtension) })
+            let localFiles = try FileManager.default.contentsOfDirectory(at: tasksDirectory, includingPropertiesForKeys: nil)
+            for url in localFiles where url.pathExtension == "voxline" {
+                let id: UUID
+                do { id = try TaskDocumentCodec.decode(Data(contentsOf: url)).id }
+                catch { continue } // Keep unreadable documents as explicit error entries in refresh.
+                guard sharedIDs.contains(id) else { continue }
+                try FileManager.default.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
+                var backup = backupsDirectory.appendingPathComponent(id.uuidString).appendingPathExtension("voxline")
+                if FileManager.default.fileExists(atPath: backup.path) {
+                    backup = backupsDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("voxline")
+                }
+                let canonical = url.resolvingSymlinksInPath().standardizedFileURL
+                let knownURLs = openTasks.values.compactMap(\.url) + recentDocumentURLs()
+                try FileManager.default.moveItem(at: url, to: backup)
+                openTasks = openTasks.filter { $0.value.url?.resolvingSymlinksInPath().standardizedFileURL != canonical }
+                for original in Set(knownURLs + [url]) where original.resolvingSymlinksInPath().standardizedFileURL == canonical {
+                    forgetRecentDocument(original)
+                }
+            }
+        }
         publicationWork?.cancel()
         publicationWork = nil
         if let previous = sharedDocuments {
@@ -256,11 +290,11 @@ public final class TaskLibrary {
     }
 
     public func refresh() {
-        errorMessage = nil
+        libraryError = nil
         do {
             orderedURLs = FileManager.default.fileExists(atPath: orderURL.path)
                 ? try JSONDecoder().decode([URL].self, from: Data(contentsOf: orderURL)) : []
-        } catch { errorMessage = String(localized: "任务顺序读取失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle) }
+        } catch { libraryError = String(localized: "任务顺序读取失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle) }
         var foundEntries: [Entry] = []
         var seenIDs = Set<UUID>()
 
@@ -290,7 +324,7 @@ public final class TaskLibrary {
                             task: previous?.task, error: error.localizedDescription))
                     }
                 }
-            } catch { errorMessage = error.localizedDescription }
+            } catch { libraryError = error.localizedDescription }
         }
 
         // 1. In-memory open tasks
@@ -321,7 +355,7 @@ public final class TaskLibrary {
                 }
             }
         } catch {
-            errorMessage = error.localizedDescription
+            libraryError = error.localizedDescription
         }
 
         // 3. System recent documents

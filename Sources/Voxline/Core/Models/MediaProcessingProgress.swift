@@ -16,7 +16,7 @@ public extension TaskMediaItem {
         case .failed: return .failed
         case .cancelled: return .cancelled
         case .interrupted(let stage):
-            return stage == .audioExtraction ? .inProgress : .completed
+            return stage == .audioExtraction ? .paused : .completed
         }
     }
 
@@ -35,7 +35,7 @@ public extension TaskMediaItem {
         case .cancelled: return .cancelled
         case .interrupted(let stage):
             if stage == .audioExtraction { return .waiting }
-            if stage == .transcription { return .inProgress }
+            if stage == .transcription { return .paused }
             return .completed
         }
     }
@@ -54,7 +54,7 @@ public extension TaskMediaItem {
         case .failed: return .failed
         case .cancelled: return .cancelled
         case .interrupted(let stage):
-            return stage == .translation ? .inProgress : .waiting
+            return stage == .translation ? .paused : .waiting
         }
     }
 }

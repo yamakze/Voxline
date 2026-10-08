@@ -145,7 +145,7 @@ public struct MediaDetailProofreadingView: View {
         )) {
             Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
-        .task(id: item.id) {
+        .task(id: MediaPlaybackController.SourceIdentity(item: item)) {
             await playbackController.loadMedia(for: item)
         }
         .onDisappear {
@@ -181,7 +181,7 @@ public struct MediaDetailProofreadingView: View {
                             isPresented: Binding(get: { retranslationCues != nil }, set: { if !$0 { retranslationCues = nil } }), titleVisibility: .visible) {
             if let selected = retranslationCues {
                 Button(String(localized: "重新翻译", bundle: appLocalizationBundle)) {
-                    do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: selected.map(\.id), replacingExistingTranslations: true) }
+                    do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: selected.map(\.id)) }
                     catch { errorMessage = error.localizedDescription }
                 }
             }
@@ -569,7 +569,7 @@ public struct MediaDetailProofreadingView: View {
                 .disabled(editingCueID != nil && !isEditing)
 
                 Button(String(localized: "重译本句", bundle: appLocalizationBundle)) {
-                    do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: [cue.id], replacingExistingTranslations: true) }
+                    do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: [cue.id]) }
                     catch { errorMessage = error.localizedDescription }
                 }
                     .buttonStyle(.plain)

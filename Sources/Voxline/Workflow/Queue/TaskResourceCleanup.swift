@@ -13,7 +13,7 @@ public struct TaskResourceCleanup: Sendable {
         transcription = caches.appendingPathComponent("Voxline/Transcription", isDirectory: true)
     }
 
-    func removeResources(of task: ProcessingTask, retaining otherTasks: [ProcessingTask]) throws {
+    func removeResources(of task: ProcessingTask, retaining otherTasks: [ProcessingTask]) -> [String] {
         let retainedIDs = Set(otherTasks.flatMap { $0.items.map(\.id) })
         let removedItems = task.items.filter { !retainedIDs.contains($0.id) }
         var failures: [String] = []
@@ -30,38 +30,7 @@ public struct TaskResourceCleanup: Sendable {
             }
         }
 
-        // Older flat evidence has no owner ID. Only an exact persisted checkpoint match establishes
-        // attribution, and another task's matching evidence protects that file. Unattributed files stay.
-        let removedEvidence = removedItems.flatMap(Self.evidence)
-        if !removedEvidence.isEmpty {
-            let retainedEvidence = otherTasks.flatMap { $0.items.flatMap(Self.evidence) }
-            do {
-                let files: [URL]
-                do { files = try FileManager.default.contentsOfDirectory(at: transcription, includingPropertiesForKeys: nil) }
-                catch let error as CocoaError where error.code == .fileReadNoSuchFile { files = [] }
-                let decoder = JSONDecoder()
-                decoder.nonConformingFloatDecodingStrategy = .convertFromString(positiveInfinity: "+Infinity", negativeInfinity: "-Infinity", nan: "NaN")
-                for file in files where file.pathExtension == "json" {
-                    do {
-                        let evidence = try decoder.decode(TranscriptionEvidence.self, from: Data(contentsOf: file))
-                        if removedEvidence.contains(evidence), !retainedEvidence.contains(evidence) {
-                            try FileManager.default.removeItem(at: file)
-                        }
-                    } catch { failures.append(String(localized: "\(file.path)：无法核对或清理旧转写证据：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)) }
-                }
-            } catch { failures.append("\(transcription.path)：\(error.localizedDescription)") }
-        }
-        guard failures.isEmpty else { throw TaskDeletionError.cleanupFailed(failures) }
-    }
-
-    private static func evidence(_ item: TaskMediaItem) -> [TranscriptionEvidence] {
-        (item.checkpoint?.chunks ?? []).compactMap { chunk in
-            switch chunk.state {
-            case .completed(let result): result.evidence
-            case .failed(_, let evidence), .cancelled(let evidence): evidence
-            default: nil
-            }
-        }
+        return failures
     }
 }
 
@@ -70,7 +39,7 @@ public enum TaskDeletionError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .cleanupFailed(let failures):
-            String(localized: "删除未完成，任务文件保留。部分缓存可能已清理，可修复后重试删除：\n", bundle: voxlineLocalizationBundle) + failures.joined(separator: "\n")
+            String(localized: "缓存清理未完成：\n", bundle: voxlineLocalizationBundle) + failures.joined(separator: "\n")
         }
     }
 }

@@ -7,49 +7,19 @@ import VoxlineMedia
 
 public struct SubtitleEmbeddingSheet: View {
     private let itemSnapshot: TaskMediaItem
-    private let task: ProcessingTask?
     @Environment(\.dismiss) private var dismiss
+    @State private var session: SubtitleEmbeddingSession
 
-    @State private var selectedKind: SRTOutputKind
-    @State private var fileName: String
     @State private var targetDirectory: URL?
     @State private var showDirectoryPicker = false
-    @State private var showOverwriteAlert = false
-    @State private var errorMessage: String?
-    @State private var exportedURL: URL?
-    @State private var isExporting = false
-    @State private var progress: Double = 0
-    @State private var exportTask: Task<Void, Never>?
 
     public init(item: TaskMediaItem, task: ProcessingTask? = nil) {
         self.itemSnapshot = item
-        self.task = task
-        let defaultKind: SRTOutputKind = item.cues.allSatisfy(\.hasTranslation) ? .bilingual : .source
-        _selectedKind = State(initialValue: defaultKind)
-        let base = ((item.media?.fileName ?? item.title) as NSString).deletingPathExtension
-        _fileName = State(initialValue: "\(base).embedded.mp4")
-    }
-
-    private var missingTranslationCount: Int {
-        itemSnapshot.cues.filter { !$0.hasTranslation }.count
-    }
-
-    private var selectedLanguageTag: String {
-        switch selectedKind {
-        case .source:
-            if let code = task?.parameters.transcription.languageCode, !code.isEmpty {
-                return code
-            }
-            return "und"
-        case .translation, .bilingual:
-            if let target = task?.parameters.translation?.targetLanguage, !target.isEmpty {
-                return target
-            }
-            return "und"
-        }
+        _session = State(initialValue: SubtitleEmbeddingSession(item: item, task: task))
     }
 
     public var body: some View {
+        @Bindable var session = session
         VStack(spacing: 20) {
             HStack {
                 Text(String(localized: "内封软字幕视频", bundle: appLocalizationBundle)).font(.headline)
@@ -57,20 +27,20 @@ public struct SubtitleEmbeddingSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 16) {
-                Picker(String(localized: "字幕类型", bundle: appLocalizationBundle), selection: $selectedKind) {
+                Picker(String(localized: "字幕类型", bundle: appLocalizationBundle), selection: $session.selectedKind) {
                     Text(String(localized: "原文", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
                     Text(String(localized: "译文", bundle: appLocalizationBundle)).tag(SRTOutputKind.translation)
                     Text(String(localized: "双语", bundle: appLocalizationBundle)).tag(SRTOutputKind.bilingual)
                 }
                 .pickerStyle(.segmented)
-                .disabled(isExporting)
-                .onChange(of: selectedKind) { _, _ in
-                    exportedURL = nil
-                    errorMessage = nil
+                .disabled(session.isExporting)
+                .onChange(of: session.selectedKind) { _, _ in
+                    session.exportedURL = nil
+                    session.errorMessage = nil
                 }
 
-                if selectedKind != .source && missingTranslationCount > 0 {
-                    Label(String(localized: "有 \(missingTranslationCount) 条字幕缺少有效译文。请完成翻译或校对后导出，或选择原文。", bundle: appLocalizationBundle), systemImage: "exclamationmark.triangle")
+                if session.selectedKind != .source && session.missingTranslationCount > 0 {
+                    Label(String(localized: "有 \(session.missingTranslationCount) 条字幕缺少有效译文。请完成翻译或校对后导出，或选择原文。", bundle: appLocalizationBundle), systemImage: "exclamationmark.triangle")
                         .font(.callout)
                         .foregroundStyle(.orange)
                 }
@@ -79,12 +49,12 @@ public struct SubtitleEmbeddingSheet: View {
                     Text(String(localized: "输出文件名", bundle: appLocalizationBundle))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField(String(localized: "输出文件名", bundle: appLocalizationBundle), text: $fileName)
+                    TextField(String(localized: "输出文件名", bundle: appLocalizationBundle), text: $session.fileName)
                         .textFieldStyle(.roundedBorder)
-                        .disabled(isExporting)
-                        .onChange(of: fileName) { _, _ in
-                            exportedURL = nil
-                            errorMessage = nil
+                        .disabled(session.isExporting)
+                        .onChange(of: session.fileName) { _, _ in
+                            session.exportedURL = nil
+                            session.errorMessage = nil
                         }
                 }
 
@@ -95,7 +65,7 @@ public struct SubtitleEmbeddingSheet: View {
                         .truncationMode(.middle)
                     Spacer()
                     Button(String(localized: "选择目录…", bundle: appLocalizationBundle)) { showDirectoryPicker = true }
-                        .disabled(isExporting)
+                        .disabled(session.isExporting)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -106,30 +76,30 @@ public struct SubtitleEmbeddingSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-                if isExporting {
+                if session.isExporting {
                     VStack(alignment: .leading, spacing: 6) {
-                        ProgressView(value: progress)
+                        ProgressView(value: session.progress)
                         HStack {
-                            Text(String(localized: "正在封装软字幕 \(Int(progress * 100))%…", bundle: appLocalizationBundle))
+                            Text(String(localized: "正在封装软字幕 \(Int(session.progress * 100))%…", bundle: appLocalizationBundle))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
                             Button(String(localized: "取消", bundle: appLocalizationBundle)) {
-                                exportTask?.cancel()
+                                session.cancel()
                             }
                             .controlSize(.small)
                         }
                     }
                 }
 
-                if let errorMessage {
+                if let errorMessage = session.errorMessage {
                     Text(errorMessage)
                         .font(.callout)
                         .foregroundStyle(.red)
                         .textSelection(.enabled)
                 }
 
-                if let exportedURL {
+                if let exportedURL = session.exportedURL {
                     HStack {
                         Label(String(localized: "已导出：\(exportedURL.lastPathComponent)", bundle: appLocalizationBundle), systemImage: "checkmark.circle.fill")
                             .font(.callout)
@@ -152,79 +122,42 @@ public struct SubtitleEmbeddingSheet: View {
                 Spacer()
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                    .disabled(isExporting)
+                    .disabled(session.isExporting)
                 Button(String(localized: "导出软字幕", bundle: appLocalizationBundle)) {
                     startExport(allowOverwrite: false)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
-                .disabled(targetDirectory == nil || isExporting || itemSnapshot.cues.isEmpty || (selectedKind != .source && missingTranslationCount > 0))
+                .disabled(targetDirectory == nil || session.isExporting || itemSnapshot.cues.isEmpty || (session.selectedKind != .source && session.missingTranslationCount > 0))
             }
         }
         .padding(24)
         .frame(width: 540)
         .onDisappear {
-            exportTask?.cancel()
+            session.cancel()
         }
         .fileImporter(isPresented: $showDirectoryPicker, allowedContentTypes: [.folder]) { result in
             do {
                 targetDirectory = try result.get()
-                errorMessage = nil
-                exportedURL = nil
+                session.errorMessage = nil
+                session.exportedURL = nil
             } catch {
-                errorMessage = error.localizedDescription
+                session.errorMessage = error.localizedDescription
             }
         }
-        .alert(String(localized: "输出文件已存在", bundle: appLocalizationBundle), isPresented: $showOverwriteAlert) {
+        .alert(String(localized: "输出文件已存在", bundle: appLocalizationBundle), isPresented: $session.requiresOverwriteConfirmation) {
             Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
             Button(String(localized: "覆盖并导出", bundle: appLocalizationBundle), role: .destructive) {
                 startExport(allowOverwrite: true)
             }
         } message: {
-            Text(String(localized: "目录中已存在名为“\(fileName)”的文件。是否确认覆盖？原视频始终保留。", bundle: appLocalizationBundle))
+            Text(String(localized: "目录中已存在名为“\(session.fileName)”的文件。是否确认覆盖？原视频始终保留。", bundle: appLocalizationBundle))
         }
     }
 
     private func startExport(allowOverwrite: Bool) {
         guard let directory = targetDirectory else { return }
-        errorMessage = nil
-        exportedURL = nil
-        isExporting = true
-        progress = 0
-
-        let destination = directory.appendingPathComponent(fileName)
-        let kind = selectedKind
-        let tag = selectedLanguageTag
-        let snapshot = itemSnapshot
-
-        let accessing = directory.startAccessingSecurityScopedResource()
-
-        exportTask = Task { @MainActor in
-            defer {
-                if accessing { directory.stopAccessingSecurityScopedResource() }
-                isExporting = false
-                exportTask = nil
-            }
-            do {
-                try await SubtitleEmbeddingExporter.export(
-                    item: snapshot,
-                    kind: kind,
-                    to: destination,
-                    languageTag: tag,
-                    allowOverwrite: allowOverwrite,
-                    progress: { p in
-                        progress = p
-                    }
-                )
-                exportedURL = destination
-            } catch is CancellationError {
-                errorMessage = String(localized: "导出已取消。", bundle: appLocalizationBundle)
-            } catch BurnInError.fileAlreadyExists {
-                showOverwriteAlert = true
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
+        session.startExport(to: directory.appendingPathComponent(session.fileName), accessDirectory: directory, allowOverwrite: allowOverwrite)
     }
 }
 #endif
