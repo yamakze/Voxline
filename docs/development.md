@@ -59,7 +59,7 @@ xcodebuild -project Voxline.xcodeproj -scheme VoxlineIOS \
 
 ## 软件包验证
 
-测试与能力模块归属一致：Core 的格式、字幕与 SRT，Media 的访问、提取、播放与烧录，Translation 的协议与凭据，WhisperKit 的模型与 Provider，Workflow 的持久化与队列。VoxlineAppTests 检查 Apple 语言标识匹配与响应 ID 映射；iOS 原生集成测试检查资源、Keychain、设备副本和错误边界。平台 source guard 的检查通过实际 Mac 与 iPhoneOS／模拟器构建完成；SwiftUI 页面、文件选择器和系统翻译会话仍须目标平台运行验收。
+测试与能力模块归属一致：Core 的格式、字幕与 SRT，Media 的访问、提取、播放与烧录，Translation 的协议与凭据，WhisperKit 的模型与 Provider，Workflow 的持久化与队列。VoxlineAppTests 检查 Apple 语言标识匹配、响应 ID 映射，以及共享校对会话通过真实 TaskLibrary 保存、失败重试、撤销和编辑保护；iOS 原生集成测试检查资源、Keychain、设备副本和错误边界。平台 source guard 的检查通过实际 Mac 与 iPhoneOS／模拟器构建完成；SwiftUI 页面、文件选择器和系统翻译会话仍须目标平台运行验收。
 
 ## 缩短反馈时间
 

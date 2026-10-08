@@ -23,6 +23,10 @@ public struct MediaDetailProofreadingView: View {
     @State private var showEmbeddingSheet = false
     @State private var showBurnInSheet = false
     @State private var showRelinkSheet = false
+    @State private var insertingSubtitle = false
+    @State private var timingCue: SubtitleCue?
+    @State private var splittingCue: SubtitleCue?
+    @State private var mergingCues: [SubtitleCue]?
 
     public var onBack: (() -> Void)?
 
@@ -87,6 +91,23 @@ public struct MediaDetailProofreadingView: View {
                     showTimeOffsetSheet = true
                 }
                 .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil)
+
+                Button(String(localized: "添加字幕…", bundle: appLocalizationBundle), systemImage: "plus") {
+                    insertingSubtitle = true
+                }
+                .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
+                .help(String(localized: "添加单句字幕", bundle: appLocalizationBundle))
+
+                Button(String(localized: "撤销", bundle: appLocalizationBundle), systemImage: "arrow.uturn.backward") {
+                    do {
+                        try session.undo(in: item, onCommit: onCommit)
+                    } catch {
+                        session.errorMessage = error.localizedDescription
+                    }
+                }
+                .disabled(!session.canUndo(in: item) || queue.taskID != nil)
+                .keyboardShortcut("z", modifiers: [.command])
+                .help(String(localized: "撤销最近一次字幕编辑 (⌘Z)", bundle: appLocalizationBundle))
 
                 Menu {
                     Section(String(localized: "外挂字幕", bundle: appLocalizationBundle)) {
@@ -155,6 +176,50 @@ public struct MediaDetailProofreadingView: View {
             Task { await playbackController.loadMedia(for: item) }
         }) {
             MediaRelinkSheet(item: item, onCommit: onCommit)
+        }
+        .sheet(isPresented: $insertingSubtitle) {
+            InsertSubtitleSheet(
+                initialStartSeconds: playbackController.currentTimeSeconds
+            ) { newCue in
+                var updated = item
+                try updated.insertSubtitle(newCue)
+                try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
+            }
+        }
+        .sheet(item: $timingCue) { cue in
+            AdjustTimingSheet(cue: cue) { startMs, endMs in
+                var updated = item
+                try updated.setSubtitleTiming(comparedTo: cue, startMilliseconds: startMs, endMilliseconds: endMs)
+                try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
+            }
+        }
+        .sheet(item: $splittingCue) { cue in
+            SplitSubtitleSheet(cue: cue) { atMs, s1, s2, t1, t2 in
+                var updated = item
+                try updated.splitSubtitle(
+                    comparedTo: cue,
+                    atMilliseconds: atMs,
+                    firstSourceText: s1,
+                    secondSourceText: s2,
+                    firstTranslationText: t1,
+                    secondTranslationText: t2
+                )
+                try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
+            }
+        }
+        .sheet(item: Binding(
+            get: { mergingCues.map { IdentifiableCueList(cues: $0) } },
+            set: { mergingCues = $0?.cues }
+        )) { payload in
+            MergeSubtitlesSheet(cues: payload.cues) { mergedSource, mergedTrans in
+                var updated = item
+                try updated.mergeSubtitles(
+                    comparedTo: payload.cues,
+                    sourceText: mergedSource,
+                    translationText: mergedTrans
+                )
+                try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
+            }
         }
         .confirmationDialog(String(localized: "重新翻译全部字幕？", bundle: appLocalizationBundle),
                             isPresented: Binding(get: { session.retranslatingCues != nil }, set: { if !$0 { session.retranslatingCues = nil } }), titleVisibility: .visible) {
@@ -546,6 +611,35 @@ public struct MediaDetailProofreadingView: View {
                     .font(.caption)
                     .disabled(session.editingSnapshot?.id != nil || queue.taskID != nil)
 
+                Menu {
+                    subtitleEditingActions(cue)
+
+                    Divider()
+
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(cue.sourceText, forType: .string)
+                    } label: {
+                        Label(String(localized: "复制原文", bundle: appLocalizationBundle), systemImage: "doc.on.doc")
+                    }
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        deleteCue(cue)
+                    } label: {
+                        Label(String(localized: "删除字幕", bundle: appLocalizationBundle), systemImage: "trash")
+                    }
+                    .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.caption)
+                }
+                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(String(localized: "更多操作", bundle: appLocalizationBundle))
+
                 if isHovered {
                     Button {
                         NSPasteboard.general.clearContents()
@@ -618,7 +712,80 @@ public struct MediaDetailProofreadingView: View {
         // Hierarchy Opacity fading: Active line = 1.0, Hovered = 0.95, Future = 0.68, Past = 0.38
         .opacity(isActive ? 1.0 : (isHovered ? 0.95 : (isPast ? 0.40 : 0.70)))
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isActive)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovered)
+        .contextMenu {
+            subtitleEditingActions(cue)
+
+            Divider()
+
+            Button {
+                do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: [cue.id]) }
+                catch { session.errorMessage = error.localizedDescription }
+            } label: {
+                Label(String(localized: "重译本句", bundle: appLocalizationBundle), systemImage: "character.bubble")
+            }
+            .disabled(session.editingSnapshot?.id != nil || queue.taskID != nil)
+
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(cue.sourceText, forType: .string)
+            } label: {
+                Label(String(localized: "复制原文", bundle: appLocalizationBundle), systemImage: "doc.on.doc")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                deleteCue(cue)
+            } label: {
+                Label(String(localized: "删除字幕", bundle: appLocalizationBundle), systemImage: "trash")
+            }
+            .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
+        }
+    }
+
+    @ViewBuilder
+    private func subtitleEditingActions(_ cue: SubtitleCue) -> some View {
+        Button {
+            session.beginEditing(cue)
+        } label: {
+            Label(String(localized: "编辑文字", bundle: appLocalizationBundle), systemImage: "pencil")
+        }
+        .disabled(session.editingSnapshot?.id != nil)
+
+        Button {
+            timingCue = cue
+        } label: {
+            Label(String(localized: "调整时间…", bundle: appLocalizationBundle), systemImage: "timer")
+        }
+        .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
+
+        Button {
+            splittingCue = cue
+        } label: {
+            Label(String(localized: "拆分字幕…", bundle: appLocalizationBundle), systemImage: "scissors")
+        }
+        .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
+
+        if let currentIndex = item.cues.firstIndex(where: { $0.id == cue.id }),
+           currentIndex + 1 < item.cues.count {
+            let nextCue = item.cues[currentIndex + 1]
+            Button {
+                mergingCues = [cue, nextCue]
+            } label: {
+                Label(String(localized: "与下一句合并…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge")
+            }
+            .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
+        }
+    }
+
+    private func deleteCue(_ cue: SubtitleCue) {
+        do {
+            var updated = item
+            try updated.deleteSubtitles(comparedTo: [cue])
+            try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
+        } catch {
+            session.errorMessage = error.localizedDescription
+        }
     }
 
 }

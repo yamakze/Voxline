@@ -76,4 +76,28 @@ struct ProofreadingSessionTests {
         #expect(TaskLibrary(tasksDirectory: root).task(for: task.id)?.items[0] == newer)
         #expect(!session.canUndo(in: newer))
     }
+
+    @Test func deletingTheLastSubtitleCanBeSavedAndUndone() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        var cue = try SubtitleCue(id: UUID(), startMilliseconds: 0, endMilliseconds: 1000, sourceText: "Manual source")
+        cue.translation = .succeeded(text: "人工译文", sourceRevision: cue.sourceRevision)
+        let original = TaskMediaItem(title: "Media", kind: .audio, source: .unassociated, cues: [cue])
+        let task = ProcessingTask(title: "Last subtitle", items: [original])
+        let library = TaskLibrary(tasksDirectory: root)
+        try library.save(task)
+        let session = ProofreadingSession(item: original)
+        var deleted = original
+        try deleted.deleteSubtitles(comparedTo: [cue])
+        try session.saveChanges(deleted, comparedTo: original) { edited, before in
+            try library.updateItem(edited, taskID: task.id, comparedTo: before)
+        }
+        #expect(TaskLibrary(tasksDirectory: root).task(for: task.id)?.items.first?.cues.isEmpty == true)
+        #expect(session.canUndo(in: deleted))
+        try session.undo(in: deleted) { edited, before in
+            try library.updateItem(edited, taskID: task.id, comparedTo: before)
+        }
+        #expect(TaskLibrary(tasksDirectory: root).task(for: task.id)?.items.first == original)
+    }
+
 }
