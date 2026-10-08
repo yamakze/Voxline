@@ -215,7 +215,7 @@ public struct TaskConfigurationView: View {
             }
             Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
         } message: {
-            Text(String(localized: "现有译文将清除，原文、时间、转写成果和待校对标记保持。保存后可继续翻译。", bundle: appLocalizationBundle))
+            Text(String(localized: "现有译文将清除。", bundle: appLocalizationBundle))
         }
         .onDisappear {
             importTask?.cancel()
@@ -949,10 +949,8 @@ public struct TaskConfigurationView: View {
             }
 
             updated.items = newItems
-            let effectiveOutputs: [SRTOutputKind] = translation == nil ? [.source] : [.bilingual, .source, .translation]
             try updated.updateParameters(TaskParameters(
-                transcription: transcription, translation: translation,
-                srtOutputs: effectiveOutputs
+                transcription: transcription, translation: translation
             ), discardingTranslations: discardingTranslations)
             try updated.validate()
 

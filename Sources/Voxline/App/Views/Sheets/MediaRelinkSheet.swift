@@ -145,11 +145,6 @@ public struct MediaRelinkSheet: View {
             defer { isCommitting = false }
             do {
                 let candidate = try await inspector.confirm(inspection, audioTrackID: trackID)
-                if let existing = original.media {
-                    guard existing.matchesContent(of: candidate) else {
-                        throw ProjectValidationError.differentMedia
-                    }
-                }
 
                 var updated = original
                 try updated.associateMedia(candidate)

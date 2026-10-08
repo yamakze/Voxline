@@ -276,7 +276,7 @@ public struct ModelManagementView: View {
             switch status {
             case .ready, .downloaded:
                 Circle().fill(modelManager.isOperating ? Color.orange : Color.green).frame(width: 7, height: 7)
-                Text(modelManager.isOperating ? String(localized: "使用中", bundle: appLocalizationBundle) : String(localized: "已就绪", bundle: appLocalizationBundle))
+                Text(String(localized: "已就绪", bundle: appLocalizationBundle))
                     .foregroundStyle(modelManager.isOperating ? .orange : .green)
             case .downloading, .checking:
                 ProgressView().controlSize(.mini)

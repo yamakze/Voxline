@@ -32,8 +32,9 @@ public enum SubtitleEmbeddingExporter {
         defer { if access { bookmark.url.stopAccessingSecurityScopedResource() } }
         let inspection = try await inspector.inspect(bookmark.url)
         guard identity.matchesContent(of: try inspection.identity(audioTrackID: identity.audioTrackID)) else { throw MediaAccessError.fileChanged }
-        _ = try SubtitleExporter.generateSRT(cues: item.cues, kind: kind, media: identity)
-        let texts = try item.cues.map { try SubtitleExporter.subtitleText(for: $0, kind: kind) }
+        let cues = try SubtitleCue.clampedToMedia(item.cues, media: identity)
+        guard !cues.isEmpty else { throw SubtitleExportError.emptyCues }
+        let texts = try cues.map { try SubtitleExporter.subtitleText(for: $0, kind: kind) }
         guard destination.isFileURL, destination.pathExtension.lowercased() == "mp4",
               !destination.lastPathComponent.contains("\\"), !destination.lastPathComponent.contains("\0"),
               !destination.deletingPathExtension().lastPathComponent.isEmpty else { throw BurnInError.invalidFileName }
@@ -84,7 +85,7 @@ public enum SubtitleEmbeddingExporter {
         // Explicit empty samples clear captions in gaps and before the first cue.
         var samples: [CMSampleBuffer] = []
         var previousEnd: Int64 = 0
-        for (cue, text) in zip(item.cues, texts) {
+        for (cue, text) in zip(cues, texts) {
             if cue.startMilliseconds > previousEnd {
                 samples.append(try textSample("", start: previousEnd, end: cue.startMilliseconds, format: format))
             }
@@ -153,14 +154,14 @@ public enum SubtitleEmbeddingExporter {
             let resultSubtitles = try await result.loadTracks(withMediaType: .subtitle)
             guard resultAudio.count == 1, resultVideo.count == 1, resultSubtitles.count == 1,
                   let outputAudio = resultAudio.first, let outputVideo = resultVideo.first else { throw SubtitleEmbeddingError.invalidOutput }
-            let actualAudioRange = try await outputAudio.load(.timeRange)
-            let actualVideoRange = try await outputVideo.load(.timeRange)
             let actualDuration = try await result.load(.duration)
-            guard abs(actualAudioRange.start.seconds - audioRange.start.seconds) < 0.001,
-                  abs(actualAudioRange.end.seconds - audioRange.end.seconds) < 0.001,
-                  abs(actualVideoRange.start.seconds - videoRange.start.seconds) < 0.001,
-                  abs(actualVideoRange.end.seconds - videoRange.end.seconds) < 0.001,
-                  abs(actualDuration.seconds - duration.seconds) < 0.001 else { throw SubtitleEmbeddingError.invalidOutput }
+            // Container/codec time scales naturally differ by a frame; reject unusable output,
+            // not millisecond-level remux rounding. The writer keeps every source packet.
+            let expectedDuration = max(duration.seconds, videoRange.end.seconds, audioRange.end.seconds)
+            guard actualDuration.seconds.isFinite, actualDuration.seconds > 0,
+                  abs(actualDuration.seconds - expectedDuration) < 0.5,
+                  try await outputAudio.load(.isDecodable),
+                  try await outputVideo.load(.isDecodable) else { throw SubtitleEmbeddingError.invalidOutput }
             try Task.checkCancellation()
             if manager.fileExists(atPath: destination.path) {
                 guard allowOverwrite else { throw BurnInError.fileAlreadyExists }

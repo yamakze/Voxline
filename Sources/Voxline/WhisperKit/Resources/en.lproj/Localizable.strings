@@ -16,6 +16,7 @@
 "已安装 %.1f MB" = "Installed %.1f MB";
 "应用缺少模型版本清单，请重新构建应用。" = "The application lacks a list of model versions. Please rebuild the application.";
 "当前只支持已验证的 S001 基准型号。" = "At present, only verified S001 benchmark models are supported.";
+"当前处理尚未结束。" = "Processing is still in progress.";
 "推理完成，但原始证据无法保存。" = "Inference completed, but the original evidence could not be saved.";
 "推理未覆盖完整输入音频。" = "Inference did not cover the full audio input.";
 "推理窗口回退、缺失或越过音频范围。" = "An inference window moved backward, is missing, or extends beyond the audio.";

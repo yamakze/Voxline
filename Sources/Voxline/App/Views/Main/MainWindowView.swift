@@ -164,7 +164,7 @@ public struct MainWindowView: View {
                let mediaIndex = task.items.firstIndex(where: { $0.id == mediaID }) {
                 MediaDetailProofreadingView(
                     taskID: task.id,
-                    initialOutputKind: task.parameters.srtOutputs[0],
+                    initialOutputKind: !task.items[mediaIndex].cues.isEmpty && task.items[mediaIndex].cues.allSatisfy(\.hasTranslation) ? .bilingual : .source,
                     item: task.items[mediaIndex],
                     onCommit: { updated, original in
                         try library.updateItem(updated, taskID: task.id, comparedTo: original)

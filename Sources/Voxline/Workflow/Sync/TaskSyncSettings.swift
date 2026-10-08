@@ -69,7 +69,7 @@ public final class TaskSyncSettings {
         for entry in library.entries {
             guard let task = entry.task, entry.error == nil else { throw SharedDocumentError.downloadRequired }
             for item in task.items {
-                if let identity = item.media { media[identity.sha256 + "." + (identity.fileName as NSString).pathExtension.lowercased()] = identity.byteCount }
+                if let identity = item.media { media[identity.fingerprint + "." + (identity.fileName as NSString).pathExtension.lowercased()] = identity.byteCount }
             }
         }
         return .init(taskCount: library.entries.count, mediaCount: media.count, mediaBytes: media.values.reduce(0, +))
@@ -364,7 +364,7 @@ public final class TaskSyncSettings {
     }
 
     private func originalURL(_ identity: MediaIdentity, folder: URL) -> URL {
-        folder.appendingPathComponent("Media", isDirectory: true).appendingPathComponent(identity.sha256)
+        folder.appendingPathComponent("Media", isDirectory: true).appendingPathComponent(identity.fingerprint)
             .appendingPathExtension((identity.fileName as NSString).pathExtension.lowercased())
     }
 

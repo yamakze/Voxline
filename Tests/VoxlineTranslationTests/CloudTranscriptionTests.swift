@@ -142,7 +142,6 @@ struct CloudTranscriptionTests {
         let evidence = try await provider.transcribeEvidence(audio: audio)
         #expect(evidence.segments.first?.timingSource == .modelGenerated)
         let cues = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: 7000).cues
-        #expect(cues.first?.requiresTimingReview == true)
         #expect(cues.first?.startMilliseconds == 5200)
         #expect(ASRStubProtocol.lastRequest.withLock { $0?.url?.path } == "/openai/chat/completions")
         ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello.","segments":[{"start":1.8,"end":9.5,"text":"Hello."}]}"#)) }
@@ -184,7 +183,6 @@ struct CloudTranscriptionTests {
         #expect(evidence.segments.first?.startSeconds == 3)
         #expect(evidence.segments.first?.endSeconds == 5)
         #expect(evidence.segments.first?.timingSource == .audioRange)
-        #expect(try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: 5000).cues.first?.requiresTimingReview == true)
         ASRStubProtocol.response.withLock { $0.0 = 503 }
         ASRStubProtocol.count.withLock { $0 = 0 }
         do { _ = try await provider.transcribeEvidence(audio: audio); Issue.record("Retry limit missing") }
@@ -301,15 +299,9 @@ struct CloudTranscriptionTests {
         #expect(throws: (any Error).self) { try JSONDecoder().decode(TranscriptionSettings.self, from: invalidBytes) }
         let historical = try JSONEncoder().encode(TranscriptionSettings.whisperKitBaseline)
         #expect(try JSONDecoder().decode(TranscriptionSettings.self, from: historical).cloud == nil)
-        let task = ProcessingTask(parameters: .init(transcription: frozen, translation: nil, srtOutputs: [.source]))
+        let task = ProcessingTask(parameters: .init(transcription: frozen, translation: nil))
         #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)).parameters.transcription == frozen)
-        var oldTask = try #require(JSONSerialization.jsonObject(with: TaskDocumentCodec.encode(task)) as? [String: Any])
-        oldTask["formatVersion"] = 5
-        var oldParameters = try #require(oldTask["parameters"] as? [String: Any])
-        oldParameters["transcription"] = try JSONSerialization.jsonObject(with: oldBytes)
-        oldTask["parameters"] = oldParameters
-        let migrated = try TaskDocumentCodec.decode(JSONSerialization.data(withJSONObject: oldTask))
-        #expect(migrated == task && migrated.formatVersion == 6)
+
     }
 }
 

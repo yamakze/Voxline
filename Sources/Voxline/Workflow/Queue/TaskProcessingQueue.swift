@@ -198,6 +198,14 @@ public final class TaskProcessingQueue {
     private func transcribeMedia(taskID: UUID, mediaID: UUID, parameters: TaskParameters) async throws {
         guard let item = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }),
               let media = item.media else { throw CheckpointError.taskUnavailable }
+        if item.hasCompletedTranscription {
+            if let translation = parameters.translation {
+                try await translateMedia(taskID: taskID, mediaID: mediaID, settings: translation)
+            } else {
+                try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .completed }
+            }
+            return
+        }
         try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .running(stage: .audioExtraction) }
         let extractionID = UUID()
         progressID = extractionID
@@ -212,7 +220,7 @@ public final class TaskProcessingQueue {
                     case .extracting(let fraction):
                         self.extractionFraction = fraction
                         self.progressText = String(localized: "正在提取音频", bundle: voxlineLocalizationBundle)
-                    case .cacheInvalidated(let reason): self.progressText = String(localized: "音频缓存失效，重新提取：\(reason)", bundle: voxlineLocalizationBundle)
+                    case .cacheInvalidated: self.progressText = String(localized: "正在提取音频", bundle: voxlineLocalizationBundle)
                     }
                 }
             }
@@ -256,7 +264,7 @@ public final class TaskProcessingQueue {
             let sourceID = try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.beginTranscriptionChunk(chunkID) }
             let decodingID = UUID()
             progressID = decodingID
-            progressText = String(localized: "转写块 \(index + 1)／\(chunks.count)", bundle: voxlineLocalizationBundle)
+            progressText = String(localized: "正在转写 \(Int(Double(index) / Double(chunks.count) * 100))%", bundle: voxlineLocalizationBundle)
             let evidence: TranscriptionEvidence
             do {
                 if let savedRecognition {
@@ -269,16 +277,16 @@ public final class TaskProcessingQueue {
                             guard self.progressID == decodingID else { return }
                             let detail: String
                             switch progress {
-                            case .uploadingAudio(let sent, let total): detail = String(localized: "上传音频 \(sent)／\(total) 字节", bundle: voxlineLocalizationBundle)
+                            case .uploadingAudio: detail = String(localized: "正在上传音频", bundle: voxlineLocalizationBundle)
                             case .awaitingTranscription: detail = String(localized: "等待转写服务", bundle: voxlineLocalizationBundle)
                             case .retryingAudio(let attempt, let delay): detail = String(localized: "转写重试 \(attempt)／3，等待 \(Int(delay.rounded(.up))) 秒", bundle: voxlineLocalizationBundle)
                             case .readingAudio: detail = String(localized: "读取音频", bundle: voxlineLocalizationBundle)
-                            case .loadingModel: detail = String(localized: "加载模型", bundle: voxlineLocalizationBundle)
+                            case .loadingModel: detail = String(localized: "正在准备转写", bundle: voxlineLocalizationBundle)
                             case .detectingLanguage: detail = String(localized: "识别语言", bundle: voxlineLocalizationBundle)
-                            case .decoding(let count): detail = String(localized: "已解码 \(count) 个词元", bundle: voxlineLocalizationBundle)
-                            case .completed(let count): detail = String(localized: "已转写 \(count) 段，等待保存", bundle: voxlineLocalizationBundle)
+                            case .decoding: detail = String(localized: "正在转写", bundle: voxlineLocalizationBundle)
+                            case .completed: detail = String(localized: "正在保存字幕", bundle: voxlineLocalizationBundle)
                             }
-                            self.progressText = String(localized: "块 \(index + 1)／\(chunks.count)：\(detail)", bundle: voxlineLocalizationBundle)
+                            self.progressText = String(localized: "\(detail) · \(Int(Double(index) / Double(chunks.count) * 100))%", bundle: voxlineLocalizationBundle)
                         }
                     }
                 }
@@ -331,7 +339,7 @@ public final class TaskProcessingQueue {
             }
         }
         if parameters.translation == nil, chunkIDs.isEmpty {
-            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = $0.completedProcessingStatus }
+            try updateMedia(taskID: taskID, mediaID: mediaID) { $0.status = .completed }
         }
         if let translation = parameters.translation {
             try await translateMedia(taskID: taskID, mediaID: mediaID, settings: translation)
@@ -365,7 +373,7 @@ public final class TaskProcessingQueue {
         }
         if batchIDs.isEmpty {
             try updateMedia(taskID: taskID, mediaID: mediaID) {
-                $0.status = $0.cues.allSatisfy(\.hasCurrentTranslation) ? $0.completedProcessingStatus : .needsReview
+                $0.status = $0.cues.allSatisfy(\.hasTranslation) ? .completed : .needsTranslation
             }
             return
         }
@@ -392,10 +400,8 @@ public final class TaskProcessingQueue {
                 try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .failed(reason: error.localizedDescription) }
                 return
             }
-            guard let current = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }),
-                  let batches = current.checkpoint?.translationBatches,
-                  let batchIndex = batches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
-            progressText = String(localized: "已译 \(current.cues.filter(\.hasCurrentTranslation).count)／\(current.cues.count) 句，翻译批次 \(batchIndex + 1)／\(batches.count)", bundle: voxlineLocalizationBundle)
+            guard let current = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }) else { throw CheckpointError.taskUnavailable }
+            progressText = String(localized: "正在翻译 \(current.cues.isEmpty ? 100 : current.cues.filter(\.hasTranslation).count * 100 / current.cues.count)%", bundle: voxlineLocalizationBundle)
             var outputs: [TranslationBatchOutput]?
             var retries = 0
             while outputs == nil {

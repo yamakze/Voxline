@@ -99,7 +99,7 @@ struct TaskTranslationParametersView: View {
             .confirmationDialog(String(localized: "更换目标语言？", bundle: appLocalizationBundle), isPresented: $replacement, titleVisibility: .visible) {
                 Button(String(localized: "清除现有译文并保存", bundle: appLocalizationBundle), role: .destructive) { save(discardingTranslations: true) }
                 Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
-            } message: { Text(String(localized: "现有译文将清除，原文、时间、转写成果与待校对标记保持。", bundle: appLocalizationBundle)) }
+            } message: { Text(String(localized: "现有译文将清除。", bundle: appLocalizationBundle)) }
         }
         .interactiveDismissDisabled(isSaving)
     }
@@ -119,7 +119,6 @@ struct TaskTranslationParametersView: View {
                 parameters.translation = try TranslationSettings(baseURL: service.baseURL, modelID: model,
                     targetLanguage: target, serviceID: service.id, batchSize: batchSize, systemPrompt: prompt)
             }
-            parameters.srtOutputs = enabled ? [.bilingual, .source, .translation] : [.source]
             var updated = original
             try updated.updateParameters(parameters, discardingTranslations: discardingTranslations)
             try onCommit(updated, original)

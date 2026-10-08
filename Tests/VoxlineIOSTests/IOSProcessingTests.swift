@@ -14,7 +14,7 @@ struct IOSProcessingTests {
     @Test func backgroundClaimsEndWithQueueAndOldExpirationCannotCancelNewClaim() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let media = try MediaIdentity(fileName: "missing.wav", byteCount: 42, sha256: String(repeating: "a", count: 64),
+        let media = try MediaIdentity(fileName: "missing.wav", byteCount: 42, fingerprint: String(repeating: "a", count: 64),
             durationMilliseconds: 1000, audioTrackID: 1)
         let library = IOSTaskLibrary(directory: root.appendingPathComponent("tasks"),
             pipeline: ConfiguredMediaTranscriptionPipeline(mediaStore: LocalMediaStore(directory: root.appendingPathComponent("bookmarks"))))

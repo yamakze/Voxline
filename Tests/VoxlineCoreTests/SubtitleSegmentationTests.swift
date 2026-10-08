@@ -4,6 +4,21 @@ import Testing
 
 @Suite("Readable subtitle segmentation")
 struct SubtitleSegmentationTests {
+    @Test func codecFrameEdgeErrorsClampWithoutChangingEvidenceOrDroppingDialogue() throws {
+        let input = try evidence([
+            .init(startSeconds: -0.005, endSeconds: 0.6, text: "First", words: nil),
+            .init(startSeconds: 0.595, endSeconds: 1.005, text: "Last", words: nil)
+        ], duration: 1000)
+        let result = try SubtitleSegmenter.segment(input, sourceID: sourceID, mediaDurationMilliseconds: 1000)
+        #expect(result.cues.map(\.sourceText) == ["First", "Last"])
+        #expect(result.cues.map(\.startMilliseconds) == [0, 600])
+        #expect(result.cues.map(\.endMilliseconds) == [600, 1000])
+        #expect(result.evidence == input)
+        let largeError = try evidence([.init(startSeconds: 0, endSeconds: 1.2, text: "Last", words: nil)], duration: 1000)
+        #expect(throws: SubtitleSegmentationError.invalidSegment(0)) {
+            try SubtitleSegmenter.segment(largeError, sourceID: sourceID, mediaDurationMilliseconds: 1000)
+        }
+    }
     private let sourceID = UUID(uuidString: "E53D56C0-E3B1-46C0-A953-734DFDA90F45")!
 
     private func evidence(_ segments: [RawTranscriptionSegment], start: Int64 = 0, duration: Int64 = 20_000) throws -> TranscriptionEvidence {

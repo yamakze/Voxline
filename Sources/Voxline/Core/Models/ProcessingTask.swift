@@ -1,7 +1,7 @@
 import Foundation
 
 public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
-    public static let currentFormatVersion = 6
+    public static let currentFormatVersion = 7
     public let formatVersion: Int
     public let id: UUID
     public var title: String
@@ -32,7 +32,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .formatVersion)
-        guard version == 2 || version == 3 || version == 4 || version == 5 || version == Self.currentFormatVersion else {
+        guard version == Self.currentFormatVersion else {
             throw ProjectValidationError.unsupportedVersion(version)
         }
         formatVersion = Self.currentFormatVersion
@@ -41,9 +41,6 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
         items = try values.decode([TaskMediaItem].self, forKey: .items)
         parameters = try values.decode(TaskParameters.self, forKey: .parameters)
         startedAt = try values.decodeIfPresent(Date.self, forKey: .startedAt)
-        if version == 2, items.contains(where: { $0.checkpoint != nil }) {
-            throw CheckpointError.invalidRecord
-        }
     }
 
     public var canChangeTranscription: Bool {
@@ -80,8 +77,8 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
             updated.items[index].checkpoint = checkpoint
             if translationChanged && checkpoint.chunks.allSatisfy(\.isCompleted) {
                 let item = updated.items[index]
-                updated.items[index].status = parameters.translation == nil || item.cues.allSatisfy(\.hasCurrentTranslation)
-                    ? item.completedProcessingStatus : .needsReview
+                updated.items[index].status = parameters.translation == nil || item.cues.allSatisfy(\.hasTranslation)
+                    ? .completed : .needsTranslation
             }
         }
         try updated.validate()
@@ -143,7 +140,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
         if items.contains(where: { if case .running = $0.status { true } else { false } }) { return .running }
         if items.contains(where: { if case .interrupted = $0.status { true } else { false } }) { return .interrupted }
         if items.contains(where: { if case .translationPaused = $0.status { true } else { false } }) { return .translationPaused }
-        if items.contains(where: { $0.status == .needsReview }) { return .needsReview }
+        if items.contains(where: { $0.status == .needsTranslation }) { return .needsTranslation }
         if items.isEmpty { return .draft }
         if items.contains(where: { $0.status == .pending }) { return startedAt == nil ? .draft : .queued }
         if items.allSatisfy({ $0.status == .completed }) { return .completed }
@@ -156,9 +153,6 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
     public var failedCount: Int { items.filter { if case .failed = $0.status { true } else { false } }.count }
 
     public func validate() throws {
-        guard formatVersion == Self.currentFormatVersion else {
-            throw ProjectValidationError.unsupportedVersion(formatVersion)
-        }
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw TaskValidationError.emptyTitle
         }
@@ -178,7 +172,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
             case .running, .interrupted, .completed, .translationPaused:
                 guard startedAt != nil else { throw TaskValidationError.workBeforeStart(item.id) }
                 guard item.media != nil else { throw TaskValidationError.unassociatedMedia(item.id) }
-            case .pending, .needsReview, .failed, .cancelled: break
+            case .pending, .needsTranslation, .failed, .cancelled: break
             }
         }
     }
@@ -187,13 +181,10 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
 public struct TaskParameters: Codable, Equatable, Sendable {
     public var transcription: TranscriptionSettings
     public var translation: TranslationSettings?
-    public var srtOutputs: [SRTOutputKind]
 
-    public init(transcription: TranscriptionSettings, translation: TranslationSettings? = nil,
-                srtOutputs: [SRTOutputKind] = [.source]) {
+    public init(transcription: TranscriptionSettings, translation: TranslationSettings? = nil) {
         self.transcription = transcription
         self.translation = translation
-        self.srtOutputs = srtOutputs
     }
 
     public static let baseline = TaskParameters(transcription: .whisperKitBaseline)
@@ -201,12 +192,6 @@ public struct TaskParameters: Codable, Equatable, Sendable {
     public func validate() throws {
         try transcription.validate()
         try translation?.validate()
-        guard !srtOutputs.isEmpty, Set(srtOutputs).count == srtOutputs.count else {
-            throw TaskValidationError.invalidOutputs
-        }
-        guard translation != nil || srtOutputs.allSatisfy({ $0 == .source }) else {
-            throw TaskValidationError.translationRequired
-        }
     }
 }
 
@@ -237,17 +222,15 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
 
     public mutating func associateMedia(_ candidate: MediaIdentity) throws {
         try candidate.validate()
-        if let media, !media.matchesContent(of: candidate) { throw ProjectValidationError.differentMedia }
+        guard !isProcessing else { throw CheckpointError.workRunning }
         var updated = self
-        if updated.media == nil {
-            updated.media = candidate
-            updated.source = .localFile(fileName: candidate.fileName)
-        }
+        updated.media = candidate
+        updated.source = .localFile(fileName: candidate.fileName)
         try updated.validate()
         self = updated
     }
 
-    /// Legacy cues without processing evidence are proofreading results, not fresh ASR work.
+    /// Existing subtitles remain available for playback and editing.
     public var canResumeProcessing: Bool {
         media != nil && status != .completed && !(checkpoint == nil && !cues.isEmpty)
     }
@@ -255,10 +238,6 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
     public var hasCompletedTranscription: Bool {
         guard let checkpoint else { return false }
         return !checkpoint.chunks.isEmpty && checkpoint.chunks.allSatisfy(\.isCompleted)
-    }
-
-    public var completedProcessingStatus: TaskMediaStatus {
-        cues.contains { $0.requiresTimingReview == true } ? .needsReview : .completed
     }
 
     public mutating func editSubtitle(comparedTo original: SubtitleCue, sourceText: String, translationText: String) throws {
@@ -281,29 +260,15 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
     }
 
     private mutating func updateProofreadingStatus() {
-        guard status == .completed || status == .needsReview,
+        guard status == .completed || status == .needsTranslation,
               let checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted) else { return }
-        status = checkpoint.parameters.translation == nil || cues.allSatisfy(\.hasCurrentTranslation)
-            ? completedProcessingStatus : .needsReview
+        status = checkpoint.parameters.translation == nil || cues.allSatisfy(\.hasTranslation)
+            ? .completed : .needsTranslation
     }
 
-    public mutating func confirmTimingReview(cueID: UUID) throws {
-        guard let index = cues.firstIndex(where: { $0.id == cueID }) else { throw CheckpointError.unknownWork }
-        var updated = self
-        updated.cues[index].requiresTimingReview = nil
-        updated.updateProofreadingStatus()
-        try updated.validate()
-        self = updated
-    }
-
-    public mutating func confirmAllTimingReviews() throws {
-        var updated = self
-        for index in updated.cues.indices {
-            updated.cues[index].requiresTimingReview = nil
-        }
-        updated.updateProofreadingStatus()
-        try updated.validate()
-        self = updated
+    private var isProcessing: Bool {
+        if case .running = status { return true }
+        return false
     }
 
     public func validate() throws {
@@ -321,7 +286,7 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
             }
         }
         try media?.validate()
-        try SubtitleCue.validateTimeline(cues, within: media)
+        try SubtitleCue.validateTimeline(cues, within: nil)
         try checkpoint?.validate(media: media, cues: cues, status: status)
         switch status {
         case .failed(let reason), .translationPaused(let reason):
@@ -343,7 +308,7 @@ public enum TaskMediaSource: Codable, Equatable, Sendable {
 public enum ProcessingStage: String, Codable, Sendable { case audioExtraction, transcription, translation }
 
 public enum TaskMediaStatus: Codable, Equatable, Sendable {
-    case pending, needsReview
+    case pending, needsTranslation
     case running(stage: ProcessingStage)
     case completed
     case failed(reason: String)
@@ -353,11 +318,11 @@ public enum TaskMediaStatus: Codable, Equatable, Sendable {
 }
 
 public enum ProcessingTaskStatus: Sendable {
-    case draft, queued, needsReview, running, interrupted, translationPaused, completed, partiallyFailed, failed, cancelled
+    case draft, queued, needsTranslation, running, interrupted, translationPaused, completed, partiallyFailed, failed, cancelled
 }
 
 public enum TaskValidationError: Error, LocalizedError, Equatable {
-    case emptyTitle, taskChanged, translationReplacementRequired, parametersFrozen, noMedia, noReadyMedia, invalidOutputs, translationRequired, unconfiguredTranslationService
+    case emptyTitle, taskChanged, translationReplacementRequired, parametersFrozen, noMedia, noReadyMedia, unconfiguredTranslationService
     case duplicateMedia(UUID), emptyMediaTitle(UUID), invalidSource(UUID), unassociatedMedia(UUID)
     case workBeforeStart(UUID), emptyFailureReason(UUID)
 
@@ -369,8 +334,6 @@ public enum TaskValidationError: Error, LocalizedError, Equatable {
         case .translationReplacementRequired: String(localized: "目标语言已改变，需要确认清除现有译文；原文、时间与转写成果保持。", bundle: voxlineLocalizationBundle)
         case .noMedia: String(localized: "请先添加本地媒体。", bundle: voxlineLocalizationBundle)
         case .noReadyMedia: String(localized: "任务没有可开始的媒体，请修复失败条目或添加可用媒体。", bundle: voxlineLocalizationBundle)
-        case .invalidOutputs: String(localized: "请选择不重复的 SRT 输出类型。", bundle: voxlineLocalizationBundle)
-        case .translationRequired: String(localized: "译文和双语输出需要开启翻译。", bundle: voxlineLocalizationBundle)
         case .unconfiguredTranslationService: String(localized: "请为本次翻译选择已配置的本地服务。", bundle: voxlineLocalizationBundle)
         case .duplicateMedia: String(localized: "任务包含重复的媒体条目 ID。", bundle: voxlineLocalizationBundle)
         case .emptyMediaTitle: String(localized: "媒体名称不能为空。", bundle: voxlineLocalizationBundle)

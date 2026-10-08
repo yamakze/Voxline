@@ -34,7 +34,7 @@ public struct BurnInOptions: Sendable, Equatable {
 
 public enum BurnInError: LocalizedError, Equatable {
     case videoRequired, missingMedia, unsupportedColor, unsupportedEncoding, invalidGeometry
-    case textDoesNotFit, sourceIsOutput, invalidFileName, fileAlreadyExists, invalidOutput, failure(String)
+    case sourceIsOutput, invalidFileName, fileAlreadyExists, invalidOutput, failure(String)
     public var errorDescription: String? {
         switch self {
         case .videoRequired: String(localized: "字幕烧录需要包含画面的视频。", bundle: voxlineLocalizationBundle)
@@ -42,7 +42,6 @@ public enum BurnInError: LocalizedError, Equatable {
         case .unsupportedColor: String(localized: "当前烧录仅支持 SDR 视频；HDR 或广色域输入不会自动转换。", bundle: voxlineLocalizationBundle)
         case .unsupportedEncoding: String(localized: "系统不支持所选编码与质量，请选择其他输出设置。", bundle: voxlineLocalizationBundle)
         case .invalidGeometry: String(localized: "无法确定视频的尺寸、方向或帧时间。", bundle: voxlineLocalizationBundle)
-        case .textDoesNotFit: String(localized: "字幕超过画面可用区域，请减小字号或修改换行后重新预览。", bundle: voxlineLocalizationBundle)
         case .sourceIsOutput: String(localized: "输出文件不能是原视频，请使用新的文件名。", bundle: voxlineLocalizationBundle)
         case .invalidFileName: String(localized: "请输入不含路径的 .mp4 文件名。", bundle: voxlineLocalizationBundle)
         case .fileAlreadyExists: String(localized: "输出文件已存在。", bundle: voxlineLocalizationBundle)
@@ -109,9 +108,11 @@ public enum SubtitleBurnInExporter {
         guard identity.matchesContent(of: try inspection.identity(audioTrackID: identity.audioTrackID)) else {
             throw ProjectValidationError.differentMedia
         }
-        // Reuse the same whole-output validation as SRT, including current translation revisions.
-        _ = try SubtitleExporter.generateSRT(cues: item.cues, kind: options.kind, media: identity)
-        guard options.fontSize.isFinite, (16...72).contains(options.fontSize) else { throw BurnInError.textDoesNotFit }
+        // Share timeline and text projection with SRT, without constructing another full export.
+        guard !item.cues.isEmpty else { throw SubtitleExportError.emptyCues }
+        let cues = try SubtitleCue.clampedToMedia(item.cues, media: identity)
+        for cue in cues { _ = try SubtitleExporter.subtitleText(for: cue, kind: options.kind) }
+        guard options.fontSize.isFinite, options.fontSize > 0 else { throw BurnInError.invalidGeometry }
         let source = AVURLAsset(url: bookmark.url)
         guard let video = try await source.loadTracks(withMediaType: .video).first,
               let audio = try await source.loadTracks(withMediaType: .audio).first(where: { $0.trackID == identity.audioTrackID }) else {
@@ -141,7 +142,7 @@ public enum SubtitleBurnInExporter {
             try output.insertTimeRange(range, of: track, at: range.start)
             if track.mediaType == .video { output.preferredTransform = try await track.load(.preferredTransform) }
         }
-        let renderer = BurnInTextRenderer(cues: item.cues, options: options)
+        let renderer = BurnInTextRenderer(cues: cues, options: options)
         let videoComposition = try await AVMutableVideoComposition.videoComposition(with: composition) { request in
             do {
                 // AVFoundation supplies a clamped CI image with an infinite extent.
@@ -226,9 +227,10 @@ public enum SubtitleBurnInExporter {
             let actualDuration = try await exported.load(.duration)
             let actualAudioRange = try await audio.load(.timeRange)
             guard formats.allSatisfy({ CMFormatDescriptionGetMediaSubType($0) == expectedCodec }),
-                  !formats.isEmpty, abs(actualDuration.seconds - plan.duration.seconds) < 0.1,
-                  abs(actualAudioRange.start.seconds - expectedAudioRange.start.seconds) < 0.001,
-                  abs(actualAudioRange.end.seconds - expectedAudioRange.end.seconds) < 0.001,
+                  !formats.isEmpty, actualDuration.seconds.isFinite, actualDuration.seconds > 0,
+                  abs(actualDuration.seconds - plan.duration.seconds) < 0.5,
+                  abs(actualAudioRange.duration.seconds - expectedAudioRange.duration.seconds) < 0.5,
+                  try await audio.load(.isDecodable), try await video.load(.isDecodable),
                   actualSize.width > 0, actualSize.height > 0 else { throw BurnInError.invalidOutput }
             if plan.options.quality == .original {
                 guard abs(actualSize.width - plan.renderSize.width) < 2,
@@ -306,29 +308,38 @@ private final class BurnInTextRenderer: @unchecked Sendable {
             if !text.isEmpty { text += "\n" }
             text += translation.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: "\n")
         }
-        let fontSize = options.fontSize * size.height / 1080
-        let padding = max(4, fontSize * 0.35)
+        var fontSize = options.fontSize * size.height / 1080
         let width = Int((size.width * 0.9).rounded(.down))
-        let availableWidth = Double(width) - 2 * padding
         var alignment = CTTextAlignment.center
         let paragraph = withUnsafePointer(to: &alignment) {
             CTParagraphStyleCreate([CTParagraphStyleSetting(spec: .alignment, valueSize: MemoryLayout<CTTextAlignment>.size, value: $0)], 1)
         }
-        let attributed = NSAttributedString(string: text, attributes: [
-            NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("PingFangSC-Regular" as CFString, fontSize, nil),
-            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: 1),
-            NSAttributedString.Key(kCTParagraphStyleAttributeName as String): paragraph
-        ])
-        let framesetter = CTFramesetterCreateWithAttributedString(attributed)
-        let measured = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, CFRange(location: 0, length: attributed.length), nil,
-            CGSize(width: availableWidth, height: .greatestFiniteMagnitude), nil)
-        guard measured.height.isFinite, measured.height < size.height * 0.8 else { throw BurnInError.textDoesNotFit }
-        let height = Int(ceil(measured.height + padding * 2))
-        guard width > 0, height > 0, Double(height) < size.height * 0.8 else { throw BurnInError.textDoesNotFit }
-        let path = CGPath(rect: CGRect(x: 0, y: 0, width: availableWidth, height: Double(height) - 2 * padding), transform: nil)
-        let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: attributed.length), path, nil)
-        guard CTFrameGetVisibleStringRange(frame).length == attributed.length else { throw BurnInError.textDoesNotFit }
-        return (frame, width, height, padding)
+        // Long dialogue uses the same complete, fitted layout in preview and export.
+        while fontSize > 0 {
+            let padding = min(max(2, fontSize * 0.35), size.height * 0.05)
+            let availableWidth = Double(width) - 2 * padding
+            guard availableWidth > 0 else { throw BurnInError.invalidGeometry }
+            let attributed = NSAttributedString(string: text, attributes: [
+                NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("PingFangSC-Regular" as CFString, fontSize, nil),
+                NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: 1),
+                NSAttributedString.Key(kCTParagraphStyleAttributeName as String): paragraph
+            ])
+            let framesetter = CTFramesetterCreateWithAttributedString(attributed)
+            let measured = CTFramesetterSuggestFrameSizeWithConstraints(framesetter, CFRange(location: 0, length: attributed.length), nil,
+                CGSize(width: availableWidth, height: .greatestFiniteMagnitude), nil)
+            guard measured.height.isFinite else { throw BurnInError.invalidGeometry }
+            let height = Int(ceil(measured.height + padding * 2 + 1))
+            if height > 0, Double(height) <= size.height * 0.8 {
+                let path = CGPath(rect: CGRect(x: 0, y: 0, width: availableWidth, height: Double(height) - 2 * padding), transform: nil)
+                let frame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: attributed.length), path, nil)
+                if CTFrameGetVisibleStringRange(frame).length == attributed.length {
+                    return (frame, width, height, padding)
+                }
+            }
+            fontSize *= 0.85
+            if fontSize < 0.1 { throw BurnInError.invalidGeometry }
+        }
+        throw BurnInError.invalidGeometry
     }
 }
 

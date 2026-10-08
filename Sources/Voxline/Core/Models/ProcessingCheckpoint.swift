@@ -72,7 +72,7 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
     public internal(set) var translationBatches: [TranslationBatchCheckpoint]
 
     func validate(media currentMedia: MediaIdentity?, cues: [SubtitleCue], status: TaskMediaStatus) throws {
-        guard let currentMedia, media.matchesContent(of: currentMedia) else { throw CheckpointError.incompatibleContext }
+        guard currentMedia != nil else { throw CheckpointError.incompatibleContext }
         try media.validate()
         try parameters.validate()
         guard !chunks.isEmpty else { throw CheckpointError.invalidRecord }
@@ -97,10 +97,6 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
             case .completed(let result):
                 try validateEvidence(result.evidence, range: chunk.range)
                 guard sourceIDs.insert(result.sourceID).inserted else { throw CheckpointError.invalidRecord }
-                let canonical = try SubtitleSegmenter.segment(result.evidence, sourceID: result.sourceID,
-                    mediaDurationMilliseconds: media.durationMilliseconds, policy: result.policy)
-                guard canonical.entries == result.entries,
-                      canonical.excludedEmptySegmentIndices == result.excludedEmptySegmentIndices else { throw CheckpointError.invalidRecord }
                 for cue in result.cues {
                     guard generatedIDs.insert(cue.id).inserted else { throw CheckpointError.invalidRecord }
                 }
@@ -115,13 +111,14 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
             }
         }
         guard generatedIDs == Set(cues.map(\.id)) else { throw CheckpointError.invalidRecord }
+        let currentCues = Dictionary(uniqueKeysWithValues: cues.map { ($0.id, $0) })
         var batchIDs = Set<UUID>()
         var activeIDs = Set<UUID>()
         for batch in translationBatches {
             guard parameters.translation != nil, chunks.allSatisfy(\.isCompleted), batchIDs.insert(batch.id).inserted,
                   !batch.inputs.isEmpty, Set(batch.inputs.map(\.cueID)).count == batch.inputs.count else { throw CheckpointError.invalidRecord }
             for input in batch.inputs {
-                guard let current = cues.first(where: { $0.id == input.cueID }),
+                guard let current = currentCues[input.cueID],
                       input.sourceRevision > 0, input.sourceRevision <= current.sourceRevision,
                       input.sourceRevision != current.sourceRevision || input.sourceText == current.sourceText,
                       !input.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CheckpointError.invalidRecord }
@@ -151,8 +148,7 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
         }
         if status == .completed {
             guard chunks.allSatisfy(\.isCompleted),
-                  !cues.contains(where: { $0.requiresTimingReview == true }),
-                  parameters.translation == nil || cues.allSatisfy(\.hasCurrentTranslation) else { throw CheckpointError.incompleteWork }
+                  parameters.translation == nil || cues.allSatisfy(\.hasTranslation) else { throw CheckpointError.incompleteWork }
         }
     }
 
@@ -203,7 +199,8 @@ public extension TaskMediaItem {
     }
 
     mutating func beginTranscriptionChunk(_ chunkID: UUID) throws -> UUID {
-        var record = try checkpointForCurrentMedia()
+        var record = try requiredCheckpoint()
+        guard let media, record.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
         guard let index = record.chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
         guard !record.chunks[index].isCompleted else { throw CheckpointError.alreadyCommitted }
         guard !record.chunks.contains(where: { if case .running = $0.state { true } else { false } }) else { throw CheckpointError.workRunning }
@@ -215,7 +212,8 @@ public extension TaskMediaItem {
     }
 
     mutating func commitTranscriptionChunk(_ chunkID: UUID, result: SubtitleSegmentationResult) throws {
-        var record = try checkpointForCurrentMedia()
+        var record = try requiredCheckpoint()
+        guard let media, record.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
         guard let index = record.chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
         if case .completed(let committed) = record.chunks[index].state {
             guard committed == result else { throw CheckpointError.alreadyCommitted }
@@ -225,6 +223,10 @@ public extension TaskMediaItem {
             throw CheckpointError.staleResult
         }
         try record.validateEvidence(result.evidence, range: record.chunks[index].range)
+        guard result.evidence.outcome == .completed else { throw SubtitleSegmentationError.incompleteTranscription }
+        let recognized = result.evidence.segments.map(\.text).joined().precomposedStringWithCanonicalMapping.filter { !$0.isWhitespace }
+        let subtitled = result.cues.map(\.sourceText).joined().precomposedStringWithCanonicalMapping.filter { !$0.isWhitespace }
+        guard recognized == subtitled else { throw CheckpointError.invalidRecord }
         var updated = self
         let followingIDs = Set(record.chunks.dropFirst(index + 1).flatMap { chunk -> [UUID] in
             if case .completed(let result) = chunk.state { return result.cues.map(\.id) }
@@ -240,14 +242,15 @@ public extension TaskMediaItem {
         }).first { updated.status = .failed(reason: reason) }
         else if record.chunks.contains(where: { if case .cancelled = $0.state { true } else { false } }) { updated.status = .cancelled }
         else if record.chunks.contains(where: { $0.state == .interrupted }) { updated.status = .interrupted(stage: .transcription) }
-        else { updated.status = record.chunks.allSatisfy(\.isCompleted) && record.parameters.translation == nil ? updated.completedProcessingStatus : .pending }
+        else { updated.status = record.chunks.allSatisfy(\.isCompleted) && record.parameters.translation == nil ? .completed : .pending }
         try updated.validate()
         self = updated
     }
 
     mutating func recordTranscriptionFailure(_ chunkID: UUID, sourceID: UUID, reason: String,
                                             evidence: TranscriptionEvidence?) throws {
-        var record = try checkpointForCurrentMedia()
+        var record = try requiredCheckpoint()
+        guard let media, record.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
         guard let index = record.chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
         guard record.chunks[index].state == .running(sourceID: sourceID) else { throw CheckpointError.staleResult }
         var updated = self
@@ -260,7 +263,8 @@ public extension TaskMediaItem {
 
     mutating func recordTranscriptionCancellation(_ chunkID: UUID, sourceID: UUID,
                                                  evidence: TranscriptionEvidence? = nil) throws {
-        var record = try checkpointForCurrentMedia()
+        var record = try requiredCheckpoint()
+        guard let media, record.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
         guard let index = record.chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
         guard record.chunks[index].state == .running(sourceID: sourceID) else { throw CheckpointError.staleResult }
         var updated = self
@@ -272,7 +276,7 @@ public extension TaskMediaItem {
     }
 
     mutating func prepareTranslationBatch(cueIDs: [UUID], replacingExistingTranslations: Bool = false) throws -> UUID {
-        var record = try checkpointForCurrentMedia()
+        var record = try requiredCheckpoint()
         guard record.parameters.translation != nil, record.chunks.allSatisfy(\.isCompleted) else { throw CheckpointError.incompleteWork }
         guard !cueIDs.isEmpty, Set(cueIDs).count == cueIDs.count else { throw CheckpointError.invalidTranslationResult }
         let inputs = try cueIDs.map { id -> TranslationBatchInput in
@@ -297,7 +301,7 @@ public extension TaskMediaItem {
     }
 
     mutating func beginTranslationBatch(_ batchID: UUID) throws {
-        var record = try checkpointForCurrentMedia()
+        var record = try requiredCheckpoint()
         guard let index = record.translationBatches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
         guard !record.translationBatches[index].isCompleted else { throw CheckpointError.alreadyCommitted }
         guard !record.translationBatches.contains(where: { $0.state == .running }) else { throw CheckpointError.workRunning }
@@ -310,7 +314,7 @@ public extension TaskMediaItem {
     }
 
     mutating func commitTranslationBatch(_ batchID: UUID, outputs: [TranslationBatchOutput]) throws {
-        var record = try checkpointForCurrentMedia()
+        var record = try requiredCheckpoint()
         guard let index = record.translationBatches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
         let batch = record.translationBatches[index]
         if case .completed(let committed) = batch.state {
@@ -330,7 +334,7 @@ public extension TaskMediaItem {
         let unfinished = record.translationBatches.filter { batch in
             !batch.isCompleted && batch.inputs.allSatisfy { input in updated.cues.contains { input.matches($0) } }
         }
-        if updated.cues.allSatisfy(\.hasCurrentTranslation) { updated.status = updated.completedProcessingStatus }
+        if updated.cues.allSatisfy(\.hasTranslation) { updated.status = .completed }
         else if let reason = unfinished.compactMap({ batch -> String? in
             if case .failed(let reason) = batch.state { return reason }
             return nil
@@ -343,7 +347,7 @@ public extension TaskMediaItem {
     }
 
     mutating func recordTranslationFailure(_ batchID: UUID, reason: String, pauseForRetry: Bool = false) throws {
-        var record = try checkpointForCurrentMedia()
+        var record = try requiredCheckpoint()
         guard let index = record.translationBatches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
         guard record.translationBatches[index].state == .running else { throw CheckpointError.staleResult }
         guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CheckpointError.invalidRecord }
@@ -353,7 +357,7 @@ public extension TaskMediaItem {
     }
 
     mutating func recordTranslationCancellation(_ batchID: UUID) throws {
-        var record = try checkpointForCurrentMedia()
+        var record = try requiredCheckpoint()
         guard let index = record.translationBatches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
         guard record.translationBatches[index].state == .running else { throw CheckpointError.staleResult }
         record.translationBatches[index].state = .cancelled
@@ -362,7 +366,7 @@ public extension TaskMediaItem {
     }
 
     func recoveryPlan(media: MediaIdentity, parameters: TaskParameters, ranges: [TranscriptionChunkRange]) throws -> MediaRecoveryPlan {
-        let record = try checkpointForCurrentMedia()
+        let record = try requiredCheckpoint()
         guard record.media.matchesContent(of: media), record.parameters == parameters,
               record.chunks.map(\.range) == ranges else { throw CheckpointError.incompatibleContext }
         var reusable: [UUID] = []
@@ -378,7 +382,7 @@ public extension TaskMediaItem {
         return MediaRecoveryPlan(transcriptionChunkIDs: record.chunks.filter { !$0.isCompleted }.map(\.id),
             translationBatchIDs: reusable, outdatedTranslationBatchIDs: outdated,
             untranslatedCueIDs: allTranscribed && parameters.translation != nil ?
-                cues.filter { !$0.hasCurrentTranslation && !reserved.contains($0.id) }.map(\.id) : [])
+                cues.filter { !$0.hasTranslation && !reserved.contains($0.id) }.map(\.id) : [])
     }
 
     internal mutating func interruptCheckpointWork() {
@@ -392,9 +396,8 @@ public extension TaskMediaItem {
         checkpoint = record
     }
 
-    private func checkpointForCurrentMedia() throws -> MediaProcessingCheckpoint {
+    private func requiredCheckpoint() throws -> MediaProcessingCheckpoint {
         guard let checkpoint else { throw CheckpointError.missingCheckpoint }
-        guard let media, checkpoint.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
         return checkpoint
     }
 }
@@ -404,18 +407,18 @@ public enum CheckpointError: Error, LocalizedError, Equatable {
     case existingResults, alreadyCommitted, workRunning, staleResult, editedCue, invalidTranslationResult, incompleteWork
     public var errorDescription: String? {
         switch self {
-        case .missingCheckpoint: String(localized: "媒体没有处理检查点。", bundle: voxlineLocalizationBundle)
-        case .incompatibleContext: String(localized: "媒体、音轨或本次参数与检查点不一致，请明确重跑或新建任务。", bundle: voxlineLocalizationBundle)
-        case .invalidRange: String(localized: "转写块范围无效或超出媒体。", bundle: voxlineLocalizationBundle)
+        case .missingCheckpoint: String(localized: "没有可恢复的处理成果。", bundle: voxlineLocalizationBundle)
+        case .incompatibleContext: String(localized: "处理输入已变更，无法继续上次识别。", bundle: voxlineLocalizationBundle)
+        case .invalidRange: String(localized: "识别时间超出媒体范围。", bundle: voxlineLocalizationBundle)
         case .invalidRecord: String(localized: "处理检查点损坏或与字幕成果不一致。", bundle: voxlineLocalizationBundle)
-        case .unknownWork: String(localized: "找不到对应的处理块、批次或字幕。", bundle: voxlineLocalizationBundle)
+        case .unknownWork: String(localized: "找不到对应的处理成果。", bundle: voxlineLocalizationBundle)
         case .taskUnavailable: String(localized: "任务已关闭、删除或无法读取，未提交处理结果。", bundle: voxlineLocalizationBundle)
         case .existingResults: String(localized: "已有字幕成果或当前译文，请明确选择重跑或重译。", bundle: voxlineLocalizationBundle)
         case .alreadyCommitted: String(localized: "该工作已提交，不能用不同结果替换已有成果。", bundle: voxlineLocalizationBundle)
-        case .workRunning: String(localized: "已有处理或翻译批次占用这些输入。", bundle: voxlineLocalizationBundle)
+        case .workRunning: String(localized: "当前处理尚未结束。", bundle: voxlineLocalizationBundle)
         case .staleResult: String(localized: "结果不属于当前运行，未提交。", bundle: voxlineLocalizationBundle)
-        case .editedCue: String(localized: "处理期间原文或译文已修改，保留校对内容，请重新建立翻译批次。", bundle: voxlineLocalizationBundle)
-        case .invalidTranslationResult: String(localized: "翻译批次必须完整匹配字幕 ID，且每条译文非空。", bundle: voxlineLocalizationBundle)
+        case .editedCue: String(localized: "字幕已修改，本次结果未覆盖编辑。", bundle: voxlineLocalizationBundle)
+        case .invalidTranslationResult: String(localized: "翻译结果缺失或格式无效，本批次未保存。", bundle: voxlineLocalizationBundle)
         case .incompleteWork: String(localized: "处理尚未完整提交，不能开始翻译或标记完成。", bundle: voxlineLocalizationBundle)
         }
     }

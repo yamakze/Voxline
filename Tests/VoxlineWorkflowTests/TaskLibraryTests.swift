@@ -80,7 +80,7 @@ struct TaskLibraryTests {
     @Test func legacyEvidenceCleanupRequiresExactCheckpointAttributionAndRetainsOtherTaskEvidence() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let media = try MediaIdentity(fileName: "source.wav", byteCount: 10, sha256: String(repeating: "a", count: 64), durationMilliseconds: 1000, audioTrackID: 1)
+        let media = try MediaIdentity(fileName: "source.wav", byteCount: 10, fingerprint: String(repeating: "a", count: 64), durationMilliseconds: 1000, audioTrackID: 1)
         var task = ProcessingTask(items: [.init(title: "Original", kind: .audio, source: .localFile(fileName: media.fileName), media: media)])
         try task.freezeParameters()
         try task.items[0].initializeCheckpoint(parameters: task.parameters, ranges: [.init(sourceStartMilliseconds: 0, durationMilliseconds: 1000)])
@@ -177,13 +177,13 @@ struct TaskLibraryTests {
         #expect(try Data(contentsOf: external) == original)
     }
 
-    @Test func openingLegacyTaskDoesNotRewriteOriginalAndFailedSaveKeepsLastDocument() throws {
+    @Test func openingTaskDoesNotRewriteOriginalAndFailedSaveKeepsLastDocument() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("legacy.voxline")
-        let legacy = SubtitleProject()
-        let original = try ProjectDocumentCodec.encode(legacy)
+        let legacy = ProcessingTask()
+        let original = try TaskDocumentCodec.encode(legacy)
         try original.write(to: url)
         let library = TaskLibrary(tasksDirectory: directory)
         var migrated = try TaskDocumentCodec.decode(original)
@@ -257,7 +257,7 @@ struct TaskLibraryTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let library = TaskLibrary(tasksDirectory: directory)
-        let media = try MediaIdentity(fileName: "sample.wav", byteCount: 42, sha256: String(repeating: "a", count: 64),
+        let media = try MediaIdentity(fileName: "sample.wav", byteCount: 42, fingerprint: String(repeating: "a", count: 64),
             durationMilliseconds: 5000, audioTrackID: 1)
         var task = ProcessingTask(items: [.init(title: "Sample", kind: .audio, source: .localFile(fileName: media.fileName), media: media)])
         try task.freezeParameters()

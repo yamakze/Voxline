@@ -120,7 +120,7 @@ public enum WhisperTranscriptionError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case .busy: String(localized: "模型正在下载、加载或转写，请等待当前操作结束。", bundle: voxlineLocalizationBundle)
+        case .busy: String(localized: "当前处理尚未结束。", bundle: voxlineLocalizationBundle)
         case .unsupportedLanguage(let code): String(localized: "WhisperKit 不支持语言代码 \(code)。", bundle: voxlineLocalizationBundle)
         case .invalidAudio: String(localized: "转写输入必须是最多 120 秒的非空 16 kHz 单声道 Float32 PCM，且时长与参数一致。", bundle: voxlineLocalizationBundle)
         case .invalidAlignment(let reason), .invalidTiming(let reason): reason

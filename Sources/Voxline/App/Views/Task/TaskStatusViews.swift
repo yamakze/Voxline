@@ -26,7 +26,7 @@ public struct TaskStatusBadge: View {
         switch status {
         case .draft: return "pencil.circle"
         case .queued: return "clock"
-        case .needsReview: return "exclamationmark.triangle"
+        case .needsTranslation: return "exclamationmark.triangle"
         case .running: return "arrow.triangle.2.circlepath.circle"
         case .interrupted, .translationPaused: return "pause.circle"
         case .completed: return "checkmark.circle.fill"
@@ -44,7 +44,7 @@ public struct TaskStatusBadge: View {
         switch status {
         case .draft: return .secondary
         case .queued: return .blue
-        case .needsReview: return .orange
+        case .needsTranslation: return .orange
         case .running: return .blue
         case .interrupted, .translationPaused: return .orange
         case .completed: return .green
@@ -78,7 +78,7 @@ public struct MediaStatusBadge: View {
     private var iconName: String {
         switch status {
         case .pending: return "clock"
-        case .needsReview: return "exclamationmark.triangle"
+        case .needsTranslation: return "exclamationmark.triangle"
         case .running(let stage):
             switch stage {
             case .audioExtraction: return "waveform"
@@ -99,7 +99,7 @@ public struct MediaStatusBadge: View {
     private var foregroundColor: Color {
         switch status {
         case .pending: return .secondary
-        case .needsReview: return .orange
+        case .needsTranslation: return .orange
         case .running: return .blue
         case .completed: return .green
         case .failed: return .red

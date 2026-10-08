@@ -29,7 +29,7 @@ struct SubtitleBurnInSheet: View {
         _previewTime = State(initialValue: item.cues.first?.startMilliseconds ?? 0)
         _options = State(initialValue: {
             var options = BurnInOptions()
-            options.kind = item.cues.allSatisfy(\.hasCurrentTranslation) ? .bilingual : .source
+            options.kind = item.cues.allSatisfy(\.hasTranslation) ? .bilingual : .source
             return options
         }())
     }

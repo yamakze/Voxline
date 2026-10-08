@@ -30,7 +30,7 @@ struct SubtitleTranslationTests {
         }
     }
 
-    @Test func strictIDsRejectMissingDuplicateExtraBlankAndTimelineFields() throws {
+    @Test func completeIDsRejectMissingDuplicateExtraBlankButAllowExtraFields() throws {
         let cues = try cues(count: 2)
         let valid = cues.map { ["id": $0.id.uuidString, "text": "放下它。"] }
         func parse(_ values: [[String: String]], rootExtra: Bool = false) throws -> [TranslationBatchOutput] {
@@ -41,11 +41,13 @@ struct SubtitleTranslationTests {
         }
         #expect(try parse(valid.reversed()).map(\.cueID) == cues.reversed().map(\.id))
         for invalid in [Array(valid.dropLast()), [valid[0], valid[0]], valid + [["id": UUID().uuidString, "text": "多余"]],
-                        [valid[0], ["id": cues[1].id.uuidString, "text": " "]],
-                        [valid[0], ["id": cues[1].id.uuidString, "text": "第二条", "start": "0"]]] {
+                        [valid[0], ["id": cues[1].id.uuidString, "text": " "]]] {
             #expect(throws: SubtitleTranslationError.invalidTranslationResult) { try parse(invalid) }
         }
-        #expect(throws: SubtitleTranslationError.invalidTranslationResult) { try parse(valid, rootExtra: true) }
+        #expect(try parse(valid, rootExtra: true).count == 2)
+        #expect(try parse([valid[0], ["id": cues[1].id.uuidString, "text": "第二条", "notes": "context"]]).count == 2)
+        let wrapped = "```json\n" + String(decoding: try JSONSerialization.data(withJSONObject: ["translations": valid, "notes": "extra"]), as: UTF8.self) + "\n```"
+        #expect(try OpenAICompatibleTranslationClient.parseResponse(response(wrapped), expectedIDs: cues.map(\.id)).count == 2)
         #expect(throws: SubtitleTranslationError.invalidTranslationResult) {
             try OpenAICompatibleTranslationClient.parseResponse(response("```json\n{}\n```"), expectedIDs: cues.map(\.id))
         }

@@ -4,6 +4,15 @@ import Testing
 
 @Suite("Strict SRT export")
 struct SubtitleExporterTests {
+    @Test func lastCueCodecRoundingClampsAtExportWithoutMutatingTheEditedCue() throws {
+        let media = try MediaIdentity(fileName: "clip.mp4", byteCount: 10, fingerprint: String(repeating: "a", count: 64),
+                                      durationMilliseconds: 1000, audioTrackID: 1)
+        let last = try cue(start: 500, end: 1005)
+        let result = try SubtitleExporter.generateSRT(cues: [last], kind: .bilingual, media: media)
+        #expect(result.contains("00:00:00,500 --> 00:00:01,000"))
+        #expect(last.endMilliseconds == 1005)
+        #expect(result.contains("你好。"))
+    }
     private func cue(start: Int64 = 3_600_001, end: Int64 = 3_602_999) throws -> SubtitleCue {
         var cue = try SubtitleCue(id: UUID(), startMilliseconds: start, endMilliseconds: end,
                                   sourceText: "Hello.\r\n\r\nWorld!")
@@ -26,7 +35,7 @@ struct SubtitleExporterTests {
     }
 
     @Test(arguments: [SRTOutputKind.translation, .bilingual])
-    func incompleteOrOutdatedTranslationRejectsWholeExport(kind: SRTOutputKind) throws {
+    func missingTranslationRejectsWholeExportAndEditingSourceRetainsTranslation(kind: SRTOutputKind) throws {
         let valid = try cue(start: 0, end: 1000)
         var missing = try cue(start: 1000, end: 2000)
         missing.translation = .pending
@@ -39,9 +48,7 @@ struct SubtitleExporterTests {
         }
         missing.translation = .succeeded(text: "人工译文", sourceRevision: 1)
         try missing.replaceSourceText(with: "Edited source")
-        #expect(throws: SubtitleExportError.incompleteTranslations(1)) {
-            try SubtitleExporter.generateSRT(cues: [valid, missing], kind: kind)
-        }
+        #expect(try SubtitleExporter.generateSRT(cues: [valid, missing], kind: kind).contains("人工译文"))
         #expect(try SubtitleExporter.generateSRT(cues: [valid, missing], kind: .source).contains("Edited source"))
     }
 
@@ -53,7 +60,7 @@ struct SubtitleExporterTests {
         let first = try cue(start: 0, end: 1000), overlapping = try cue(start: 500, end: 1500)
         #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [first, overlapping], kind: .bilingual) }
         #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [first, first], kind: .source) }
-        let media = try MediaIdentity(fileName: "clip.mp4", byteCount: 1, sha256: String(repeating: "a", count: 64), durationMilliseconds: 500, audioTrackID: 1)
+        let media = try MediaIdentity(fileName: "clip.mp4", byteCount: 1, fingerprint: String(repeating: "a", count: 64), durationMilliseconds: 500, audioTrackID: 1)
         #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [first], kind: .source, media: media) }
     }
 

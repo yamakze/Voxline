@@ -22,7 +22,7 @@ struct MediaInspectionTests {
         #expect(try result.identity(audioTrackID: selected.id).audioTrackID == selected.id)
         #expect(throws: MediaAccessError.invalidAudioTrack) { try result.identity(audioTrackID: 9999) }
         let again = try await MediaInspector().inspect(url)
-        #expect(again.sha256 == result.sha256)
+        #expect(again.fingerprint == result.fingerprint)
         #expect(again.byteCount == result.byteCount)
     }
 

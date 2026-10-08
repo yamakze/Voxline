@@ -24,14 +24,14 @@ public struct SubtitleEmbeddingSheet: View {
     public init(item: TaskMediaItem, task: ProcessingTask? = nil) {
         self.itemSnapshot = item
         self.task = task
-        let defaultKind: SRTOutputKind = item.cues.allSatisfy(\.hasCurrentTranslation) ? .bilingual : .source
+        let defaultKind: SRTOutputKind = item.cues.allSatisfy(\.hasTranslation) ? .bilingual : .source
         _selectedKind = State(initialValue: defaultKind)
         let base = ((item.media?.fileName ?? item.title) as NSString).deletingPathExtension
         _fileName = State(initialValue: "\(base).embedded.mp4")
     }
 
     private var missingTranslationCount: Int {
-        itemSnapshot.cues.filter { !$0.hasCurrentTranslation }.count
+        itemSnapshot.cues.filter { !$0.hasTranslation }.count
     }
 
     private var selectedLanguageTag: String {

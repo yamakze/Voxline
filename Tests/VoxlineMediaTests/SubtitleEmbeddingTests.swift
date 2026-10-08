@@ -186,7 +186,7 @@ struct SubtitleEmbeddingTests {
         await #expect(throws: CancellationError.self) { try await running.value }
         #expect(try Data(contentsOf: output) == original)
         var stale = item
-        try stale.cues[0].replaceSourceText(with: "Changed")
+        stale.cues[0].translation = .pending
         await #expect(throws: SubtitleExportError.incompleteTranslations(1)) {
             try await SubtitleEmbeddingExporter.export(item: stale, kind: .bilingual, to: output, allowOverwrite: true, mediaStore: store)
         }

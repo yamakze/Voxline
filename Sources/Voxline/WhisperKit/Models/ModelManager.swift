@@ -171,7 +171,7 @@ public final class ModelManager {
 
     public func delete(modelID: String) async {
         guard operations[modelID] == nil, !isOperating, !deletingModels.contains(modelID) else {
-            deletionErrors[modelID] = String(localized: "模型使用中", bundle: voxlineLocalizationBundle)
+            deletionErrors[modelID] = String(localized: "当前处理尚未结束。", bundle: voxlineLocalizationBundle)
             return
         }
         deletingModels.insert(modelID)
@@ -181,7 +181,7 @@ public final class ModelManager {
             try await store.delete(modelID: modelID)
         } catch {
             deletionErrors[modelID] = (error as? WhisperTranscriptionError) == .busy
-                ? String(localized: "模型使用中", bundle: voxlineLocalizationBundle) : error.localizedDescription
+                ? String(localized: "当前处理尚未结束。", bundle: voxlineLocalizationBundle) : error.localizedDescription
         }
         await refresh(modelID: modelID)
     }

@@ -27,9 +27,9 @@ public enum SubtitleExporter {
 
     public static func generateSRT(cues: [SubtitleCue], kind: SRTOutputKind, media: MediaIdentity? = nil) throws -> String {
         guard !cues.isEmpty else { throw SubtitleExportError.emptyCues }
-        try SubtitleCue.validateTimeline(cues, within: media)
+        let cues = try SubtitleCue.clampedToMedia(cues, media: media)
         if kind != .source {
-            let missingCount = cues.filter { !$0.hasCurrentTranslation }.count
+            let missingCount = cues.filter { !$0.hasTranslation }.count
             guard missingCount == 0 else { throw SubtitleExportError.incompleteTranslations(missingCount) }
         }
 
@@ -42,7 +42,7 @@ public enum SubtitleExporter {
 
     /// One text projection serves standalone SRT and embedded subtitle samples.
     public static func subtitleText(for cue: SubtitleCue, kind: SRTOutputKind) throws -> String {
-        if kind != .source, !cue.hasCurrentTranslation { throw SubtitleExportError.incompleteTranslations(1) }
+        if kind != .source, !cue.hasTranslation { throw SubtitleExportError.incompleteTranslations(1) }
         func bodyLines(_ text: String) -> String {
             text.components(separatedBy: .newlines)
                 .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: "\n")

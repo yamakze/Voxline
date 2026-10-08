@@ -7,8 +7,6 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
     public private(set) var sourceText: String
     public private(set) var sourceRevision: UInt64
     public var translation: CueTranslation
-    /// Nil in documents written before timing review was introduced.
-    public var requiresTimingReview: Bool?
 
     public init(id: UUID, startMilliseconds: Int64, endMilliseconds: Int64, sourceText: String) throws {
         self.id = id
@@ -31,9 +29,9 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
         sourceRevision = revision
     }
 
-    public var hasCurrentTranslation: Bool {
-        if case .succeeded(let text, let revision) = translation {
-            return revision == sourceRevision && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    public var hasTranslation: Bool {
+        if case .succeeded(let text, _) = translation {
+            return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         return false
     }
@@ -60,6 +58,25 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
             }
             previousEnd = cue.endMilliseconds
         }
+    }
+
+    /// Container and speech timestamps may differ by one codec frame at the end.
+    /// Keep large errors explicit and never drop text or collapse a cue to zero duration.
+    public static func clampedToMedia(_ cues: [SubtitleCue], media: MediaIdentity?) throws -> [SubtitleCue] {
+        guard let media else {
+            try validateTimeline(cues, within: nil)
+            return cues
+        }
+        var result = cues
+        for index in result.indices {
+            let end = result[index].endMilliseconds
+            if end > media.durationMilliseconds, end - media.durationMilliseconds <= 50,
+               result[index].startMilliseconds < media.durationMilliseconds {
+                result[index].endMilliseconds = media.durationMilliseconds
+            }
+        }
+        try validateTimeline(result, within: media)
+        return result
     }
 }
 

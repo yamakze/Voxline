@@ -14,7 +14,7 @@ public struct MediaInspection: Sendable {
     public let url: URL
     public let kind: TaskMediaKind
     public let byteCount: Int64
-    public let sha256: String
+    public let fingerprint: String
     public let durationMilliseconds: Int64
     public let videoTracks: [MediaTrack]
     public let audioTracks: [MediaTrack]
@@ -23,12 +23,12 @@ public struct MediaInspection: Sendable {
         guard let track = audioTracks.first(where: { $0.id == audioTrackID }), track.isDecodable else {
             throw MediaAccessError.invalidAudioTrack
         }
-        return try MediaIdentity(fileName: url.lastPathComponent, byteCount: byteCount, sha256: sha256,
+        return try MediaIdentity(fileName: url.lastPathComponent, byteCount: byteCount, fingerprint: fingerprint,
                                  durationMilliseconds: durationMilliseconds, audioTrackID: audioTrackID)
     }
 }
 
-/// AVFoundation and streamed hashing stay off the main actor; no whole-video copy or allocation.
+/// Inspect tracks and a bounded head/tail fingerprint off the main actor.
 public actor MediaInspector {
     public static let shared = MediaInspector()
     private var inspectedFiles: [URL: (size: Int, modified: Date, inspection: MediaInspection)] = [:]
@@ -68,7 +68,7 @@ public actor MediaInspector {
         let cacheKey = url.standardizedFileURL
         if let cached = inspectedFiles[cacheKey], cached.size == size, cached.modified == modified {
             let previous = cached.inspection
-            return MediaInspection(url: url, kind: kind, byteCount: previous.byteCount, sha256: previous.sha256,
+            return MediaInspection(url: url, kind: kind, byteCount: previous.byteCount, fingerprint: previous.fingerprint,
                                    durationMilliseconds: previous.durationMilliseconds,
                                    videoTracks: previous.videoTracks, audioTracks: previous.audioTracks)
         }
@@ -89,20 +89,26 @@ public actor MediaInspector {
         guard videoTracks.allSatisfy(\.isDecodable) else { throw MediaAccessError.undecodableVideo }
         guard audioTracks.contains(where: \.isDecodable) else { throw MediaAccessError.undecodableAudio }
         var hasher = SHA256()
-        var readBytes: Int64 = 0
-        while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty {
-            try Task.checkCancellation()
-            hasher.update(data: data)
-            readBytes += Int64(data.count)
+        // At most 2 MiB, independent of the movie size. Size participates in identity.
+        let sampleSize = 1_048_576
+        let head = try handle.read(upToCount: min(size, sampleSize)) ?? Data()
+        guard head.count == min(size, sampleSize) else { throw MediaAccessError.fileChanged }
+        hasher.update(data: head)
+        if size > sampleSize {
+            let tailOffset = max(sampleSize, size - sampleSize)
+            try handle.seek(toOffset: UInt64(tailOffset))
+            let tail = try handle.read(upToCount: size - tailOffset) ?? Data()
+            guard tail.count == size - tailOffset else { throw MediaAccessError.fileChanged }
+            hasher.update(data: tail)
         }
         var refreshedURL = url
         refreshedURL.removeAllCachedResourceValues()
         let after = try refreshedURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-        guard readBytes == Int64(size), after.fileSize == size,
+        guard after.fileSize == size,
               after.contentModificationDate == modified else { throw MediaAccessError.fileChanged }
         try Task.checkCancellation()
-        let inspection = MediaInspection(url: url, kind: kind, byteCount: readBytes,
-                                         sha256: hasher.finalize().map { String(format: "%02x", $0) }.joined(),
+        let inspection = MediaInspection(url: url, kind: kind, byteCount: Int64(size),
+                                         fingerprint: hasher.finalize().map { String(format: "%02x", $0) }.joined(),
                                          durationMilliseconds: Int64((seconds * 1000).rounded()),
                                          videoTracks: videoTracks, audioTracks: audioTracks)
         inspectedFiles[cacheKey] = (size, modified, inspection)

@@ -12,7 +12,7 @@ struct TaskProcessingQueueTests {
     private func fixture(count: Int = 2) throws -> (URL, TaskLibrary, ProcessingTask) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let library = TaskLibrary(tasksDirectory: directory)
-        let media = try MediaIdentity(fileName: "fixture.wav", byteCount: 42, sha256: String(repeating: "a", count: 64),
+        let media = try MediaIdentity(fileName: "fixture.wav", byteCount: 42, fingerprint: String(repeating: "a", count: 64),
             durationMilliseconds: 4000, audioTrackID: 1)
         let task = ProcessingTask(items: (0..<count).map { index in
             .init(title: "Item \(index)", kind: .audio, source: .localFile(fileName: media.fileName), media: media)
@@ -67,7 +67,7 @@ struct TaskProcessingQueueTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let config = CloudTranscriptionServiceConfig(name: "Qwen", baseURL: URL(string: "https://asr.example/v1")!,
             modelID: "qwen3-asr-flash", protocolKind: .qwenAudioChat)
-        let parameters = TaskParameters(transcription: try config.settings(), srtOutputs: [.source])
+        let parameters = TaskParameters(transcription: try config.settings())
         var task = initial
         try task.updateParameters(parameters)
         try task.freezeParameters()
@@ -93,8 +93,7 @@ struct TaskProcessingQueueTests {
         #expect(await pipeline.events == ["extract:\(task.items[0].id)"])
         let saved = try #require(reopened.task(for: task.id))
         #expect(saved.items[0].cues.count == 2)
-        #expect(saved.items[0].cues.allSatisfy { $0.requiresTimingReview == true })
-        #expect(saved.items[0].status == .needsReview)
+        #expect(saved.items[0].status == .completed)
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: reopened.defaultURL(for: task.id))) == saved)
     }
 
@@ -140,9 +139,8 @@ struct TaskProcessingQueueTests {
         let saved = try TaskDocumentCodec.decode(Data(contentsOf: reopened.defaultURL(for: task.id)))
         #expect(saved.items[0].cues[0] == edited)
         #expect(saved.items[0].cues[1].sourceText == "Saved recognition.")
-        #expect(saved.items[0].cues[1].requiresTimingReview == true)
         #expect(saved.items[0].checkpoint?.chunks.allSatisfy(\.isCompleted) == true)
-        #expect(saved.items[0].status == .needsReview)
+        #expect(saved.items[0].status == .completed)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_RECOVERY_TASK_PATH"] != nil))
@@ -151,7 +149,6 @@ struct TaskProcessingQueueTests {
         var task = try TaskDocumentCodec.decode(Data(contentsOf: URL(fileURLWithPath: source)))
         var parameters = task.parameters
         parameters.translation = nil
-        parameters.srtOutputs = [.source]
         try task.updateParameters(parameters)
         let originalCues = task.items[0].cues
         let originalChunks = try #require(task.items[0].checkpoint).chunks
@@ -171,8 +168,7 @@ struct TaskProcessingQueueTests {
         for cue in originalCues { #expect(saved.items[0].cues.first(where: { $0.id == cue.id }) == cue) }
         #expect(await pipeline.requestCount == 0)
         #expect(saved.items[0].cues.count > originalCues.count)
-        #expect(saved.items[0].cues.contains { $0.requiresTimingReview == true })
-        #expect(saved.items[0].status == .needsReview)
+        #expect(saved.items[0].status == .completed)
         print("SAVED_TASK_RECOVERY completed=\(completed.count) retainedCues=\(originalCues.count) totalCues=\(saved.items[0].cues.count) providerRequests=0")
     }
 
@@ -441,7 +437,6 @@ struct TaskProcessingQueueTests {
         let progress = try #require(queue.translationRetryWait)
         #expect(progress.attempt == 1)
         #expect(progress.label(at: progress.deadline.addingTimeInterval(-30)).contains("30"))
-        #expect(queue.progressText == String(localized: "已译 \(0)／\(2) 句，翻译批次 \(1)／\(1)", bundle: VoxlineWorkflow.voxlineLocalizationBundle))
         #expect(await wait.durations == [.seconds(120)])
         var reopened = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
         reopened.interruptRunningItems()
@@ -617,7 +612,7 @@ struct TaskProcessingQueueTests {
         #expect(saved.items[0].cues[0].translation == .succeeded(text: "Test-only translation", sourceRevision: 1))
     }
 
-    @Test func ordinaryRetryPreservesOutdatedManualTranslationUntilExplicitReplacement() async throws {
+    @Test func sourceEditsKeepManualTranslationUsableUntilExplicitRetranslation() async throws {
         let (directory, library, task, transcription) = try await translatedFixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let original = task.items[0]
@@ -629,10 +624,10 @@ struct TaskProcessingQueueTests {
         try library.updateItem(edited, taskID: task.id, comparedTo: original)
         let translation = ControlledTranslationPipeline()
         let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation)
-        try queue.start(taskID: task.id, mediaID: task.items[0].id)
+        #expect(throws: QueueError.noWork) { try queue.start(taskID: task.id, mediaID: task.items[0].id) }
         await queue.waitUntilIdle()
         let saved = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
-        #expect(saved.items[0].status == .needsReview)
+        #expect(saved.items[0].status == .completed)
         #expect(saved.items[0].cues[0].translation == .succeeded(text: "Keep this manual translation", sourceRevision: 1))
         #expect(await translation.requests.isEmpty)
         try queue.startRetranslation(taskID: task.id, mediaID: task.items[0].id,

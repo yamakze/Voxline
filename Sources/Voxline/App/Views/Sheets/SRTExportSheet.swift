@@ -24,7 +24,7 @@ public struct SRTExportSheet: View {
         _fileName = State(initialValue: SubtitleExporter.suggestedFileName(mediaTitle: mediaTitle, kind: initialKind))
     }
 
-    private var missingTranslationCount: Int { cues.filter { !$0.hasCurrentTranslation }.count }
+    private var missingTranslationCount: Int { cues.filter { !$0.hasTranslation }.count }
 
     public var body: some View {
         VStack(spacing: 20) {

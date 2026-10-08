@@ -213,7 +213,6 @@ struct TranscriptionProviderTests {
         #expect(recovered.windows[0].usesSegmentTimings == true)
         let cues = try SubtitleSegmenter.segment(recovered, sourceID: UUID(), mediaDurationMilliseconds: 2000).cues
         #expect(cues.map(\.sourceText) == ["Go home.", "Good night."])
-        #expect(cues.allSatisfy { $0.requiresTimingReview == true })
         evidence.outcome = .cancelled
         #expect(throws: (any Error).self) { try WhisperKitTranscriptionProvider.recoverCompletedEvidence(evidence) }
     }
@@ -315,7 +314,6 @@ struct TranscriptionProviderTests {
         #expect(results.contains { $0.windows.contains { $0.usesSegmentTimings == true } })
         for evidence in results {
             let result = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: 1077718)
-            #expect(result.cues.contains { $0.requiresTimingReview == true } == evidence.windows.contains { $0.usesSegmentTimings == true })
         }
         let inventory = try await store.inventory(modelID: settings.modelID)
         guard case .loaded = inventory.state else { Issue.record("Model not reused"); return }

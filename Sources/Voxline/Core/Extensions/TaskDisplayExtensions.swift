@@ -24,8 +24,8 @@ public extension TaskMediaStatus {
         switch self {
         case .pending:
             return String(localized: "待处理", bundle: voxlineLocalizationBundle)
-        case .needsReview:
-            return String(localized: "待确认", bundle: voxlineLocalizationBundle)
+        case .needsTranslation:
+            return String(localized: "待翻译", bundle: voxlineLocalizationBundle)
         case .running(let stage):
             return stage.label
         case .completed:
@@ -75,8 +75,8 @@ public extension ProcessingTaskStatus {
             return String(localized: "未开始", bundle: voxlineLocalizationBundle)
         case .queued:
             return String(localized: "排队中", bundle: voxlineLocalizationBundle)
-        case .needsReview:
-            return String(localized: "待确认", bundle: voxlineLocalizationBundle)
+        case .needsTranslation:
+            return String(localized: "待翻译", bundle: voxlineLocalizationBundle)
         case .running:
             return String(localized: "处理中", bundle: voxlineLocalizationBundle)
         case .interrupted:

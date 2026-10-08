@@ -45,7 +45,7 @@ struct ProcessingTaskTests {
                                                    modelID: "selected-model", targetLanguage: "zh-Hans", serviceID: serviceID, batchSize: 7, systemPrompt: "Keep a conversational style.")
         var parameters = TaskParameters(transcription: TranscriptionSettings(modelID: "selected-whisper",
                                           languageMode: .specified, languageCode: "en"),
-                                        translation: translation, srtOutputs: [.source, .translation, .bilingual])
+                                        translation: translation)
         var task = ProcessingTask(items: [try associatedItem()], parameters: parameters)
         let startedAt = Date(timeIntervalSince1970: 1_000)
         try task.freezeParameters(at: startedAt)
@@ -63,51 +63,8 @@ struct ProcessingTaskTests {
         #expect(!json.contains("bookmark"))
     }
 
-    @Test func legacyMigrationPreservesBookmarkIDAndEditedTranslationWithoutClaimingCompletion() throws {
-        var project = SubtitleProject()
-        project.title = "Legacy review"
-        project.media = try associatedItem().media
-        project.translation = try TranslationSettings(baseURL: URL(string: "https://example.test/v1")!,
-                                                      modelID: "legacy-model", targetLanguage: "zh-Hans")
-        var cue = try SubtitleCue(id: UUID(), startMilliseconds: 100, endMilliseconds: 700, sourceText: "Original")
-        cue.translation = .succeeded(text: "Manual translation", sourceRevision: 1)
-        try cue.replaceSourceText(with: "Manually corrected")
-        project.cues = [cue]
-        let legacyData = try ProjectDocumentCodec.encode(project)
-        let migrated = try TaskDocumentCodec.decode(legacyData)
-        #expect(migrated.id == project.id)
-        #expect(migrated.items[0].id == project.id)
-        #expect(migrated.items[0].media == project.media)
-        #expect(migrated.items[0].cues == project.cues)
-        #expect(migrated.parameters.transcription == project.transcription)
-        #expect(migrated.parameters.translation == project.translation)
-        #expect(migrated.items[0].status == .needsReview)
-        #expect(migrated.status == .needsReview)
-        #expect(migrated.startedAt == nil)
-        #expect(migrated.completedCount == 0)
-        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(migrated)) == migrated)
-        #expect(try ProjectDocumentCodec.decode(legacyData) == project)
-    }
 
-    @Test func emptyLegacyDraftDoesNotInventAMediaFile() throws {
-        let old = SubtitleProject()
-        let migrated = try TaskDocumentCodec.decode(ProjectDocumentCodec.encode(old))
-        #expect(migrated.items.isEmpty)
-        #expect(migrated.status == .draft)
-        #expect(migrated.id == old.id)
-    }
 
-    @Test func cueOnlyLegacyDocumentCanRelinkWithoutLosingEdits() throws {
-        var old = SubtitleProject()
-        old.cues = [try SubtitleCue(id: UUID(), startMilliseconds: 100, endMilliseconds: 700, sourceText: "Keep")]
-        var migrated = try TaskDocumentCodec.decode(ProjectDocumentCodec.encode(old))
-        #expect(migrated.items[0].source == .unassociated)
-        let identity = try #require(associatedItem().media)
-        try migrated.items[0].associateMedia(identity)
-        #expect(migrated.items[0].cues == old.cues)
-        #expect(migrated.items[0].source == .localFile(fileName: identity.fileName))
-        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(migrated)) == migrated)
-    }
 
     @Test func interruptedWorkKeepsAlreadyCommittedResults() throws {
         var task = ProcessingTask(items: [try associatedItem(), try associatedItem()])
@@ -140,11 +97,9 @@ struct ProcessingTaskTests {
     @Test func invalidDraftParametersDoNotReplaceTheLastSelection() throws {
         var task = ProcessingTask()
         var parameters = task.parameters
-        parameters.srtOutputs = [.source, .bilingual]
-        #expect(throws: TaskValidationError.translationRequired) { try task.updateParameters(parameters) }
+        parameters.transcription = .init(modelID: "")
+        #expect(throws: ProjectValidationError.emptyModelID) { try task.updateParameters(parameters) }
         #expect(task.parameters == .baseline)
-        parameters.srtOutputs = [.source, .source]
-        #expect(throws: TaskValidationError.invalidOutputs) { try task.updateParameters(parameters) }
         #expect(throws: ProjectValidationError.invalidSourceLanguage) {
             try TranscriptionSettings(modelID: "model", languageMode: .specified).validate()
         }
@@ -164,7 +119,7 @@ struct ProcessingTaskTests {
     }
 
     private func associatedItem(kind: TaskMediaKind = .video, name: String = "sample.mp4") throws -> TaskMediaItem {
-        let identity = try MediaIdentity(fileName: name, byteCount: 123, sha256: String(repeating: "a", count: 64),
+        let identity = try MediaIdentity(fileName: name, byteCount: 123, fingerprint: String(repeating: "a", count: 64),
                                          durationMilliseconds: 5000, audioTrackID: 1)
         return TaskMediaItem(title: name, kind: kind, source: .localFile(fileName: name), media: identity)
     }

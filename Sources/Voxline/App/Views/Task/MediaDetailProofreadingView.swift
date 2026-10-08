@@ -46,10 +46,6 @@ public struct MediaDetailProofreadingView: View {
         _previewMode = State(initialValue: hasTranslation ? .bilingual : .source)
     }
 
-    private var pendingReviewCuesCount: Int {
-        item.cues.filter { $0.requiresTimingReview == true }.count
-    }
-
     private var filteredCues: [SubtitleCue] {
         if searchQuery.isEmpty { return item.cues }
         let q = searchQuery.lowercased()
@@ -103,28 +99,10 @@ public struct MediaDetailProofreadingView: View {
                         .disabled(item.cues.isEmpty || editingCueID != nil || queue.taskID != nil)
                 }
 
-                if item.media == nil || playbackController.isMediaUnavailable {
-                    Button(String(localized: "重新关联", bundle: appLocalizationBundle), systemImage: "link.badge.plus") {
-                        showRelinkSheet = true
-                    }
+                Button(String(localized: "重新关联", bundle: appLocalizationBundle), systemImage: "link.badge.plus") {
+                    showRelinkSheet = true
                 }
-
-                if pendingReviewCuesCount > 0 {
-                    Button {
-                        do {
-                            var updated = item
-                            try updated.confirmAllTimingReviews()
-                            try onCommit(updated, item)
-                        } catch {
-                            errorMessage = error.localizedDescription
-                        }
-                    } label: {
-                        Label(String(localized: "一键校对 (\(pendingReviewCuesCount))", bundle: appLocalizationBundle), systemImage: "checkmark.seal.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.orange)
-                    .help(String(localized: "批量确认并清除全部待校对标记（共 \(pendingReviewCuesCount) 处）", bundle: appLocalizationBundle))
-                }
+                .disabled(queue.taskID != nil)
 
                 Button(String(localized: "偏移行…", bundle: appLocalizationBundle), systemImage: "timer") {
                     showTimeOffsetSheet = true
@@ -199,19 +177,15 @@ public struct MediaDetailProofreadingView: View {
         }) {
             MediaRelinkSheet(item: item, onCommit: onCommit)
         }
-        .sheet(isPresented: Binding(get: { retranslationCues != nil }, set: { if !$0 { retranslationCues = nil } })) {
+        .confirmationDialog(String(localized: "重新翻译全部字幕？", bundle: appLocalizationBundle),
+                            isPresented: Binding(get: { retranslationCues != nil }, set: { if !$0 { retranslationCues = nil } }), titleVisibility: .visible) {
             if let selected = retranslationCues {
-                RetranslateConfirmationSheet(affectedCues: selected) { replaceExisting in
-                    let ids = selected.filter { cue in
-                        if case .succeeded = cue.translation { return replaceExisting }
-                        return true
-                    }.map(\.id)
-                    do {
-                        try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: ids,
-                            replacingExistingTranslations: replaceExisting)
-                    } catch { errorMessage = error.localizedDescription }
+                Button(String(localized: "重新翻译", bundle: appLocalizationBundle)) {
+                    do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: selected.map(\.id), replacingExistingTranslations: true) }
+                    catch { errorMessage = error.localizedDescription }
                 }
             }
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
         }
 
     }
@@ -339,9 +313,6 @@ public struct MediaDetailProofreadingView: View {
                             Text(translationStatus(for: activeCue))
                                 .font(.caption).foregroundStyle(.orange)
                         }
-                    }
-                    if previewMode != .source, case .succeeded = activeCue.translation, !activeCue.hasCurrentTranslation {
-                        Text(String(localized: "译文待更新", bundle: appLocalizationBundle)).font(.caption2).foregroundStyle(.orange)
                     }
                 }
                 .multilineTextAlignment(.center)
@@ -472,7 +443,7 @@ public struct MediaDetailProofreadingView: View {
                 .background(Color.secondary.opacity(0.1), in: .capsule)
                 .frame(width: 170)
 
-                if previewMode != .source, item.cues.contains(where: { !$0.hasCurrentTranslation }) {
+                if previewMode != .source, item.cues.contains(where: { !$0.hasTranslation }) {
                     Text(String(localized: "未完成翻译可返回队列重试", bundle: appLocalizationBundle))
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -564,32 +535,6 @@ public struct MediaDetailProofreadingView: View {
                 }
                 .buttonStyle(.plain)
 
-                // Status chip
-                if cue.requiresTimingReview == true {
-                    Text(String(localized: "待校对", bundle: appLocalizationBundle))
-                        .font(.caption2.bold())
-                        .foregroundStyle(.orange)
-                        .help(String(localized: "词对齐不可用，使用原始段时间。请播放核对文字与时间。", bundle: appLocalizationBundle))
-                    Button(String(localized: "确认校对", bundle: appLocalizationBundle)) {
-                        do {
-                            var updated = item
-                            try updated.confirmTimingReview(cueID: cue.id)
-                            try onCommit(updated, item)
-                        }
-                        catch { errorMessage = error.localizedDescription }
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-                }
-                if case .succeeded = cue.translation, !cue.hasCurrentTranslation {
-                    Text(String(localized: "待重译", bundle: appLocalizationBundle))
-                        .font(.system(size: 9, weight: .bold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.orange.opacity(0.2), in: .capsule)
-                        .foregroundStyle(.orange)
-                }
-
                 Spacer()
 
                 if isEditing {
@@ -623,7 +568,10 @@ public struct MediaDetailProofreadingView: View {
                 .help(isEditing ? String(localized: "保存编辑", bundle: appLocalizationBundle) : String(localized: "编辑本句", bundle: appLocalizationBundle))
                 .disabled(editingCueID != nil && !isEditing)
 
-                Button(String(localized: "重译本句", bundle: appLocalizationBundle)) { retranslationCues = [cue] }
+                Button(String(localized: "重译本句", bundle: appLocalizationBundle)) {
+                    do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: [cue.id], replacingExistingTranslations: true) }
+                    catch { errorMessage = error.localizedDescription }
+                }
                     .buttonStyle(.plain)
                     .font(.caption)
                     .disabled(editingCueID != nil || queue.taskID != nil)

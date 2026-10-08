@@ -1,4 +1,5 @@
 import AVFoundation
+import CryptoKit
 import Foundation
 import Testing
 import VoxlineCore
@@ -6,6 +7,23 @@ import VoxlineCore
 
 @Suite("Native audio input and inspection reuse")
 struct AudioInspectionTests {
+    @Test func largeAudioFingerprintUsesBoundedHeadAndTailAndSurvivesRename() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("large.wav")
+        try AudioFixture.write(to: url, frameCount: 4_000_000)
+        let inspection = try await MediaInspector().inspect(url)
+        #expect(inspection.byteCount > 2_097_152)
+        let data = try Data(contentsOf: url)
+        let expected = SHA256.hash(data: data.prefix(1_048_576) + data.suffix(1_048_576)).map { String(format: "%02x", $0) }.joined()
+        #expect(inspection.fingerprint == expected)
+        let renamed = directory.appendingPathComponent("renamed.wav")
+        try FileManager.default.moveItem(at: url, to: renamed)
+        let again = try await MediaInspector().inspect(renamed)
+        #expect(try inspection.identity(audioTrackID: inspection.audioTracks[0].id)
+            .matchesContent(of: again.identity(audioTrackID: again.audioTracks[0].id)))
+    }
     @Test(arguments: ["m4a", "mp3", "wav"])
     func standaloneAudioIsDecodableWithoutVideo(extension ext: String) async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -23,7 +41,7 @@ struct AudioInspectionTests {
         #expect(track.isDecodable)
         #expect(!track.codecs.isEmpty)
         let identity = try await inspector.confirm(result, audioTrackID: track.id)
-        #expect(identity.sha256 == result.sha256)
+        #expect(identity.fingerprint == result.fingerprint)
         // Decode actual samples rather than relying solely on AVAsset metadata.
         let reader = try AVAudioFile(forReading: url)
         let buffer = try #require(AVAudioPCMBuffer(pcmFormat: reader.processingFormat, frameCapacity: 1024))
@@ -44,7 +62,7 @@ struct AudioInspectionTests {
         let changed = try await inspector.inspect(url)
         #expect(changed.byteCount != selected.byteCount)
         #expect(changed.durationMilliseconds == 2000)
-        #expect(changed.sha256 != selected.sha256)
+        #expect(changed.fingerprint != selected.fingerprint)
         await #expect(throws: MediaAccessError.fileChanged) {
             try await inspector.confirm(selected, audioTrackID: track.id)
         }
@@ -54,7 +72,7 @@ struct AudioInspectionTests {
                                               ofItemAtPath: url.path)
         let rewritten = try await inspector.inspect(url)
         #expect(rewritten.byteCount == changed.byteCount)
-        #expect(rewritten.sha256 != changed.sha256)
+        #expect(rewritten.fingerprint != changed.fingerprint)
     }
 
     @Test func invalidAndUnsupportedAudioFailExplicitly() async throws {

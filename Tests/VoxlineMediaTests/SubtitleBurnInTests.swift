@@ -8,6 +8,25 @@ import VoxlineCore
 @Suite("Native subtitle burn-in", .serialized, .timeLimit(.minutes(2)))
 @MainActor
 struct SubtitleBurnInTests {
+    @Test func longDialogueFitsPreviewAndExportsWithoutClippingTheSource() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LocalMediaStore(directory: directory.appendingPathComponent("access"))
+        let inspector = MediaInspector()
+        var item = try await fixture(store: store, inspector: inspector, directory: directory)
+        try item.cues[0].replaceSourceText(with: String(repeating: "Very long dialogue with a complete ending. ", count: 30))
+        item.cues[0].translation = .succeeded(text: String(repeating: "完整长句字幕，自动缩小字号。", count: 30), sourceRevision: 1)
+        let plan = try await SubtitleBurnInExporter.composition(for: item, options: BurnInOptions(), mediaStore: store, inspector: inspector)
+        defer { plan.releaseAccess() }
+        let before = try await plan.preview(atMilliseconds: 500)
+        let during = try await plan.preview(atMilliseconds: 1500)
+        #expect(try Self.pixels(before) != Self.pixels(during))
+        let destination = directory.appendingPathComponent("long.mp4")
+        try await SubtitleBurnInExporter.export(plan, to: destination) { _ in }
+        let output = try await inspector.inspect(destination)
+        #expect(output.durationMilliseconds >= 3900)
+        #expect(output.audioTracks.count == 1)
+    }
     private var sourceURL: URL {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("VoxlineMediaTests/Fixtures/multi-audio.mov")
@@ -169,9 +188,8 @@ struct SubtitleBurnInTests {
         let inspector = MediaInspector()
         var item = try await fixture(store: store, inspector: inspector, directory: directory)
         try item.cues[0].replaceSourceText(with: "Edited original")
-        await #expect(throws: SubtitleExportError.incompleteTranslations(1)) {
-            _ = try await SubtitleBurnInExporter.composition(for: item, options: BurnInOptions(), mediaStore: store, inspector: inspector)
-        }
+        let translatedPlan = try await SubtitleBurnInExporter.composition(for: item, options: BurnInOptions(), mediaStore: store, inspector: inspector)
+        translatedPlan.releaseAccess()
         var options = BurnInOptions()
         options.kind = .source
         let plan = try await SubtitleBurnInExporter.composition(for: item, options: options, mediaStore: store, inspector: inspector)
@@ -230,7 +248,7 @@ struct SubtitleBurnInTests {
         let inputAudio = try #require(try await inputAsset.loadTracks(withMediaType: .audio)
             .first { $0.trackID == identity.audioTrackID })
         let inputAudioRange = try await inputAudio.load(.timeRange)
-        #expect(!cues.isEmpty && cues.allSatisfy(\.hasCurrentTranslation))
+        #expect(!cues.isEmpty && cues.allSatisfy(\.hasTranslation))
         let item = TaskMediaItem(title: "S001 已校对短视频", kind: .video, source: .localFile(fileName: source.lastPathComponent),
                                  media: identity, status: .completed, cues: cues)
         let store = LocalMediaStore(directory: directory.appendingPathComponent("access"))
@@ -263,7 +281,7 @@ struct SubtitleBurnInTests {
         sampleItem.status = .pending
         var sampleTask = ProcessingTask(title: "VXL-039 S001 烧录验收", items: [sampleItem])
         try sampleTask.freezeParameters()
-        sampleTask.items[0].status = .needsReview
+        sampleTask.items[0].status = .completed
         try TaskDocumentCodec.encode(sampleTask).write(to: directory.appendingPathComponent("S001.voxline"),options: .atomic)
     }
 }

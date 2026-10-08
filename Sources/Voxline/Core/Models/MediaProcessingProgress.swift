@@ -12,7 +12,7 @@ public extension TaskMediaItem {
         case .pending: return .waiting
         case .running(let stage):
             return stage == .audioExtraction ? .inProgress : .completed
-        case .completed, .needsReview, .translationPaused: return .completed
+        case .completed, .needsTranslation, .translationPaused: return .completed
         case .failed: return .failed
         case .cancelled: return .cancelled
         case .interrupted(let stage):
@@ -30,7 +30,7 @@ public extension TaskMediaItem {
             if stage == .audioExtraction { return .waiting }
             if stage == .transcription { return .inProgress }
             return .completed
-        case .completed, .needsReview, .translationPaused: return .completed
+        case .completed, .needsTranslation, .translationPaused: return .completed
         case .failed: return .failed
         case .cancelled: return .cancelled
         case .interrupted(let stage):
@@ -48,7 +48,8 @@ public extension TaskMediaItem {
         case .pending: return .waiting
         case .running(let stage):
             return stage == .translation ? .inProgress : .waiting
-        case .completed, .needsReview: return .completed
+        case .completed: return .completed
+        case .needsTranslation: return .waiting
         case .translationPaused: return .paused
         case .failed: return .failed
         case .cancelled: return .cancelled

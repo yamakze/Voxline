@@ -388,9 +388,9 @@ struct IOSTaskLibraryView: View {
             case .interrupted, .translationPaused:
                 Circle().fill(Color.orange).frame(width: 6, height: 6)
                 Text(String(localized: "已暂停", bundle: appLocalizationBundle)).foregroundStyle(.orange)
-            case .needsReview:
+            case .needsTranslation:
                 Circle().fill(Color.orange).frame(width: 6, height: 6)
-                Text(String(localized: "待校对", bundle: appLocalizationBundle)).foregroundStyle(.orange)
+                Text(String(localized: "待翻译", bundle: appLocalizationBundle)).foregroundStyle(.orange)
             case .partiallyFailed, .failed:
                 Circle().fill(Color.red).frame(width: 6, height: 6)
                 Text(String(localized: "失败", bundle: appLocalizationBundle)).foregroundStyle(.red)
@@ -840,8 +840,8 @@ private struct IOSTaskDetailView: View {
                 Text(String(localized: "暂停", bundle: appLocalizationBundle)).foregroundStyle(.orange)
             case .failed:
                 Text(String(localized: "失败", bundle: appLocalizationBundle)).foregroundStyle(.red)
-            case .needsReview:
-                Text(String(localized: "待校对", bundle: appLocalizationBundle)).foregroundStyle(.orange)
+            case .needsTranslation:
+                Text(String(localized: "待翻译", bundle: appLocalizationBundle)).foregroundStyle(.orange)
             }
         }
         .font(.caption2.bold())

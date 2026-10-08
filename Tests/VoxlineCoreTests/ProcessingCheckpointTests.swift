@@ -4,6 +4,27 @@ import Testing
 
 @Suite("Durable processing checkpoints")
 struct ProcessingCheckpointTests {
+    @Test func alternatePlaybackMediaPreservesCompletedEvidenceEditsAndTranslationRecovery() throws {
+        var original = try task(translates: true)
+        _ = try complete(&original, index: 0)
+        _ = try complete(&original, index: 1)
+        let record = try #require(original.items[0].checkpoint)
+        let cues = original.items[0].cues
+        let alternate = try MediaIdentity(fileName: "HD.mov", byteCount: 321, fingerprint: String(repeating: "b", count: 64),
+                                          durationMilliseconds: 5000, audioTrackID: 7)
+        try original.items[0].associateMedia(alternate)
+        var reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(original))
+        #expect(reopened.items[0].media == alternate)
+        #expect(reopened.items[0].cues == cues)
+        #expect(reopened.items[0].checkpoint == record)
+        var translated = reopened
+        let batch = try translated.items[0].prepareTranslationBatch(cueIDs: cues.map(\.id))
+        try translated.items[0].beginTranslationBatch(batch)
+        try translated.items[0].commitTranslationBatch(batch, outputs: cues.map { .init(cueID: $0.id, text: "保留。")} )
+        #expect(translated.items[0].status == .completed)
+        #expect(translated.items[0].checkpoint?.chunks == record.chunks)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(translated)) == translated)
+    }
     @Test func coarseCloudTimingUsesTheSameAbsoluteMillisecondEndpoint() throws {
         let settings = TranscriptionSettings(provider: .openAICompatible, modelID: "qwen3-asr-flash",
             cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://example.test/v1")!, protocolKind: .qwenAudioChat))
@@ -16,7 +37,6 @@ struct ProcessingCheckpointTests {
         #expect(result.cues.count == 1)
         #expect(result.cues.first?.startMilliseconds == 234520)
         #expect(result.cues.first?.endMilliseconds == 235260)
-        #expect(result.cues.first?.requiresTimingReview == true)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_CLOUD_TASK_FIXTURE"] != nil))
@@ -52,7 +72,7 @@ struct ProcessingCheckpointTests {
                           TranscriptionChunkRange(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)]
 
     private func task(translates: Bool = false, apple: Bool = false) throws -> ProcessingTask {
-        let media = try MediaIdentity(fileName: "sample.mp4", byteCount: 123, sha256: String(repeating: "a", count: 64),
+        let media = try MediaIdentity(fileName: "sample.mp4", byteCount: 123, fingerprint: String(repeating: "a", count: 64),
                                       durationMilliseconds: 5000, audioTrackID: 1)
         let translation = apple ? try TranslationSettings(appleSourceLanguage: "en", targetLanguage: "zh-Hans", batchSize: 7) : translates ? try TranslationSettings(baseURL: URL(string: "https://example.test/v1")!,
             modelID: "model", targetLanguage: "zh-Hans", serviceID: UUID()) : nil
@@ -65,7 +85,7 @@ struct ProcessingCheckpointTests {
     }
 
     @Test func explicitCloudServiceRebindingPreservesCompletedRecognitionAndManualEdits() throws {
-        let media = try MediaIdentity(fileName: "sample.mp4", byteCount: 123, sha256: String(repeating: "a", count: 64),
+        let media = try MediaIdentity(fileName: "sample.mp4", byteCount: 123, fingerprint: String(repeating: "a", count: 64),
             durationMilliseconds: 5000, audioTrackID: 1)
         let first = TranscriptionSettings(provider: .openAICompatible, modelID: "gemini-test",
             cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://first.example/v1")!, protocolKind: .geminiAudioChat))
@@ -115,7 +135,6 @@ struct ProcessingCheckpointTests {
         var parameters = original.parameters
         parameters.translation = try TranslationSettings(baseURL: URL(string: "https://new.example/v1")!,
             modelID: "new-model", targetLanguage: "zh-Hans", serviceID: UUID(), batchSize: 2)
-        parameters.srtOutputs = [.source, .bilingual]
         try original.updateParameters(parameters)
         #expect(original.items[0].cues == cues)
         #expect(original.items[0].checkpoint?.chunks == chunks)
@@ -166,67 +185,7 @@ struct ProcessingCheckpointTests {
             .succeeded(text: "保留", sourceRevision: 1), .succeeded(text: "继续", sourceRevision: 1)])
     }
 
-    @Test func versionFourFlatAPISettingsKeepFrozenParameters() throws {
-        let original = try task(translates: true)
-        let api = try #require(original.parameters.translation?.api)
-        var object = try #require(JSONSerialization.jsonObject(with: TaskDocumentCodec.encode(original)) as? [String: Any])
-        object["formatVersion"] = 4
-        var parameters = try #require(object["parameters"] as? [String: Any])
-        parameters["translation"] = ["baseURL": api.baseURL.absoluteString, "modelID": api.modelID,
-            "serviceID": try #require(api.serviceID).uuidString, "targetLanguage": "zh-Hans",
-            "batchSize": 30, "systemPrompt": api.systemPrompt] as [String: Any]
-        object["parameters"] = parameters
-        var items = try #require(object["items"] as? [[String: Any]])
-        var checkpoint = try #require(items[0]["checkpoint"] as? [String: Any])
-        checkpoint["parameters"] = parameters
-        items[0]["checkpoint"] = checkpoint
-        object["items"] = items
-        #expect(try TaskDocumentCodec.decode(JSONSerialization.data(withJSONObject: object)) == original)
-    }
 
-    @Test func versionThreeMigratesTranslationDefaultsInTaskAndCheckpointWithoutChangingResults() throws {
-        var original = try task(translates: true)
-        _ = try complete(&original, index: 0)
-        var object = try #require(try JSONSerialization.jsonObject(with: TaskDocumentCodec.encode(original)) as? [String: Any])
-        object["formatVersion"] = 3
-        var parameters = try #require(object["parameters"] as? [String: Any])
-        let api = try #require(original.parameters.translation?.api)
-        var translation: [String: Any] = ["baseURL": api.baseURL.absoluteString,
-            "modelID": api.modelID, "serviceID": try #require(api.serviceID).uuidString,
-            "targetLanguage": try #require(original.parameters.translation).targetLanguage]
-        translation.removeValue(forKey: "batchSize")
-        translation.removeValue(forKey: "systemPrompt")
-        parameters["translation"] = translation
-        object["parameters"] = parameters
-        var items = try #require(object["items"] as? [[String: Any]])
-        var checkpoint = try #require(items[0]["checkpoint"] as? [String: Any])
-        checkpoint["parameters"] = parameters
-        items[0]["checkpoint"] = checkpoint
-        object["items"] = items
-        let legacy = try JSONSerialization.data(withJSONObject: object)
-        let migrated = try TaskDocumentCodec.decode(legacy)
-        #expect(migrated == original)
-        #expect(migrated.formatVersion == ProcessingTask.currentFormatVersion)
-        #expect(migrated.parameters.translation?.batchSize == 30)
-        #expect(migrated.parameters.translation?.api?.systemPrompt == TranslationSettings.defaultSystemPrompt)
-        #expect(migrated.items[0].checkpoint?.parameters == migrated.parameters)
-        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(migrated)) == migrated)
-        for invalid in [NSNull(), 0, "seven"] as [Any] {
-            translation["batchSize"] = invalid
-            parameters["translation"] = translation
-            object["parameters"] = parameters
-            #expect(throws: (any Error).self) {
-                try TaskDocumentCodec.decode(JSONSerialization.data(withJSONObject: object))
-            }
-        }
-        translation["batchSize"] = 30
-        translation["systemPrompt"] = "  "
-        parameters["translation"] = translation
-        object["parameters"] = parameters
-        #expect(throws: ProjectValidationError.emptyTranslationSystemPrompt) {
-            try TaskDocumentCodec.decode(JSONSerialization.data(withJSONObject: object))
-        }
-    }
 
     private func evidence(range: TranscriptionChunkRange, settings: TranscriptionSettings = .whisperKitBaseline,
                           outcome: TranscriptionEvidence.Outcome = .completed) throws -> TranscriptionEvidence {
@@ -264,7 +223,7 @@ struct ProcessingCheckpointTests {
         task.items[0].cues[0].startMilliseconds += 50
         task.items[0].cues[0].endMilliseconds += 50
         try task.items[0].editSubtitle(comparedTo: original, sourceText: "Corrected", translationText: "Original translation")
-        #expect(task.items[0].status == .needsReview)
+        #expect(task.items[0].status == .completed)
         #expect(task.items[0].cues[0].sourceRevision == 2)
         #expect(task.items[0].cues[0].translation == .succeeded(text: "Original translation", sourceRevision: 1))
         #expect(task.items[0].cues[0].startMilliseconds == original.startMilliseconds + 50)
@@ -279,30 +238,34 @@ struct ProcessingCheckpointTests {
         #expect(task.items[0].cues[0].translation == .succeeded(text: "Current translation", sourceRevision: 2))
         #expect(task.items[0].checkpoint == evidence)
         #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)) == task)
+        let translated = task.items[0].cues[0]
+        try task.items[0].editSubtitle(comparedTo: translated, sourceText: translated.sourceText, translationText: "")
+        #expect(task.items[0].status == .needsTranslation)
+        #expect(task.items[0].transcriptionState == .completed)
+        #expect(task.items[0].translationState == .waiting)
+        #expect(task.items[0].checkpoint == evidence)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)) == task)
     }
 
-    @Test func proofreadingKeepsTimingReviewLegacyAndFailureStates() throws {
+    @Test func proofreadingRetainsFailureAndUnprocessedStates() throws {
         var task = try task()
         _ = try complete(&task, index: 0)
         _ = try complete(&task, index: 1)
-        task.items[0].cues[0].requiresTimingReview = true
-        task.items[0].status = .needsReview
+        task.items[0].status = .needsTranslation
         let original = task.items[0].cues[0]
         try task.items[0].editSubtitle(comparedTo: original, sourceText: "Reviewed text", translationText: "")
-        #expect(task.items[0].status == .needsReview)
-        try task.items[0].confirmTimingReview(cueID: original.id)
         #expect(task.items[0].status == .completed)
-        var legacy = task.items[0]
-        legacy.checkpoint = nil
-        legacy.status = .needsReview
-        try legacy.editSubtitle(comparedTo: legacy.cues[0], sourceText: "Legacy edit", translationText: "")
-        #expect(legacy.status == .needsReview)
+        var unprocessed = task.items[0]
+        unprocessed.checkpoint = nil
+        unprocessed.status = .pending
+        try unprocessed.editSubtitle(comparedTo: unprocessed.cues[0], sourceText: "Imported edit", translationText: "")
+        #expect(unprocessed.status == .pending)
         task.items[0].status = .failed(reason: "Unresolved service failure")
         try task.items[0].editSubtitle(comparedTo: task.items[0].cues[0], sourceText: "Another edit", translationText: "")
         #expect(task.items[0].status == .failed(reason: "Unresolved service failure"))
     }
 
-    @Test func recoveredTimingsRequireExplicitReviewAfterTranslationAndSurviveRestart() throws {
+    @Test func recoveredTimingsCompleteAfterTranslationAndSurviveRestart() throws {
         var original = try task(translates: true)
         _ = try complete(&original, index: 0)
         let chunk = try #require(original.items[0].checkpoint?.chunks[1])
@@ -315,19 +278,16 @@ struct ProcessingCheckpointTests {
             language: "en", skippedAsNoSpeech: false, segmentsBeforeAlignment: [raw],
             alignedSegments: [collapsed], usesSegmentTimings: true)]
         let result = try SubtitleSegmenter.segment(recovered, sourceID: sourceID, mediaDurationMilliseconds: 5000)
-        #expect(result.cues[0].requiresTimingReview == true)
         try original.items[0].commitTranscriptionChunk(chunk.id, result: result)
         let batchID = try original.items[0].prepareTranslationBatch(cueIDs: original.items[0].cues.map(\.id))
         try original.items[0].beginTranslationBatch(batchID)
         try original.items[0].commitTranslationBatch(batchID, outputs: original.items[0].cues.map {
             TranslationBatchOutput(cueID: $0.id, text: "保留。")
         })
-        #expect(original.items[0].status == .needsReview)
-        var reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(original))
+        #expect(original.items[0].status == .completed)
+        let reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(original))
         #expect(reopened == original)
-        try reopened.items[0].confirmTimingReview(cueID: result.cues[0].id)
         #expect(reopened.items[0].status == .completed)
-        #expect(reopened.items[0].cues.last?.requiresTimingReview == nil)
         #expect(reopened.items[0].checkpoint == original.items[0].checkpoint)
         #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(reopened)) == reopened)
     }
@@ -409,7 +369,7 @@ struct ProcessingCheckpointTests {
             try task.items[0].recoveryPlan(media: record.media, parameters: parameters, ranges: ranges)
         }
         let differentTrack = try MediaIdentity(fileName: record.media.fileName, byteCount: record.media.byteCount,
-            sha256: record.media.sha256, durationMilliseconds: 5000, audioTrackID: 2)
+            fingerprint: record.media.fingerprint, durationMilliseconds: 5000, audioTrackID: 2)
         #expect(throws: CheckpointError.incompatibleContext) {
             try task.items[0].recoveryPlan(media: differentTrack, parameters: task.parameters, ranges: ranges)
         }
@@ -451,13 +411,12 @@ struct ProcessingCheckpointTests {
         try reopened.items[0].beginTranslationBatch(second)
         try reopened.items[0].commitTranslationBatch(second, outputs: [.init(cueID: ids[1], text: "继续")])
         #expect(reopened.items[0].status == .completed)
-        #expect(reopened.items[0].cues.allSatisfy { $0.hasCurrentTranslation })
+        #expect(reopened.items[0].cues.allSatisfy { $0.hasTranslation })
         try reopened.items[0].cues[0].replaceSourceText(with: "Edited again")
-        reopened.items[0].status = .needsReview
         let edited = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(reopened))
         #expect(edited.items[0].cues[0].translation == .succeeded(text: "保留", sourceRevision: 1))
-        #expect(!edited.items[0].cues[0].hasCurrentTranslation)
-        #expect(try edited.items[0].recoveryPlan(media: record.media, parameters: edited.parameters, ranges: ranges).untranslatedCueIDs == [ids[0]])
+        #expect(edited.items[0].cues[0].hasTranslation)
+        #expect(try edited.items[0].recoveryPlan(media: record.media, parameters: edited.parameters, ranges: ranges).untranslatedCueIDs.isEmpty)
     }
 
     @Test(arguments: [true, false])
@@ -555,27 +514,6 @@ struct ProcessingCheckpointTests {
         #expect(task == edited)
     }
 
-    @Test func versionTwoMigrationPreservesResultsWithoutInventingCheckpoints() throws {
-        var original = ProcessingTask(items: [.init(title: "Legacy", kind: .audio, source: .unassociated)])
-        original.items[0].cues = [try SubtitleCue(id: UUID(), startMilliseconds: 0, endMilliseconds: 500, sourceText: "Keep")]
-        var object = try #require(JSONSerialization.jsonObject(with: TaskDocumentCodec.encode(original)) as? [String: Any])
-        object["formatVersion"] = 2
-        let data = try JSONSerialization.data(withJSONObject: object)
-        let reopened = try TaskDocumentCodec.decode(data)
-        #expect(reopened.formatVersion == ProcessingTask.currentFormatVersion)
-        #expect(reopened.id == original.id)
-        #expect(reopened.items == original.items)
-        #expect(reopened.items[0].checkpoint == nil)
-        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(reopened)) == reopened)
-        var invalid = try task()
-        invalid.items[0].status = .completed
-        #expect(throws: CheckpointError.incompleteWork) { try TaskDocumentCodec.encode(invalid) }
-        var corrupted = try #require(JSONSerialization.jsonObject(with: TaskDocumentCodec.encode(task())) as? [String: Any])
-        corrupted["formatVersion"] = 2
-        #expect(throws: CheckpointError.invalidRecord) {
-            try TaskDocumentCodec.decode(JSONSerialization.data(withJSONObject: corrupted))
-        }
-    }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_AUDIO_CACHE_MANIFEST"] != nil))
     func realSavedS001EvidenceSurvivesDocumentReopeningAndCacheRemoval() throws {

@@ -1,61 +1,16 @@
 import Foundation
 
-public struct SubtitleProject: Codable, Equatable, Sendable {
-    public static let currentFormatVersion = 1
-    public let formatVersion: Int
-    public let id: UUID
-    public var title: String
-    public var media: MediaIdentity?
-    public var transcription: TranscriptionSettings
-    public var translation: TranslationSettings?
-    public var cues: [SubtitleCue]
-
-    public init() {
-        formatVersion = Self.currentFormatVersion
-        id = UUID()
-        title = String(localized: "未命名项目", bundle: voxlineLocalizationBundle)
-        media = nil
-        transcription = .whisperKitBaseline
-        translation = nil
-        cues = []
-    }
-
-    public func validate() throws {
-        guard formatVersion == Self.currentFormatVersion else {
-            throw ProjectValidationError.unsupportedVersion(formatVersion)
-        }
-        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ProjectValidationError.emptyTitle
-        }
-        try media?.validate()
-        try transcription.validate()
-        try translation?.validate()
-        try SubtitleCue.validateTimeline(cues, within: media)
-    }
-
-    public mutating func associateMedia(_ candidate: MediaIdentity) throws {
-        try candidate.validate()
-        if let media, !media.matchesContent(of: candidate) {
-            throw ProjectValidationError.differentMedia
-        }
-        var updated = self
-        if updated.media == nil { updated.media = candidate }
-        try updated.validate()
-        self = updated
-    }
-}
-
 public struct MediaIdentity: Codable, Equatable, Sendable {
     public let fileName: String
     public let byteCount: Int64
-    public let sha256: String
+    public let fingerprint: String
     public let durationMilliseconds: Int64
     public let audioTrackID: Int32
 
-    public init(fileName: String, byteCount: Int64, sha256: String, durationMilliseconds: Int64, audioTrackID: Int32) throws {
+    public init(fileName: String, byteCount: Int64, fingerprint: String, durationMilliseconds: Int64, audioTrackID: Int32) throws {
         self.fileName = fileName
         self.byteCount = byteCount
-        self.sha256 = sha256
+        self.fingerprint = fingerprint
         self.durationMilliseconds = durationMilliseconds
         self.audioTrackID = audioTrackID
         try validate()
@@ -64,14 +19,14 @@ public struct MediaIdentity: Codable, Equatable, Sendable {
     public func validate() throws {
         guard !fileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !fileName.contains("/"), !fileName.contains("\\"), byteCount > 0, durationMilliseconds > 0,
-              audioTrackID != 0, sha256.utf8.count == 64,
-              sha256.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
+              audioTrackID != 0, fingerprint.utf8.count == 64,
+              fingerprint.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
             throw ProjectValidationError.invalidMediaIdentity
         }
     }
 
     public func matchesContent(of other: MediaIdentity) -> Bool {
-        byteCount == other.byteCount && sha256 == other.sha256 &&
+        byteCount == other.byteCount && fingerprint == other.fingerprint &&
         durationMilliseconds == other.durationMilliseconds && audioTrackID == other.audioTrackID
     }
 }
@@ -169,34 +124,6 @@ public struct TranslationSettings: Codable, Equatable, Sendable {
         try validate()
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case engine, targetLanguage, batchSize
-        case serviceID, baseURL, modelID, systemPrompt // Decode-only legacy API settings.
-    }
-
-    public init(from decoder: any Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        targetLanguage = try values.decode(String.self, forKey: .targetLanguage)
-        batchSize = try values.contains(.batchSize) ? values.decode(Int.self, forKey: .batchSize) : Self.defaultBatchSize
-        if values.contains(.engine) {
-            engine = try values.decode(Engine.self, forKey: .engine)
-        } else {
-            engine = .openAICompatible(APIConfiguration(
-                serviceID: try values.decodeIfPresent(UUID.self, forKey: .serviceID),
-                baseURL: try values.decode(URL.self, forKey: .baseURL),
-                modelID: try values.decode(String.self, forKey: .modelID),
-                systemPrompt: try values.contains(.systemPrompt) ? values.decode(String.self, forKey: .systemPrompt) : Self.defaultSystemPrompt))
-        }
-        try validate()
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var values = encoder.container(keyedBy: CodingKeys.self)
-        try values.encode(engine, forKey: .engine)
-        try values.encode(targetLanguage, forKey: .targetLanguage)
-        try values.encode(batchSize, forKey: .batchSize)
-    }
-
     public func validate() throws {
         guard batchSize > 0 else { throw ProjectValidationError.invalidTranslationBatchSize }
         guard !targetLanguage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -223,7 +150,6 @@ public struct TranslationSettings: Codable, Equatable, Sendable {
 
 public enum ProjectValidationError: Error, LocalizedError, Equatable {
     case unsupportedVersion(Int)
-    case emptyTitle
     case invalidMediaIdentity
     case emptyModelID
     case invalidSourceLanguage
@@ -241,8 +167,7 @@ public enum ProjectValidationError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .unsupportedVersion(let version): String(localized: "不支持项目格式版本 \(version)，请使用兼容版本的 Voxline。", bundle: voxlineLocalizationBundle)
-        case .emptyTitle: String(localized: "项目名称不能为空。", bundle: voxlineLocalizationBundle)
-        case .invalidMediaIdentity: String(localized: "媒体身份无效，请检查文件信息、哈希、时长和所选音轨。", bundle: voxlineLocalizationBundle)
+        case .invalidMediaIdentity: String(localized: "媒体文件信息无效。", bundle: voxlineLocalizationBundle)
         case .emptyModelID: String(localized: "转写模型不能为空。", bundle: voxlineLocalizationBundle)
         case .invalidSourceLanguage: String(localized: "请选择自动识别或明确的原文语言。", bundle: voxlineLocalizationBundle)
         case .invalidTranslationBatchSize: String(localized: "每批字幕数量必须是正整数。", bundle: voxlineLocalizationBundle)
@@ -254,7 +179,7 @@ public enum ProjectValidationError: Error, LocalizedError, Equatable {
         case .duplicateCue: String(localized: "项目包含重复的字幕 ID。", bundle: voxlineLocalizationBundle)
         case .overlappingOrUnorderedCue: String(localized: "字幕时间重叠或顺序错误，请校正后保存。", bundle: voxlineLocalizationBundle)
         case .cueOutsideMedia: String(localized: "字幕时间超出媒体范围。", bundle: voxlineLocalizationBundle)
-        case .differentMedia: String(localized: "媒体内容或音轨与当前条目不一致，请选择原媒体；其他媒体需添加新条目。", bundle: voxlineLocalizationBundle)
+        case .differentMedia: String(localized: "媒体文件已更改，请重新关联。", bundle: voxlineLocalizationBundle)
         }
     }
 }

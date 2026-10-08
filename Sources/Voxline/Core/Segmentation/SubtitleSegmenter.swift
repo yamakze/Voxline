@@ -78,7 +78,6 @@ public enum SubtitleSegmenter {
         var previousSpeechEnd = lower
         var entries: [SegmentedSubtitle] = []
         var excluded: [Int] = []
-        let recoveredWindows = evidence.windows.filter { $0.usesSegmentTimings == true }
 
         for (segmentIndex, raw) in evidence.segments.enumerated() {
             if raw.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -88,19 +87,21 @@ public enum SubtitleSegmenter {
                 excluded.append(segmentIndex)
                 continue
             }
+            // Service timestamps and container ranges can disagree by a codec frame.
+            // Clamp only a 50 ms edge discrepancy; preserve raw evidence for inspection.
             guard raw.startSeconds.isFinite, raw.endSeconds.isFinite,
-                  raw.startSeconds >= previousSegmentEnd, raw.endSeconds > raw.startSeconds,
-                  raw.endSeconds <= upper else { throw SubtitleSegmentationError.invalidSegment(segmentIndex) }
-            previousSegmentEnd = raw.endSeconds
+                  raw.startSeconds >= previousSegmentEnd - 0.05,
+                  raw.endSeconds <= upper + 0.05 else { throw SubtitleSegmentationError.invalidSegment(segmentIndex) }
+            let segmentStart = max(previousSegmentEnd, raw.startSeconds)
+            let segmentEnd = min(upper, raw.endSeconds)
+            guard segmentEnd > segmentStart else { throw SubtitleSegmentationError.invalidSegment(segmentIndex) }
+            previousSegmentEnd = segmentEnd
 
             guard let words = raw.words, !words.isEmpty else {
-                guard raw.startSeconds >= previousSpeechEnd else { throw SubtitleSegmentationError.invalidSegment(segmentIndex) }
-                previousSpeechEnd = raw.endSeconds
-                var cue = try timedCue(sourceID: sourceID, segmentIndex: segmentIndex, wordIndex: nil,
-                                       start: raw.startSeconds, end: raw.endSeconds, text: raw.text)
-                if raw.timingSource == .modelGenerated || raw.timingSource == .audioRange || recoveredWindows.contains(where: { $0.segmentsBeforeAlignment.contains(raw) }) {
-                    cue.requiresTimingReview = true
-                }
+                guard segmentStart >= previousSpeechEnd else { throw SubtitleSegmentationError.invalidSegment(segmentIndex) }
+                previousSpeechEnd = segmentEnd
+                let cue = try timedCue(sourceID: sourceID, segmentIndex: segmentIndex, wordIndex: nil,
+                                       start: segmentStart, end: segmentEnd, text: raw.text)
                 entries.append(SegmentedSubtitle(cue: cue, segmentIndex: segmentIndex, wordRange: nil,
                                                  alignment: .segment, reviewReasons: [.missingWordTiming]))
                 continue
@@ -110,11 +111,11 @@ public enum SubtitleSegmenter {
             }
             for word in words {
                 guard word.startSeconds.isFinite, word.endSeconds.isFinite,
-                      word.startSeconds >= previousSpeechEnd, word.endSeconds >= word.startSeconds,
-                      word.startSeconds >= lower, word.endSeconds <= upper else {
+                      word.startSeconds >= previousSpeechEnd - 0.05, word.endSeconds >= word.startSeconds,
+                      word.startSeconds >= lower - 0.05, word.endSeconds <= upper + 0.05 else {
                     throw SubtitleSegmentationError.invalidWords(segmentIndex)
                 }
-                previousSpeechEnd = word.endSeconds
+                previousSpeechEnd = min(upper, max(previousSpeechEnd, word.endSeconds))
             }
 
             var start = 0
@@ -159,9 +160,14 @@ public enum SubtitleSegmenter {
         for index in entries.indices {
             let original = entries[index]
             var cue = original.cue
-            let nextStart = index + 1 < entries.count ? entries[index + 1].cue.startMilliseconds : rangeEnd
-            guard cue.startMilliseconds >= evidence.sourceStartMilliseconds, cue.endMilliseconds <= rangeEnd,
-                  cue.endMilliseconds <= nextStart else { throw SubtitleSegmentationError.invalidCueTiming(original.segmentIndex) }
+            cue.startMilliseconds = max(evidence.sourceStartMilliseconds, cue.startMilliseconds,
+                                        index > 0 ? entries[index - 1].cue.endMilliseconds : evidence.sourceStartMilliseconds)
+            cue.endMilliseconds = min(rangeEnd, cue.endMilliseconds)
+            let nextStart = index + 1 < entries.count ? max(cue.startMilliseconds, entries[index + 1].cue.startMilliseconds) : rangeEnd
+            if cue.endMilliseconds > nextStart, cue.endMilliseconds - nextStart <= 50 {
+                cue.endMilliseconds = nextStart
+            }
+            guard cue.endMilliseconds > cue.startMilliseconds, cue.endMilliseconds <= nextStart else { throw SubtitleSegmentationError.invalidCueTiming(original.segmentIndex) }
             let duration = cue.endMilliseconds - cue.startMilliseconds
             if duration < policy.minimumDurationMilliseconds {
                 cue.endMilliseconds += min(policy.minimumDurationMilliseconds - duration, nextStart - cue.endMilliseconds)
@@ -182,7 +188,7 @@ public enum SubtitleSegmenter {
     private static func timedCue(sourceID: UUID, segmentIndex: Int, wordIndex: Int?,
                                  start: Double, end: Double, text: String) throws -> SubtitleCue {
         guard segmentIndex <= 0xFFFFFF, wordIndex.map({ $0 < Int(UInt32.max) }) != false,
-              start >= 0, end * 1000 < Double(Int64.max) else { throw SubtitleSegmentationError.invalidRange }
+              start >= -0.05, end * 1000 < Double(Int64.max) else { throw SubtitleSegmentationError.invalidRange }
         var bytes = withUnsafeBytes(of: sourceID.uuid) { Array($0) }
         let anchor = (UInt64(segmentIndex) << 32) | UInt64(wordIndex.map(UInt32.init) ?? UInt32.max)
         // Preserve the UUID variant/version and use a bijection within the source namespace.
@@ -194,7 +200,7 @@ public enum SubtitleSegmenter {
         guard endMilliseconds > startMilliseconds, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SubtitleSegmentationError.invalidCueTiming(segmentIndex)
         }
-        return try SubtitleCue(id: id, startMilliseconds: startMilliseconds, endMilliseconds: endMilliseconds,
+        return try SubtitleCue(id: id, startMilliseconds: max(0, startMilliseconds), endMilliseconds: endMilliseconds,
                                sourceText: text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 

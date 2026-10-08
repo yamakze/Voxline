@@ -68,13 +68,20 @@ public struct OpenAICompatibleTranslationClient: Sendable {
         guard envelope.choices.count == 1, let choice = envelope.choices.first, choice.index == 0,
               choice.message.role == "assistant", choice.message.refusal == nil else { throw SubtitleTranslationError.invalidResponse }
         guard choice.finish_reason == "stop" else { throw SubtitleTranslationError.incompleteResponse(choice.finish_reason) }
-        guard let content = choice.message.content, let json = content.data(using: .utf8),
+        guard var content = choice.message.content?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            throw SubtitleTranslationError.invalidTranslationResult
+        }
+        // Accept a complete Markdown fence without accepting partial or invented results.
+        if content.hasPrefix("```"), content.hasSuffix("```"), let newline = content.firstIndex(of: "\n") {
+            content = String(content[content.index(after: newline)...].dropLast(3))
+        }
+        guard let json = content.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
-              Set(root.keys) == ["translations"], let values = root["translations"] as? [[String: Any]] else {
+              let values = root["translations"] as? [[String: Any]] else {
             throw SubtitleTranslationError.invalidTranslationResult
         }
         let outputs = try values.map { value -> TranslationBatchOutput in
-            guard Set(value.keys) == ["id", "text"], let rawID = value["id"] as? String, let id = UUID(uuidString: rawID),
+            guard let rawID = value["id"] as? String, let id = UUID(uuidString: rawID),
                   let text = value["text"] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw SubtitleTranslationError.invalidTranslationResult
             }
@@ -118,7 +125,7 @@ public enum SubtitleTranslationError: Error, LocalizedError, Equatable {
         case .invalidRequest: String(localized: "翻译输入为空、重复或与当前字幕不一致。", bundle: voxlineLocalizationBundle)
         case .requestTooLarge: String(localized: "字幕与相邻上下文超过本次请求容量，请缩短过长字幕后重试。", bundle: voxlineLocalizationBundle)
         case .invalidResponse: String(localized: "聊天接口返回了无效的响应。", bundle: voxlineLocalizationBundle)
-        case .invalidTranslationResult: String(localized: "译文必须是纯 JSON，完整匹配字幕 ID，且每条译文非空。", bundle: voxlineLocalizationBundle)
+        case .invalidTranslationResult: String(localized: "翻译结果缺失或格式无效，本批次未保存。", bundle: voxlineLocalizationBundle)
         case .incompleteResponse(let reason): String(localized: "聊天响应未完整结束（\(reason)），本批次未提交。", bundle: voxlineLocalizationBundle)
         case .missingCredential: String(localized: "服务要求鉴权，请配置 API 密钥。", bundle: voxlineLocalizationBundle)
         case .authenticationFailed: String(localized: "鉴权失败：API 密钥无效或未授权。", bundle: voxlineLocalizationBundle)
