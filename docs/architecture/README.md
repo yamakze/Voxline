@@ -268,7 +268,7 @@ Task v6 保存多协议、时间来源与独立识别成果；读取 v1–v5 时
 
 ConfiguredMediaTranscriptionPipeline 共用所选音轨的最多 120 秒 PCM 提取。Audio Transcriptions 使用 whisper-1、WAV multipart、verbose_json 与 segment 时间戳；其他模型明确拒绝。音频聊天先由 VoxlineWhisperKit 的 SpeechAudioChunker 复用固定 SDK EnergyVAD，20 毫秒检测、200 毫秒语音边界扩展、合并相交区间，连续语音拆为最多 8 秒的 PCM16 WAV，保留源时间偏移及分块检查点。检测无活动的块记录空结果且不请求服务。能量 VAD 是粗粒度检测，噪声、低音量和语音边界的质量需实际校对，不声明词级精度。
 
-AudioChatTranscriptionProvider 为 Gemini 构造裸 Base64 加 format 和固定 JSON 结果请求，为百炼构造音频 Data URL 与 asr_options；不把聊天兼容当作 Audio Transcriptions 兼容。限定短块、原始音频大小及完整 finish_reason，结果截断、格式或时间无效时明确失败。请求串行；仅 HTTP 429／503 最多重试三次，复用既有退避计算并遵守 Retry-After，等待可取消。耗尽后停止当前媒体剩余识别请求，已提交块和其他媒体保持既有恢复规则。超时和无响应不自动重发，避免未知处理结果下重复外发。
+AudioChatTranscriptionProvider 为 Gemini 构造裸 Base64 加 format 和固定 JSON 结果请求，为百炼构造音频 Data URL 与 asr_options；不把聊天兼容当作 Audio Transcriptions 兼容。 百炼上传不足 1 秒的语音块时，将有效 PCM16 原样保留并在末尾补静音至 1 秒，避免短尾块被服务判为音频为空；只扩展上传音频，识别证据、字幕范围及已有检查点仍使用原始时间。此适配也用于已有失败块重试，不改变分块或重发已完成块。限定短块、原始音频大小及完整 finish_reason，结果截断、格式或时间无效时明确失败。请求串行；仅 HTTP 429／503 最多重试三次，复用既有退避计算并遵守 Retry-After，等待可取消。耗尽后停止当前媒体剩余识别请求，已提交块和其他媒体保持既有恢复规则。超时和无响应不自动重发，避免未知处理结果下重复外发。
 
 CloudTranscriptionResult 保存完整文本、可选相对段时间及时间来源；RawTranscriptionSegment 记录 service、modelGenerated 或 audioRange，不伪造词时间或概率。模型生成时间通过范围、顺序和文本覆盖校验，纯文本对应实际语音区间；两者生成字幕均 requiresTimingReview。CloudTranscriptionAlignment 独立于 HTTP，队列恢复失败／取消块中的识别结果时只重做对齐，失败保留原结果。有效服务时间继续走原切分路径。
 

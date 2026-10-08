@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Synchronization
 import Testing
@@ -198,6 +199,80 @@ struct CloudTranscriptionTests {
         #expect(ASRStubProtocol.count.withLock { $0 } == 0)
         let long = try TranscriptionAudio(localURL: url, sourceStartMilliseconds: 0, durationMilliseconds: 10_000)
         await #expect(throws: TranscriptionFailure.self) { try await provider.transcribeEvidence(audio: long) }
+    }
+
+    @Test func qwenShortPCMUploadsSilenceWithoutChangingRecognitionRange() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("tail.wav")
+        let format = try #require(AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 320))
+        buffer.frameLength = 320
+        let samples = try #require(buffer.int16ChannelData?[0])
+        for index in 0..<320 { samples[index] = Int16(index - 160) }
+        do { let file = try AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatInt16, interleaved: true); try file.write(from: buffer) }
+        let original = try Data(contentsOf: url)
+        let audio = try TranscriptionAudio(localURL: url, sourceStartMilliseconds: 4_130_000, durationMilliseconds: 20)
+        let settings = try CloudTranscriptionServiceConfig(name: "Qwen", baseURL: URL(string: "https://asr.example/v1")!,
+            modelID: "qwen3-asr-flash", protocolKind: .qwenAudioChat).settings()
+        let session = session()
+        defer { session.invalidateAndCancel() }
+        let provider = try AudioChatTranscriptionProvider(settings: settings, apiKey: "", session: session, evidenceDirectory: root)
+        let padded = try provider.qwenShortAudioData(audio: audio)
+        let paddedURL = root.appendingPathComponent("padded.wav")
+        try padded.write(to: paddedURL)
+        let decoded = try AVAudioFile(forReading: paddedURL, commonFormat: .pcmFormatInt16, interleaved: true)
+        let decodedBuffer = try #require(AVAudioPCMBuffer(pcmFormat: decoded.processingFormat, frameCapacity: 16_000))
+        try decoded.read(into: decodedBuffer)
+        let decodedSamples = try #require(decodedBuffer.int16ChannelData?[0])
+        #expect(decoded.length == 16_000 && decodedBuffer.frameLength == 16_000)
+        #expect((0..<320).allSatisfy { decodedSamples[$0] == samples[$0] })
+        #expect((320..<16_000).allSatisfy { decodedSamples[$0] == 0 })
+        ASRStubProtocol.response.withLock { $0 = (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"Tail"}}]}"#.utf8)) }
+        let evidence = try await provider.transcribeEvidence(audio: audio)
+        #expect(evidence.durationMilliseconds == 20 && evidence.sourceStartMilliseconds == 4_130_000)
+        #expect(evidence.segments.first?.endSeconds == 4130.02)
+        #expect(evidence.segments.first?.timingSource == .audioRange)
+        #expect(try Data(contentsOf: url) == original)
+        let inconsistent = try TranscriptionAudio(localURL: url, sourceStartMilliseconds: 0, durationMilliseconds: 80)
+        await #expect(throws: TranscriptionFailure.self) { try await provider.transcribeEvidence(audio: inconsistent) }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_QWEN_RETRY_FIXTURE"] != nil))
+    func realQwenShortRetryKeepsCompletedTaskResults() async throws {
+        struct Fixture: Decodable {
+            let taskPath: String
+            let audioPaths: [String]
+        }
+        let environment = ProcessInfo.processInfo.environment
+        let fixturePath = try #require(environment["VOXLINE_QWEN_RETRY_FIXTURE"])
+        let key = try #require(environment["VOXLINE_QWEN_API_KEY"])
+        let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(fileURLWithPath: fixturePath)))
+        let original = try TaskDocumentCodec.decode(Data(contentsOf: URL(fileURLWithPath: fixture.taskPath)))
+        var task = original
+        let originalItem = try #require(original.items.first)
+        let checkpoint = try #require(originalItem.checkpoint)
+        let pending = checkpoint.chunks.filter { !$0.isCompleted }
+        #expect(pending.count == fixture.audioPaths.count)
+        let root = URL(fileURLWithPath: fixturePath).deletingLastPathComponent().appendingPathComponent("qwen-retry-evidence")
+        let provider = try AudioChatTranscriptionProvider(settings: task.parameters.transcription, apiKey: key, evidenceDirectory: root)
+        for (chunk, path) in zip(pending, fixture.audioPaths) {
+            let audio = try TranscriptionAudio(localURL: URL(fileURLWithPath: path),
+                sourceStartMilliseconds: chunk.range.sourceStartMilliseconds, durationMilliseconds: chunk.range.durationMilliseconds)
+            let sourceID = try task.items[0].beginTranscriptionChunk(chunk.id)
+            let evidence = try await provider.transcribeEvidence(audio: audio)
+            let result = try SubtitleSegmenter.segment(evidence, sourceID: sourceID,
+                mediaDurationMilliseconds: checkpoint.media.durationMilliseconds)
+            try task.items[0].commitTranscriptionChunk(chunk.id, result: result)
+        }
+        #expect(task.items[0].checkpoint?.chunks.allSatisfy(\.isCompleted) == true)
+        for chunk in checkpoint.chunks where chunk.isCompleted {
+            #expect(task.items[0].checkpoint?.chunks.first(where: { $0.id == chunk.id }) == chunk)
+        }
+        for cue in originalItem.cues { #expect(task.items[0].cues.first(where: { $0.id == cue.id }) == cue) }
+        #expect(task.parameters == original.parameters)
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)) == task)
     }
 
     @Test @MainActor func metadataHasNoKeyAndEndpointChangesRequireExplicitRebinding() async throws {
