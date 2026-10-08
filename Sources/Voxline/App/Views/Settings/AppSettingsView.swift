@@ -5,7 +5,6 @@ public struct AppSettingsView: View {
     public enum Tab: String, CaseIterable, Identifiable {
         case models = "模型管理"
         case translation = "翻译服务"
-        case appleLanguages = "本机语言"
         case cloudTranscription = "云端转写"
         case sync = "iCloud 同步"
 
@@ -13,7 +12,6 @@ public struct AppSettingsView: View {
         public var icon: String {
             switch self {
             case .models: return "cpu"
-            case .appleLanguages: return "character.book.closed"
             case .translation: return "character.book.closed"
             case .cloudTranscription: return "waveform.badge.mic"
             case .sync: return "arrow.triangle.2.circlepath"
@@ -32,8 +30,6 @@ public struct AppSettingsView: View {
             switch selectedTab {
             case .models:
                 ModelManagementView()
-            case .appleLanguages:
-                AppleTranslationLanguagesView()
             case .translation:
                 TranslationServicesSettingsView()
             case .cloudTranscription:

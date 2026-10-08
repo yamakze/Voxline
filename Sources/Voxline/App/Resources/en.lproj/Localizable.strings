@@ -353,7 +353,6 @@
 "本机尚未配置任何云端转写服务。" = "This machine has not configured any cloud transcription service.";
 "本机服务" = "Local Service";
 "本机翻译需要启用翻译且已完成转写的任务成果。" = "Local translation needs to enable translation and complete the task results of transcription.";
-"本机语言" = "Languages";
 "本次任务使用此服务？" = "Do you want to use this service in this task?";
 "本次任务将使用所选服务地址和模型，保留原目标语言、批量数量、提示词与已有译文。\n%@ · %@\n%@" = "This task will use the selected service address and model to retain the original target language, batch quantity, prompt words and existing translations.\n\n%1$@ · %2$@\n\n%3$@";
 "本次选择 %lld 条字幕。" = "Selected subtitles: %1$lld.";
@@ -478,7 +477,6 @@
 "语言代码" = "Language code";
 "语言准备" = "Language Preparation";
 "语言状态" = "Language Status";
-"语言设置" = "Language Settings";
 "语言识别" = "Language Detection";
 "语音转写" = "Speech Transcription";
 "请先在左侧添加音视频。" = "Please add audio and video on the left side first.";
@@ -570,3 +568,4 @@
 "请在语言设置中完成下载后继续翻译。" = "Download the required languages in Language Settings, then continue translation.";
 " (无法解码)" = " (Not Decodable)";
 "未标明语言" = "Unspecified Language";
+"无法打开系统语言设置。" = "Unable to open the system language settings.";

@@ -7,7 +7,7 @@ struct IOSSettingsView: View {
         Form {
             Section(String(localized: "本地处理", bundle: appLocalizationBundle)) {
                 NavigationLink { ModelManagementView() } label: { Label(String(localized: "模型管理", bundle: appLocalizationBundle), systemImage: "cpu") }
-                NavigationLink { AppleTranslationLanguagesView() } label: { Label(String(localized: "Apple 本机翻译", bundle: appLocalizationBundle), systemImage: "character.book.closed") }
+                NavigationLink { IOSAppleLanguagesView() } label: { Label(String(localized: "Apple 本机翻译", bundle: appLocalizationBundle), systemImage: "character.book.closed") }
             }
             Section(String(localized: "同步", bundle: appLocalizationBundle)) {
                 NavigationLink { TaskSyncSettingsView() } label: { Label(String(localized: "iCloud 同步", bundle: appLocalizationBundle), systemImage: "arrow.triangle.2.circlepath") }
@@ -21,4 +21,18 @@ struct IOSSettingsView: View {
     }
 }
 
+struct IOSAppleLanguagesView: View {
+    @State private var source = "en"
+    @State private var target = "zh-Hans"
+    @State private var batchSize = TranslationSettings.defaultBatchSize
+
+    var body: some View {
+        Form {
+            Section(String(localized: "语言准备", bundle: appLocalizationBundle)) {
+                AppleTranslationLanguageSettings(source: $source, target: $target, batchSize: $batchSize)
+            }
+        }
+        .navigationTitle(String(localized: "Apple 本机翻译", bundle: appLocalizationBundle))
+    }
+}
 #endif

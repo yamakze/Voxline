@@ -1,21 +1,27 @@
 import SwiftUI
 @preconcurrency import Translation
+#if os(macOS)
+import AppKit
+#endif
 
 struct AppleTranslationLanguageSettings: View {
     @Binding var source: String
     @Binding var target: String
     @Binding var batchSize: Int
     var allowsEditing = true
-    var preparesInPlace = false
-    @State private var showLanguageSettings = false
+    @Environment(\.scenePhase) private var scenePhase
     @State private var refreshID = UUID()
-    @State private var configuration: TranslationSession.Configuration?
     @State private var languages: [Locale.Language] = []
     @State private var status: LanguageAvailability.Status?
     @State private var statusMessage: String?
+    #if os(iOS)
+    @State private var configuration: TranslationSession.Configuration?
     @State private var preparation: Task<Void, Never>?
     @State private var preparationID: UUID?
     private var isPreparing: Bool { preparationID != nil }
+    #else
+    private let isPreparing = false
+    #endif
     @State private var isLoadingLanguages = true
     @State private var showAdvanced = false
 
@@ -41,9 +47,11 @@ struct AppleTranslationLanguageSettings: View {
                         if isPreparing {
                             ProgressView().controlSize(.mini)
                             Text(String(localized: "正在下载…", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.secondary)
+                            #if os(iOS)
                             Button(String(localized: "取消", bundle: appLocalizationBundle)) { preparation?.cancel(); configuration = nil; preparationID = nil }
                                 .buttonStyle(.borderless)
                                 .font(.caption)
+                            #endif
                         } else if let status {
                             switch status {
                             case .installed:
@@ -52,16 +60,21 @@ struct AppleTranslationLanguageSettings: View {
                                     Text(String(localized: "已就绪", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.green)
                                 }
                             case .supported:
-                                HStack(spacing: 6) {
-                                    Circle().fill(Color.orange).frame(width: 7, height: 7)
-                                    Text(String(localized: "需下载", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.orange)
-                                    Button(preparesInPlace ? String(localized: "下载语言", bundle: appLocalizationBundle) : String(localized: "语言设置", bundle: appLocalizationBundle)) {
-                                        if preparesInPlace { prepareLanguage() }
-                                        else { showLanguageSettings = true }
+                                Button {
+                                    #if os(macOS)
+                                    if !NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension")!) {
+                                        statusMessage = String(localized: "无法打开系统语言设置。", bundle: appLocalizationBundle)
                                     }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
+                                    #else
+                                    prepareLanguage()
+                                    #endif
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Circle().fill(Color.orange).frame(width: 7, height: 7)
+                                        Text(String(localized: "需下载", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.orange)
+                                    }
                                 }
+                                .buttonStyle(.plain)
                             case .unsupported:
                                 HStack(spacing: 5) {
                                     Circle().fill(Color.red).frame(width: 7, height: 7)
@@ -104,7 +117,12 @@ struct AppleTranslationLanguageSettings: View {
                 Text(statusMessage).font(.caption).foregroundStyle(.red)
             }
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { refreshID = UUID() }
+        }
+        #if os(iOS)
         .onDisappear { preparation?.cancel(); configuration = nil; preparationID = nil }
+        #endif
         .task {
             #if targetEnvironment(simulator)
             isLoadingLanguages = false
@@ -123,17 +141,7 @@ struct AppleTranslationLanguageSettings: View {
             }
             #endif
         }
-        .sheet(isPresented: $showLanguageSettings, onDismiss: { refreshID = UUID() }) {
-            NavigationStack {
-                AppleTranslationLanguagesView(source: source, target: target)
-                    .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button(String(localized: "完成", bundle: appLocalizationBundle)) { showLanguageSettings = false }
-                    } }
-            }
-            #if os(macOS)
-            .frame(width: 520, height: 380)
-            #endif
-        }
+        #if os(iOS)
         .translationTask(configuration) { session in
             guard let id = preparationID else { return }
             do {
@@ -151,6 +159,7 @@ struct AppleTranslationLanguageSettings: View {
             preparation = nil
             preparationID = nil
         }
+        #endif
         .task(id: source + "→" + target + refreshID.uuidString) {
             do {
                 let (from, to) = try await AppleTranslationCoordinator.languagePair(sourceID: source, targetID: target)
@@ -166,6 +175,7 @@ struct AppleTranslationLanguageSettings: View {
         }
     }
 
+    #if os(iOS)
     private func prepareLanguage() {
         let selectedSource = source, selectedTarget = target
         statusMessage = nil
@@ -189,4 +199,5 @@ struct AppleTranslationLanguageSettings: View {
             }
         }
     }
+    #endif
 }
