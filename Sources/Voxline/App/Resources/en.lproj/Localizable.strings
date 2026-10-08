@@ -37,7 +37,6 @@
 "下载中" = "Downloading";
 "下载中…" = "Downloading...";
 "下载语言" = "Download Languages";
-"为“%@”选择本地原文件。文件内容哈希、时长与所选音轨需与任务记录一致；关联成功后保留现有全部字幕与校对记录。" = "Select the local original file for \"%1$@\". The file content hash, duration and selected audio track need to be consistent with the task record; after successful association, keep all existing subtitles and proofreading records.";
 "云端 OpenAI 兼容" = "OpenAI-Compatible Cloud Service";
 "云端任务占位，点击下载即可加载完整任务成果与字幕。" = "Cloud tasks occupy the place, click download to load the complete task results and subtitles.";
 "云端任务尚未下载完整内容与字幕。" = "The cloud task has not downloaded the full content and subtitles.";
@@ -301,7 +300,6 @@
 "无法解码" = "Unable to decode";
 "旧密钥尚未读取，重试读取或填写新密钥后再保存。" = "The old key has not been read. Please try to read it again or fill in the new key before saving it.";
 "时长 %.3f 秒 · 大小 %.1f MB" = "Duration: %.3f seconds · Size: %.1f MB";
-"时长 %.3f 秒 · 音轨 ID：%d" = "Duration: %.3f seconds · Audio track ID: %d";
 "时长" = "Duration";
 "是否覆盖“%@”？原视频始终保留。" = "Replace “%1$@”? The source video is retained.";
 "显示明文密钥" = "Show API Key";
@@ -374,7 +372,6 @@
 "正在复制并上传原音视频到云端…" = "Copying source audio and video to the cloud…";
 "正在导出 %.0f%%" = "Exporting %.0f%%";
 "正在封装软字幕 %lld%%…" = "Embedding subtitles: %1$lld%…";
-"正在检查媒体信息与计算内容哈希…" = "Inspecting media and calculating content hash…";
 "正在烧录 %lld%%" = "Burning subtitles: %1$lld%";
 "正在生成预览…" = "A preview is being generated...";
 "正在读取冲突版本…" = "Reading the conflicting version...";
@@ -410,7 +407,6 @@
 "目标转写服务" = "New Transcription Service";
 "确认关联" = "Confirm Link";
 "确认更换" = "Confirm Change";
-"确认转写音轨：" = "Transcription Audio Track:";
 "秒" = "seconds";
 "等待" = "Waiting";
 "等待上传" = "Waiting for upload";
@@ -562,3 +558,5 @@
 "默认推荐" = "Recommended";
 
 "待翻译" = "Translation pending";
+
+"时长 %.3f 秒" = "Duration %1$.3f seconds";

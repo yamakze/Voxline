@@ -31,17 +31,12 @@ public struct MediaRelinkSheet: View {
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }.keyboardShortcut(.cancelAction)
             }
 
-            Text(String(localized: "为“\(item.title)”选择本地原文件。文件内容哈希、时长与所选音轨需与任务记录一致；关联成功后保留现有全部字幕与校对记录。", bundle: appLocalizationBundle))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
             VStack(alignment: .leading, spacing: 14) {
                 if let media = item.media {
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(String(localized: "已记录媒体：\(media.fileName)", bundle: appLocalizationBundle)).font(.headline)
-                            Text(String(format: String(localized: "时长 %.3f 秒 · 音轨 ID：%d", bundle: appLocalizationBundle), locale: .current, Double(media.durationMilliseconds) / 1000.0, media.audioTrackID))
+                            Text(String(format: String(localized: "时长 %.3f 秒", bundle: appLocalizationBundle), locale: .current, Double(media.durationMilliseconds) / 1000.0))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -56,7 +51,7 @@ public struct MediaRelinkSheet: View {
                 if isInspecting {
                     HStack {
                         ProgressView().controlSize(.small)
-                        Text(String(localized: "正在检查媒体信息与计算内容哈希…", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.secondary)
+                        Text(String(localized: "检查媒体…", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
 
@@ -67,7 +62,7 @@ public struct MediaRelinkSheet: View {
                         Text(String(format: String(localized: "时长 %.3f 秒 · 大小 %.1f MB", bundle: appLocalizationBundle), locale: .current, Double(inspection.durationMilliseconds) / 1000.0, Double(inspection.byteCount) / 1_048_576))
                             .font(.caption).foregroundStyle(.secondary)
 
-                        Picker(String(localized: "确认转写音轨：", bundle: appLocalizationBundle), selection: $selectedAudioTrackID) {
+                        Picker(String(localized: "播放音轨", bundle: appLocalizationBundle), selection: $selectedAudioTrackID) {
                             Text(String(localized: "请选择音轨", bundle: appLocalizationBundle)).tag(nil as Int32?)
                             ForEach(inspection.audioTracks) { track in
                                 Text(String(localized: "音轨 \(track.id) · \(track.language ?? String(localized: "未知语言", bundle: appLocalizationBundle)) · \(track.codecs.joined(separator: ", "))\(track.isDecodable ? "" : String(localized: " (无法解码)", bundle: appLocalizationBundle))", bundle: appLocalizationBundle))

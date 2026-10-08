@@ -44,7 +44,7 @@ struct IOSMediaAssociationSheet: View {
                             ForEach(inspection.audioTracks) { track in
                                 Text(String(localized: "音轨 \(track.id) · \(track.language ?? String(localized: "未标明语言", bundle: appLocalizationBundle)) · \(track.codecs.joined(separator: ", "))", bundle: appLocalizationBundle))
                                     .tag(Optional(track.id))
-                                    .disabled(!track.isDecodable || candidate.item.media.map { $0.audioTrackID != track.id } == true)
+                                    .disabled(!track.isDecodable)
                             }
                         }
                     } else if isInspecting { ProgressView(String(localized: "检查媒体…", bundle: appLocalizationBundle)) }
@@ -108,8 +108,10 @@ struct IOSMediaAssociationSheet: View {
                     try Task.checkCancellation()
                     guard value.kind == candidate.item.kind else { throw MediaAccessError.unsupportedFormat }
                     inspection = value
-                    if let media = candidate.item.media { trackID = media.audioTrackID }
-                    else if value.audioTracks.count == 1 { trackID = value.audioTracks[0].id }
+                    if value.audioTracks.count == 1 { trackID = value.audioTracks[0].id }
+                    else if let previousID = candidate.item.media?.audioTrackID,
+                            value.audioTracks.contains(where: { $0.id == previousID && $0.isDecodable }) { trackID = previousID }
+                    else { trackID = nil }
                 } catch is CancellationError {
                     errorMessage = String(localized: "媒体检查已取消。", bundle: appLocalizationBundle)
                     canRetryInspection = true
