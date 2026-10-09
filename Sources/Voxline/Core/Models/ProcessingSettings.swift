@@ -59,10 +59,6 @@ public struct TranscriptionSettings: Codable, Equatable, Sendable {
         case .openAICompatible:
             guard let cloud else { throw CloudTranscriptionError.invalidConfiguration }
             try cloud.validate()
-            // This protocol requires verbose segment timestamps; newer text-only models use another protocol.
-            if cloud.protocolKind == .audioTranscriptions, modelID != "whisper-1" {
-                throw CloudTranscriptionError.unsupportedModel
-            }
             if let languageCode {
                 guard (cloud.protocolKind == .qwenAudioChat ? (2...3).contains(languageCode.count) : languageCode.count == 2), languageCode.allSatisfy({ $0.isASCII && $0.isLetter }) else {
                     throw ProjectValidationError.invalidSourceLanguage
@@ -140,7 +136,7 @@ public struct TranslationSettings: Codable, Equatable, Sendable {
             }
             guard let parts = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false),
                   parts.scheme == "https" || parts.scheme == "http", let host = parts.host, !host.isEmpty,
-                  parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
+                  parts.user == nil, parts.password == nil, parts.fragment == nil,
                   !api.modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw ProjectValidationError.invalidTranslationSettings
             }
@@ -172,7 +168,7 @@ public enum ProjectValidationError: Error, LocalizedError, Equatable {
         case .invalidSourceLanguage: String(localized: "请选择自动识别或明确的原文语言。", bundle: voxlineLocalizationBundle)
         case .invalidTranslationBatchSize: String(localized: "每批字幕数量必须是正整数。", bundle: voxlineLocalizationBundle)
         case .emptyTranslationSystemPrompt: String(localized: "系统提示词不能为空。", bundle: voxlineLocalizationBundle)
-        case .invalidTranslationSettings: String(localized: "翻译设置无效。服务地址不能包含账户、密码、查询参数或片段。", bundle: voxlineLocalizationBundle)
+        case .invalidTranslationSettings: String(localized: "翻译设置无效。请检查服务地址与模型。", bundle: voxlineLocalizationBundle)
         case .invalidCue: String(localized: "字幕包含空白原文、无效时间或无效原文版本。", bundle: voxlineLocalizationBundle)
         case .invalidTranslation: String(localized: "译文内容、原文版本或错误原因无效。", bundle: voxlineLocalizationBundle)
         case .sourceRevisionOverflow: String(localized: "原文版本已达到上限，无法继续修改。", bundle: voxlineLocalizationBundle)

@@ -7,8 +7,8 @@ import VoxlineCore
 
 @Suite("Cloud transcription protocol", .serialized)
 struct CloudTranscriptionTests {
-    private func settings() throws -> TranscriptionSettings {
-        try CloudTranscriptionServiceConfig(name: "ASR", baseURL: URL(string: "https://asr.example/v1")!).settings(languageCode: "en")
+    private func settings(modelID: String = "whisper-1", baseURL: URL = URL(string: "https://asr.example/v1")!) throws -> TranscriptionSettings {
+        try CloudTranscriptionServiceConfig(name: "ASR", baseURL: baseURL, modelID: modelID).settings(languageCode: "en")
     }
     private func session() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
@@ -16,14 +16,15 @@ struct CloudTranscriptionTests {
         return URLSession(configuration: config)
     }
 
-    @Test func verboseResultKeepsAbsoluteTimesAndCommitsThroughExistingSegmenter() async throws {
+    @Test(arguments: ["whisper-1", "whisper-large-v3-turbo", "custom-asr-model"])
+    func verboseResultKeepsAbsoluteTimesAndCommitsThroughExistingSegmenter(modelID: String) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let audioURL = root.appendingPathComponent("private-source.wav")
         try Data("RIFF test upload bytes".utf8).write(to: audioURL)
         let audio = try TranscriptionAudio(localURL: audioURL, sourceStartMilliseconds: 120_000, durationMilliseconds: 2000)
-        let settings = try settings()
+        let settings = try settings(modelID: modelID, baseURL: URL(string: "http://127.0.0.1:8181/proxy/v1/?api-version=2026-01&route=asr")!)
         ASRStubProtocol.response.withLock { $0 = (200, Data(#"{"text":"Hello.","segments":[{"start":0.25,"end":1.5,"text":"Hello.","avg_logprob":-0.1}]}"#.utf8)) }
         let session = session()
         defer { session.invalidateAndCancel() }
@@ -39,7 +40,9 @@ struct CloudTranscriptionTests {
         #expect(result.cues.first?.startMilliseconds == 120_250)
         #expect(result.cues.first?.sourceText == "Hello.")
         let request = try #require(ASRStubProtocol.lastRequest.withLock { $0 })
-        #expect(request.url?.path == "/v1/audio/transcriptions")
+        #expect(request.url?.path == "/proxy/v1/audio/transcriptions")
+        #expect(request.url?.host == "127.0.0.1" && request.url?.port == 8181)
+        #expect(request.url?.query == "api-version=2026-01&route=asr")
         #expect(request.httpMethod == "POST")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-only-key")
         #expect(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
@@ -75,7 +78,8 @@ struct CloudTranscriptionTests {
         }
     }
 
-    @Test func multipartUsesProtocolFieldsAndCancellationWaitsForHTTPToStop() async throws {
+    @Test(arguments: ["whisper-1", "whisper-large-v3-turbo"])
+    func multipartUsesProtocolFieldsAndCancellationWaitsForHTTPToStop(modelID: String) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -86,11 +90,11 @@ struct CloudTranscriptionTests {
         let audio = try TranscriptionAudio(localURL: input, sourceStartMilliseconds: 0, durationMilliseconds: 1000)
         let session = session()
         defer { session.invalidateAndCancel() }
-        let provider = try OpenAITranscriptionProvider(settings: settings(), apiKey: "test-only-key", session: session, evidenceDirectory: root)
+        let provider = try OpenAITranscriptionProvider(settings: settings(modelID: modelID), apiKey: "test-only-key", session: session, evidenceDirectory: root)
         try provider.writeMultipart(audio: audio, to: body, boundary: "test-boundary")
         let payload = try Data(contentsOf: body)
         let text = String(decoding: payload, as: UTF8.self)
-        for value in ["name=\"model\"\r\n\r\nwhisper-1", "name=\"response_format\"\r\n\r\nverbose_json",
+        for value in ["name=\"model\"\r\n\r\n\(modelID)", "name=\"response_format\"\r\n\r\nverbose_json",
                       "name=\"timestamp_granularities[]\"\r\n\r\nsegment", "name=\"language\"\r\n\r\nen"] {
             #expect(text.contains(value))
         }
@@ -279,11 +283,19 @@ struct CloudTranscriptionTests {
         let url = root.appendingPathComponent("services.json")
         let vault = TestCredentialVault()
         let store = CloudTranscriptionServiceStore(storageURL: url, vault: vault, autoLoad: false)
-        var service = CloudTranscriptionServiceConfig(name: "ASR", baseURL: URL(string: "https://asr.example/v1")!)
+        var service = CloudTranscriptionServiceConfig(name: "Groq", baseURL: URL(string: "https://api.groq.com/openai/v1")!, modelID: "whisper-large-v3-turbo")
         try await store.addOrUpdate(service, apiKey: "test-only-key")
         let frozen = try service.settings()
         #expect(try await store.apiKey(for: frozen) == "test-only-key")
         #expect(!String(decoding: try Data(contentsOf: url), as: UTF8.self).contains("test-only-key"))
+        let reopened = CloudTranscriptionServiceStore(storageURL: url, vault: vault, autoLoad: false)
+        await reopened.load()
+        #expect(reopened.errorMessage == nil)
+        #expect(reopened.services == [service])
+        service.modelID = "custom-asr-model"
+        try await store.addOrUpdate(service, apiKey: "test-only-key")
+        #expect(frozen.modelID == "whisper-large-v3-turbo")
+        #expect(try await store.apiKey(for: frozen) == "test-only-key")
         service.baseURL = URL(string: "https://other.example/v1")!
         try await store.addOrUpdate(service, apiKey: "new-key")
         await #expect(throws: CloudTranscriptionError.changedEndpoint) { try await store.apiKey(for: frozen) }

@@ -17,6 +17,7 @@ struct TranslationServiceStoreTests {
         let vault = TestCredentialVault()
         let store = TranslationServiceStore(storageURL: url, vault: vault, autoLoad: false)
         var configured = service()
+        configured.baseURL = URL(string: "https://test.example/proxy/v1?api-version=2026-01")!
         configured.batchSize = 7
         configured.systemPrompt = "译为简体中文，保留专名。"
         try await store.addOrUpdate(configured, apiKey: "test-only-secret")

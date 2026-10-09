@@ -59,7 +59,6 @@
 "未开始" = "Not started";
 "未开始任务不能包含运行或已完成状态。" = "Unstarted tasks cannot contain the running or completed status.";
 "本设备未配置任务所用的转写服务。" = "This device does not configure the transcription service used for the task.";
-"模型不支持当前转写协议。" = "The model does not support the current transcription protocol.";
 "每批字幕数量必须是正整数。" = "The number of subtitles per batch must be a positive integer.";
 "没有可恢复的处理成果。" = "No saved processing results are available.";
 "百炼音频聊天" = "Bailian Audio Chat";
@@ -75,7 +74,7 @@
 "翻译批次必须完整匹配字幕 ID，且每条译文非空。" = "The translation batch must fully match the subtitle ID, and each translation is not empty.";
 "翻译暂停" = "Translation Paused";
 "翻译结果缺失或格式无效，本批次未保存。" = "Translation results are missing or invalid. This batch was not saved.";
-"翻译设置无效。服务地址不能包含账户、密码、查询参数或片段。" = "The translation settings are invalid. The service address cannot contain accounts, passwords, query parameters or fragments.";
+"翻译设置无效。请检查服务地址与模型。" = "The translation settings are invalid. Check the service address and model.";
 "识别时间超出媒体范围。" = "Transcription timing exceeds the media duration.";
 "译文" = "Translation";
 "译文内容、原文版本或错误原因无效。" = "The translation content, original version or error reason is invalid.";

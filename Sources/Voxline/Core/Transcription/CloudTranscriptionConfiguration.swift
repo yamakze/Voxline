@@ -38,19 +38,18 @@ public struct CloudTranscriptionConfiguration: Codable, Equatable, Sendable {
     public func validate() throws {
         guard ["http", "https"].contains(baseURL.scheme?.lowercased()),
               baseURL.host?.isEmpty == false, baseURL.user == nil, baseURL.password == nil,
-              baseURL.query == nil, baseURL.fragment == nil else { throw CloudTranscriptionError.invalidConfiguration }
+              baseURL.fragment == nil else { throw CloudTranscriptionError.invalidConfiguration }
     }
 }
 
 public enum CloudTranscriptionError: Error, LocalizedError, Equatable {
-    case invalidConfiguration, unsupportedModel, invalidResponse, uploadTooLarge, emptyAudio, audioChunkTooLong
+    case invalidConfiguration, invalidResponse, uploadTooLarge, emptyAudio, audioChunkTooLong
     case incompleteResponse(String)
     case unconfiguredService, changedEndpoint
     case http(status: Int, requestID: String?)
     public var errorDescription: String? {
         switch self {
         case .invalidConfiguration: String(localized: "云端转写地址或任务配置无效。", bundle: voxlineLocalizationBundle)
-        case .unsupportedModel: String(localized: "模型不支持当前转写协议。", bundle: voxlineLocalizationBundle)
         case .invalidResponse: String(localized: "转写服务返回的文本或时间戳无效。", bundle: voxlineLocalizationBundle)
         case .uploadTooLarge: String(localized: "转写音频超过当前服务的上传限制。", bundle: voxlineLocalizationBundle)
         case .audioChunkTooLong: String(localized: "音频聊天需要不超过 8 秒的语音块。", bundle: voxlineLocalizationBundle)

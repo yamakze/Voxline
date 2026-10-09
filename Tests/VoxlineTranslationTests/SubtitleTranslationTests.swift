@@ -106,10 +106,11 @@ struct SubtitleTranslationTests {
     @Test func actualHTTPBodyUsesFrozenSettingsAndNoTimestamps() async throws {
         let cues = try cues(count: 2)
         let input = try SubtitleTranslationRequest(inputs: cues.map(TranslationBatchInput.init), cues: cues)
-        let settings = try TranslationSettings(baseURL: URL(string: "https://test.example/v1/")!, modelID: "chosen-model", targetLanguage: "zh-Hans", batchSize: 2, systemPrompt: "Use concise Simplified Chinese and retain names.")
+        let settings = try TranslationSettings(baseURL: URL(string: "https://test.example/v1/?api-version=2026-01")!, modelID: "chosen-model", targetLanguage: "zh-Hans", batchSize: 2, systemPrompt: "Use concise Simplified Chinese and retain names.")
         let json = try response(String(data: JSONSerialization.data(withJSONObject: ["translations": cues.map { ["id": $0.id.uuidString, "text": "放下它。"] }]), encoding: .utf8)!)
         TranslationStubProtocol.handler.withLock { $0 = { request in
             #expect(request.url?.path == "/v1/chat/completions")
+            #expect(request.url?.query == "api-version=2026-01")
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-only-secret")
             let bodyData: Data
             if let data = request.httpBody { bodyData = data }
