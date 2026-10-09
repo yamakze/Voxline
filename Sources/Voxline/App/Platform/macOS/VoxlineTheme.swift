@@ -3,13 +3,13 @@ import SwiftUI
 import AppKit
 
 public extension Color {
-    /// Voxline 品牌主映像色：原生极简黑 (Monochrome / Apple Pro Black)
-    /// 浅色模式下为纯黑/碳黑，深色模式下为纯白/亮白，呈现极简、克制、专业的 Pro 风格。
+    /// Voxline 品牌主映像色：专业音频琥珀橙 (Studio Amber)
+    /// 浅色模式下为沉稳饱满的暖琥珀橙 (#EB6614)，深色模式下为透亮温暖的发光琥珀橙 (#FFA028)。
     static let voxlineAccent = Color(nsColor: NSColor(name: nil, dynamicProvider: { appearance in
         if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
-            return NSColor(white: 0.96, alpha: 1.0)
+            return NSColor(red: 1.0, green: 0.627, blue: 0.157, alpha: 1.0)
         } else {
-            return NSColor(white: 0.10, alpha: 1.0)
+            return NSColor(red: 0.922, green: 0.400, blue: 0.078, alpha: 1.0)
         }
     }))
 
@@ -25,18 +25,18 @@ public extension Color {
     /// 正在播放/活动字幕条目的高质感中性底色
     static let voxlineActiveCueBackground = Color(nsColor: NSColor(name: nil, dynamicProvider: { appearance in
         if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
-            return NSColor(white: 1.0, alpha: 0.12)
+            return NSColor(red: 1.0, green: 0.627, blue: 0.157, alpha: 0.12)
         } else {
-            return NSColor(white: 0.0, alpha: 0.06)
+            return NSColor(red: 0.922, green: 0.400, blue: 0.078, alpha: 0.08)
         }
     }))
 
     /// 正在播放/活动字幕条目的精致微描边
     static let voxlineActiveCueBorder = Color(nsColor: NSColor(name: nil, dynamicProvider: { appearance in
         if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
-            return NSColor(white: 1.0, alpha: 0.22)
+            return NSColor(red: 1.0, green: 0.627, blue: 0.157, alpha: 0.28)
         } else {
-            return NSColor(white: 0.0, alpha: 0.15)
+            return NSColor(red: 0.922, green: 0.400, blue: 0.078, alpha: 0.20)
         }
     }))
 }

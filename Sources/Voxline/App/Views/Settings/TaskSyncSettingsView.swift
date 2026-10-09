@@ -42,50 +42,39 @@ public struct TaskSyncSettingsView: View {
                     .frame(maxWidth: .infinity)
                 } else {
                     // 1. 同步状态与目录
-                    HStack {
-                        Text(String(localized: "同步状态与目录", bundle: appLocalizationBundle))
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button(role: .destructive) {
-                            showDisableConfirmation = true
-                        } label: {
-                            Text(String(localized: "关闭同步", bundle: appLocalizationBundle))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(settings.isChanging || isProcessing)
-                    }
+                    Text(String(localized: "同步状态与目录", bundle: appLocalizationBundle))
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
 
                     folderLocationCard
 
                     // 2. 媒体同步策略
-                    HStack {
-                        Text(String(localized: "媒体同步策略", bundle: appLocalizationBundle))
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
+                    Text(String(localized: "媒体同步策略", bundle: appLocalizationBundle))
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
 
                     mediaSyncPolicyCard
 
                     // 3. 实时同步统计
-                    HStack {
-                        Text(String(localized: "实时同步状态与统计", bundle: appLocalizationBundle))
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            settings.refresh()
-                        } label: {
-                            Label(String(localized: "刷新", bundle: appLocalizationBundle), systemImage: "arrow.clockwise")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(settings.isChanging || isProcessing)
-                    }
+                    Text(String(localized: "实时同步状态与统计", bundle: appLocalizationBundle))
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
 
                     liveMonitorCard
+
+                    // 4. 底部管理操作
+                    HStack {
+                        Spacer()
+                        Button(role: .destructive) {
+                            showDisableConfirmation = true
+                        } label: {
+                            Text(String(localized: "关闭 iCloud 同步", bundle: appLocalizationBundle))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.regular)
+                        .disabled(settings.isChanging || isProcessing)
+                    }
+                    .padding(.top, 6)
                 }
 
                 if let error = settings.errorMessage ?? localError {
@@ -143,8 +132,8 @@ public struct TaskSyncSettingsView: View {
             if let folder = settings.folderURL {
                 HStack(alignment: .center, spacing: 14) {
                     Image(systemName: "folder.fill")
-                        .font(.system(size: 28))
-                        .foregroundStyle(Color.blue)
+                        .font(.system(size: 26))
+                        .foregroundStyle(Color.voxlineAccent)
 
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 8) {
@@ -197,37 +186,48 @@ public struct TaskSyncSettingsView: View {
 
     // MARK: - Media Sync Policy Card
     private var mediaSyncPolicyCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Toggle(String(localized: "同步原音视频媒体文件", bundle: appLocalizationBundle), isOn: Binding(
-                get: { settings.syncOriginalMedia },
-                set: { newValue in
-                    Task {
-                        isProcessing = true
-                        defer { isProcessing = false }
-                        do {
-                            try await settings.setOriginalMediaSync(newValue)
-                        } catch {
-                            localError = error.localizedDescription
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(String(localized: "同步原音视频媒体文件", bundle: appLocalizationBundle))
+                        .font(.subheadline.weight(.medium))
+
+                    Text(settings.syncOriginalMedia
+                        ? String(localized: "完整镜像模式：音视频文件将同步至云端，供其他设备直接播放，消耗较多云盘空间。", bundle: appLocalizationBundle)
+                        : String(localized: "节省空间模式：仅同步任务配置与字幕文字，原始音视频保留在本地。", bundle: appLocalizationBundle))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: Binding(
+                    get: { settings.syncOriginalMedia },
+                    set: { newValue in
+                        Task {
+                            isProcessing = true
+                            defer { isProcessing = false }
+                            do {
+                                try await settings.setOriginalMediaSync(newValue)
+                            } catch {
+                                localError = error.localizedDescription
+                            }
                         }
                     }
-                }
-            ))
-            .toggleStyle(.switch)
-            .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
-
-            Text(settings.syncOriginalMedia
-                ? String(localized: "完整镜像模式：音视频文件将同步至云端，供其他设备直接播放，消耗较多云盘空间。", bundle: appLocalizationBundle)
-                : String(localized: "节省空间模式：仅同步任务配置与字幕文字，原始音视频保留在本地。", bundle: appLocalizationBundle))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                ))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
+            }
 
             if settings.isCopyingOriginalMedia {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text(String(localized: "正在同步原媒体文件…", bundle: appLocalizationBundle))
                         .font(.caption)
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(Color.voxlineAccent)
                 }
+                .padding(.top, 2)
             } else if settings.syncOriginalMedia {
                 HStack {
                     Spacer()
@@ -246,6 +246,7 @@ public struct TaskSyncSettingsView: View {
                     .controlSize(.small)
                     .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
                 }
+                .padding(.top, 2)
             }
         }
         .padding(14)
@@ -254,21 +255,51 @@ public struct TaskSyncSettingsView: View {
 
     // MARK: - Live Sync Monitor Card
     private var liveMonitorCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             let taskCount = settings.fileStates.keys.filter { $0.pathExtension == "voxline" }.count
             let mediaCount = settings.fileStates.keys.filter { $0.pathExtension != "voxline" }.count
             let conflictCount = settings.fileStates.values.filter { $0 == .conflict }.count
             let uploadingCount = settings.fileStates.values.filter { $0 == .uploading || $0 == .waitingForUpload }.count
             let downloadingCount = settings.fileStates.values.filter { $0 == .downloading || $0 == .notDownloaded }.count
 
-            HStack(spacing: 12) {
-                statTile(title: String(localized: "任务文档", bundle: appLocalizationBundle), count: taskCount, icon: "doc.text.fill", color: .blue)
-                statTile(title: String(localized: "原媒体文件", bundle: appLocalizationBundle), count: mediaCount, icon: "film.fill", color: .purple)
-                statTile(title: String(localized: "传输中", bundle: appLocalizationBundle), count: uploadingCount + downloadingCount, icon: "arrow.up.arrow.down", color: .orange)
-                if conflictCount > 0 {
-                    statTile(title: String(localized: "冲突待解", bundle: appLocalizationBundle), count: conflictCount, icon: "exclamationmark.triangle.fill", color: .red)
+            HStack(spacing: 20) {
+                HStack(spacing: 7) {
+                    Image(systemName: "doc.text.fill")
+                        .foregroundStyle(.blue)
+                        .font(.callout)
+                    Text(String(localized: "任务文档", bundle: appLocalizationBundle))
+                        .foregroundStyle(.secondary)
+                    Text("\(taskCount)")
+                        .font(.callout.weight(.semibold))
                 }
+
+                Divider().frame(height: 14)
+
+                HStack(spacing: 7) {
+                    Image(systemName: "film.fill")
+                        .foregroundStyle(.purple)
+                        .font(.callout)
+                    Text(String(localized: "原媒体文件", bundle: appLocalizationBundle))
+                        .foregroundStyle(.secondary)
+                    Text("\(mediaCount)")
+                        .font(.callout.weight(.semibold))
+                }
+
+                Divider().frame(height: 14)
+
+                HStack(spacing: 7) {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .foregroundStyle(uploadingCount + downloadingCount > 0 ? Color.voxlineAccent : .secondary)
+                        .font(.callout)
+                    Text(String(localized: "传输中", bundle: appLocalizationBundle))
+                        .foregroundStyle(.secondary)
+                    Text("\(uploadingCount + downloadingCount)")
+                        .font(.callout.weight(.semibold))
+                }
+
+                Spacer()
             }
+            .font(.callout)
 
             if conflictCount > 0 {
                 HStack(spacing: 8) {
@@ -277,31 +308,13 @@ public struct TaskSyncSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
-                .padding(10)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.red.opacity(0.08), in: .rect(cornerRadius: 8))
             }
         }
         .padding(14)
         .liquidGlassSurface()
-    }
-
-    private func statTile(title: String, count: Int, icon: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.caption)
-                    .foregroundStyle(color)
-                Spacer()
-                Text("\(count)")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-            }
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.voxlineControlBackground.opacity(0.4), in: .rect(cornerRadius: 10))
     }
 
     // MARK: - Error Banner

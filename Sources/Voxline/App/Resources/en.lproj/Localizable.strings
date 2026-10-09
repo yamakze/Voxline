@@ -638,4 +638,6 @@
 "节省空间模式：仅同步任务配置与字幕文字，原始音视频保留在本地。" = "Storage saver mode: only task configs and subtitle text are synced, original media remains local.";
 "正在同步原媒体文件…" = "Syncing original media files…";
 "选择同步文件夹…" = "Choose Sync Folder…";
+"关闭 iCloud 同步" = "Turn Off iCloud Sync";
+
 
