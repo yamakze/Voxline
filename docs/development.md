@@ -63,6 +63,17 @@ xcodebuild -project Voxline.xcodeproj -scheme VoxlineIOS \
 
 ## 缩短反馈时间
 
+本地化调整可用编译器提取结果核对模块资源，无需为静态文案编写单元测试。先执行当前 iOS 构建；检查 Mac 独有分支时提取当前 SwiftPM 源码：
+
+```sh
+swift build --product Voxline -Xswiftc -emit-localized-strings \
+  -Xswiftc -emit-localized-strings-path -Xswiftc "$PWD/build/localization/mac"
+python3 Scripts/check-localization.py build/localization/mac \
+  build/ios/device/DerivedData/Build/Intermediates.noindex/Voxline.build/Debug-iphoneos
+```
+
+检查限定为已编译源码中的中文消息键及其中英文资源，包含插值键；不检查数字格式、URL、模型标识等固定值。它不能代替目标页面的语言、布局及交互验收。
+
 1. 日常使用 debug 和固定 DerivedData，保留 .build 与模型缓存；只在需要发布包、性能测量或检查 Release 行为时使用 release。不要把 clean 作为日常构建步骤。
 2. UI 调整先用 Xcode Canvas / SwiftUI Preview，再跑目标平台。能力模块与固定软件包依赖保持增量缓存；设置页调整不需要重复下载模型或重跑推理。
 3. 修改哪个模块，就先执行对应验证。例如 Core 参数修改使用 swift test --filter ProcessingTaskTests；UI 布局使用构建和目标页面验收。阶段提交前按影响范围做回归，避免每个排版修改都重复全量验证。

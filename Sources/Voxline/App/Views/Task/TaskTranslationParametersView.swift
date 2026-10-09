@@ -79,9 +79,9 @@ struct TaskTranslationParametersView: View {
                             LanguagePicker(title: String(localized: "目标语言", bundle: appLocalizationBundle), selection: $target)
 
                             HStack {
-                                Text(String(localized: "单批字幕数量", bundle: appLocalizationBundle))
+                                Text(String(localized: "每批字幕数量", bundle: appLocalizationBundle))
                                 Spacer()
-                                TextField("15", value: $batchSize, format: .number)
+                                TextField("\(TranslationSettings.defaultBatchSize)", value: $batchSize, format: .number)
                                     .multilineTextAlignment(.trailing)
                                     .frame(maxWidth: 70)
                                 Stepper("", value: $batchSize, in: 1...100)
@@ -107,9 +107,6 @@ struct TaskTranslationParametersView: View {
                                         RoundedRectangle(cornerRadius: 6)
                                             .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
                                     )
-                                Text(String(localized: "告诉模型如何理解与翻译（如语气、术语或风格）。模型会自动按结构返回，无需在此指定数据格式。", bundle: appLocalizationBundle))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
                             }
                             .padding(.vertical, 2)
                         }

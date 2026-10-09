@@ -340,10 +340,9 @@ struct IOSMediaDetailView: View {
                             do { try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: [targetCue.id]) }
                             catch { session.errorMessage = error.localizedDescription }
                         },
-                        onBeginEdit: { targetCue in session.beginEditing(targetCue) },
-                        onAdjustTiming: { targetCue in structureState.adjustTiming(for: targetCue) },
-                        onSplit: { targetCue in structureState.split(cue: targetCue) },
-                        onMerge: { cues in structureState.merge(cues: cues) },
+                        onAdjustTiming: { targetCue in structureState.timingCue = targetCue },
+                        onSplit: { targetCue in structureState.splittingCue = targetCue },
+                        onMerge: { cues in structureState.mergingCues = cues },
                         onDelete: { targetCue in deleteCue(targetCue) }
                     )
                     .id(cue.id)
@@ -381,7 +380,7 @@ struct IOSMediaDetailView: View {
 
             if let adjacent = selectedAdjacentCues(in: item) {
                 Button {
-                    structureState.merge(cues: adjacent)
+                    structureState.mergingCues = adjacent
                 } label: {
                     Label(String(localized: "合并", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge")
                         .font(.subheadline)

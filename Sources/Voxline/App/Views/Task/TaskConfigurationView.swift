@@ -757,9 +757,9 @@ public struct TaskConfigurationView: View {
 
                         if showAdvancedTranslationOptions {
                             HStack {
-                                Text(String(localized: "单批字幕数量", bundle: appLocalizationBundle))
+                                Text(String(localized: "每批字幕数量", bundle: appLocalizationBundle))
                                 Spacer()
-                                TextField("15", value: $translationBatchSize, format: .number)
+                                TextField("\(TranslationSettings.defaultBatchSize)", value: $translationBatchSize, format: .number)
                                     .multilineTextAlignment(.trailing)
                                     .frame(maxWidth: 70)
                                 Stepper("", value: $translationBatchSize, in: 1...100)
@@ -779,10 +779,6 @@ public struct TaskConfigurationView: View {
                                         )
 
                                     HStack {
-                                        Text(String(localized: "告诉模型如何理解与翻译（如语气、术语或风格）。模型会自动按结构返回，无需在此指定数据格式。", bundle: appLocalizationBundle))
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                            .multilineTextAlignment(.leading)
                                         Spacer()
                                         Button(String(localized: "恢复默认", bundle: appLocalizationBundle)) {
                                             translationSystemPrompt = TranslationSettings.defaultSystemPrompt

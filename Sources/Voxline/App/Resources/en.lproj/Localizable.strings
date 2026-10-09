@@ -621,4 +621,10 @@
 "字幕文件" = "Subtitle File";
 "请点击右上角“调整参数”添加音视频。" = "Tap “Adjust Parameters” in the top right to add media.";
 "导出软字幕视频" = "Export Soft Subtitles";
-
+"取消选择" = "Deselect";
+"快退 5 秒" = "Skip Back 5 Seconds";
+"快进 5 秒" = "Skip Forward 5 Seconds";
+"翻译引擎" = "Translation Engine";
+"服务" = "Service";
+"⚠️ 当前任务已有转写成果，因转写机制不兼容，无法在不同类型的服务间直接切换。如需使用新服务，请新建任务。" = "This task already has transcription results. Create a new task to use a service with a different transcription method.";
+"暂无媒体" = "No Media";

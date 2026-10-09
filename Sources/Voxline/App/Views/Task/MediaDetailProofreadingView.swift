@@ -392,7 +392,6 @@ public struct MediaDetailProofreadingView: View {
                             ForEach(session.filteredCues(in: item)) { cue in
                                 let isActive = cue.id == activeCueID
                                 let isHovered = cue.id == hoveredCueID
-                                let isEditing = cue.id == session.editingSnapshot?.id
                                 let isPast = Double(cue.endMilliseconds) <= playbackController.currentTimeSeconds * 1000
 
                                 ProofreadingCueRow(
@@ -401,7 +400,6 @@ public struct MediaDetailProofreadingView: View {
                                     session: session,
                                     isActive: isActive,
                                     isHovered: isHovered,
-                                    isEditing: isEditing,
                                     isPast: isPast,
                                     canRetranslate: true,
                                     isTaskRunning: queue.taskID != nil,
@@ -410,15 +408,13 @@ public struct MediaDetailProofreadingView: View {
                                         do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: [targetCue.id]) }
                                         catch { session.errorMessage = error.localizedDescription }
                                     },
-                                    onBeginEdit: { targetCue in session.beginEditing(targetCue) },
                                     onSaveEdit: {
                                         do { try session.saveEditing(in: item, onCommit: onCommit) }
                                         catch { session.errorMessage = error.localizedDescription }
                                     },
-                                    onCancelEdit: { session.cancelEditing() },
-                                    onAdjustTiming: { targetCue in structureState.adjustTiming(for: targetCue) },
-                                    onSplit: { targetCue in structureState.split(cue: targetCue) },
-                                    onMerge: { cues in structureState.merge(cues: cues) },
+                                    onAdjustTiming: { targetCue in structureState.timingCue = targetCue },
+                                    onSplit: { targetCue in structureState.splittingCue = targetCue },
+                                    onMerge: { cues in structureState.mergingCues = cues },
                                     onDelete: { targetCue in deleteCue(targetCue) }
                                 )
                                 .id(cue.id)
