@@ -21,6 +21,10 @@ public final class MediaPlaybackController {
     public private(set) var currentTimeSeconds: Double = 0
     public private(set) var durationSeconds: Double = 0
     public private(set) var playbackRate: Float = 1
+    public private(set) var activeSubtitle: SubtitleCue?
+    public private(set) var completedSubtitleEndMilliseconds: Int64 = 0
+
+    @ObservationIgnored private var subtitles: [SubtitleCue] = []
 
     private let mediaStore: LocalMediaStore
     private let inspector: MediaInspector
@@ -52,6 +56,7 @@ public final class MediaPlaybackController {
 
     public func loadMedia(for item: TaskMediaItem) async {
         releaseMedia()
+        updateSubtitles(item.cues)
         let loadID = generation
         guard let identity = item.media else {
             isMediaUnavailable = true
@@ -131,9 +136,9 @@ public final class MediaPlaybackController {
             }
             timeObserver = newPlayer.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
                 let seconds = time.seconds
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated {
                     guard let self, self.generation == loadID, seconds.isFinite else { return }
-                    self.currentTimeSeconds = max(0, min(seconds, self.durationSeconds))
+                    self.updatePlaybackTime(max(0, min(seconds, self.durationSeconds)))
                 }
             }
             notificationObservers.append(NotificationCenter.default.addObserver(
@@ -142,7 +147,7 @@ public final class MediaPlaybackController {
                 Task { @MainActor [weak self] in
                     guard let self, self.generation == loadID else { return }
                     self.isPlaying = false
-                    self.currentTimeSeconds = self.durationSeconds
+                    self.updatePlaybackTime(self.durationSeconds)
                 }
             })
             notificationObservers.append(NotificationCenter.default.addObserver(
@@ -190,6 +195,9 @@ public final class MediaPlaybackController {
         isMediaUnavailable = false
         errorMessage = nil
         currentTimeSeconds = 0
+        subtitles = []
+        activeSubtitle = nil
+        completedSubtitleEndMilliseconds = 0
         durationSeconds = 0
         playbackRate = 1
     }
@@ -213,7 +221,7 @@ public final class MediaPlaybackController {
             Task { @MainActor [weak self] in
                 guard finished, let self, self.generation == loadID, self.seekID == requestID else { return }
                 let actual = self.player?.currentTime().seconds
-                if let actual, actual.isFinite { self.currentTimeSeconds = max(0, min(actual, self.durationSeconds)) }
+                if let actual, actual.isFinite { self.updatePlaybackTime(max(0, min(actual, self.durationSeconds))) }
                 if resumePlayback, self.isReady { self.player?.playImmediately(atRate: self.playbackRate) }
             }
         }
@@ -229,7 +237,37 @@ public final class MediaPlaybackController {
     }
 
     public func activeCue(in cues: [SubtitleCue]) -> SubtitleCue? {
-        let currentMilliseconds = currentTimeSeconds * 1000
-        return cues.first { Double($0.startMilliseconds) <= currentMilliseconds && currentMilliseconds < Double($0.endMilliseconds) }
+        guard let index = Self.subtitleIndex(at: currentTimeSeconds * 1000, in: cues),
+              currentTimeSeconds * 1000 < Double(cues[index].endMilliseconds) else { return nil }
+        return cues[index]
+    }
+
+    public func updateSubtitles(_ cues: [SubtitleCue]) {
+        subtitles = cues
+        updatePlaybackTime(currentTimeSeconds)
+    }
+
+    /// Transport time drives only controls; subtitle consumers observe boundary changes.
+    private func updatePlaybackTime(_ seconds: Double) {
+        currentTimeSeconds = seconds
+        let milliseconds = seconds * 1000
+        let index = Self.subtitleIndex(at: milliseconds, in: subtitles)
+        let active = index.flatMap { milliseconds < Double(subtitles[$0].endMilliseconds) ? subtitles[$0] : nil }
+        let completedIndex = index.map { active == nil ? $0 : $0 - 1 } ?? -1
+        let completedEnd = completedIndex >= 0 ? subtitles[completedIndex].endMilliseconds : 0
+        if activeSubtitle != active { activeSubtitle = active }
+        if completedSubtitleEndMilliseconds != completedEnd { completedSubtitleEndMilliseconds = completedEnd }
+    }
+
+    /// Validated subtitles are ordered and nonoverlapping; lookup remains logarithmic after seeks.
+    private static func subtitleIndex(at milliseconds: Double, in cues: [SubtitleCue]) -> Int? {
+        var lower = 0
+        var upper = cues.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if Double(cues[middle].startMilliseconds) <= milliseconds { lower = middle + 1 }
+            else { upper = middle }
+        }
+        return lower > 0 ? lower - 1 : nil
     }
 }

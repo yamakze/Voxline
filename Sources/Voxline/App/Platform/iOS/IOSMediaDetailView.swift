@@ -38,7 +38,7 @@ struct IOSMediaDetailView: View {
 
     var body: some View {
         if let item {
-            let activeCue = playback.activeCue(in: item.cues)
+            let activeCue = playback.activeSubtitle
             GeometryReader { geometry in
                 let landscape = geometry.size.width > geometry.size.height
                 let layout = landscape ? AnyLayout(HStackLayout(alignment: .top, spacing: 0))
@@ -179,6 +179,10 @@ struct IOSMediaDetailView: View {
                 Button(String(localized: "好", bundle: appLocalizationBundle)) { session.errorMessage = nil }
             } message: { Text(session.errorMessage ?? "") }
             .task(id: MediaPlaybackController.SourceIdentity(item: item)) { await playback.loadMedia(for: item) }
+            .onChange(of: item.cues) { _, cues in
+                session.updateSubtitles(cues)
+                playback.updateSubtitles(cues)
+            }
             .onDisappear { playback.releaseMedia() }
         } else {
             ContentUnavailableView(String(localized: "媒体不存在", bundle: appLocalizationBundle), systemImage: "film")
@@ -327,10 +331,11 @@ struct IOSMediaDetailView: View {
                         .padding(.vertical, 30)
                 }
 
-                ForEach(session.filteredCues(in: item)) { cue in
+                ForEach(session.transcriptRows) { row in
+                    let cue = row.cue
                     ProofreadingCueRow(
                         cue: cue,
-                        item: item,
+                        nextCue: row.nextCue,
                         session: session,
                         isActive: activeCue?.id == cue.id,
                         canRetranslate: task?.parameters.translation != nil,

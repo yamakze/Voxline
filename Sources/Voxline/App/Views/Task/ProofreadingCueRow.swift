@@ -8,7 +8,7 @@ import UIKit
 
 struct ProofreadingCueRow: View {
     let cue: SubtitleCue
-    let item: TaskMediaItem
+    let nextCue: SubtitleCue?
     @Bindable var session: ProofreadingSession
     let isActive: Bool
     var isHovered = false
@@ -202,9 +202,7 @@ struct ProofreadingCueRow: View {
         }
         .disabled(isTaskRunning || session.editingSnapshot?.id != nil)
 
-        if let currentIndex = item.cues.firstIndex(where: { $0.id == cue.id }),
-           currentIndex + 1 < item.cues.count {
-            let nextCue = item.cues[currentIndex + 1]
+        if let nextCue {
             Button {
                 onMerge([cue, nextCue])
             } label: {

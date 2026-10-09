@@ -68,6 +68,8 @@ struct MediaPlaybackControllerTests {
         controller.seek(toMilliseconds: 400)
         try await waitFor { abs(controller.currentTimeSeconds - 0.4) < 0.01 }
         #expect(controller.activeCue(in: item.cues)?.id == item.cues[1].id)
+        #expect(controller.activeSubtitle?.id == item.cues[1].id)
+        #expect(controller.completedSubtitleEndMilliseconds == 400)
         controller.seek(to: .nan)
         controller.setRate(.infinity)
         #expect(controller.playbackRate == 1)
@@ -84,6 +86,7 @@ struct MediaPlaybackControllerTests {
         #expect(player.rate == 2)
         try await waitFor { controller.currentTimeSeconds >= 0.99 && !controller.isPlaying }
         #expect(controller.activeCue(in: item.cues) == nil)
+        #expect(controller.activeSubtitle == nil && controller.completedSubtitleEndMilliseconds == 1000)
         controller.togglePlayPause()
         #expect(controller.playbackRate == 2)
         try await waitFor { controller.isPlaying && controller.currentTimeSeconds < 0.9 }
@@ -97,6 +100,14 @@ struct MediaPlaybackControllerTests {
         try await waitFor { abs(controller.currentTimeSeconds - 0.35) < 0.01 }
         #expect(controller.activeCue(in: item.cues)?.id == item.cues[0].id)
         #expect(controller.activeCue(in: shifted)?.id == item.cues[1].id)
+        controller.updateSubtitles(shifted)
+        #expect(controller.activeSubtitle?.id == item.cues[1].id)
+        #expect(controller.completedSubtitleEndMilliseconds == 0)
+        controller.seek(to: 0.2)
+        try await waitFor { abs(controller.currentTimeSeconds - 0.2) < 0.01 }
+        #expect(controller.activeSubtitle == nil) // The shifted subtitle has not started.
+        controller.updateSubtitles(item.cues)
+        #expect(controller.activeSubtitle?.id == item.cues[0].id)
         let playerItem = try #require(player.currentItem)
         NotificationCenter.default.post(name: .AVPlayerItemFailedToPlayToEndTime, object: playerItem,
             userInfo: [AVPlayerItemFailedToPlayToEndTimeErrorKey: NSError(domain: "PlaybackTest", code: 1,
@@ -109,6 +120,7 @@ struct MediaPlaybackControllerTests {
         try await Task.sleep(for: .milliseconds(80))
         #expect(controller.player == nil && !controller.isReady && !controller.isPlaying)
         #expect(controller.currentTimeSeconds == 0 && controller.durationSeconds == 0)
+        #expect(controller.activeSubtitle == nil && controller.completedSubtitleEndMilliseconds == 0)
     }
 
     @Test func audioPreviewHasNoVideoAndFailuresAndLateLoadCannotReviveReleasedPlayer() async throws {

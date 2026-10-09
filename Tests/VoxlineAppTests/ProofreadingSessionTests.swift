@@ -15,6 +15,8 @@ struct ProofreadingSessionTests {
         let library = TaskLibrary(tasksDirectory: root)
         try library.save(task)
         let session = ProofreadingSession(item: item)
+        session.searchQuery = "人工译文"
+        #expect(session.transcriptRows.isEmpty)
         session.beginEditing(cue)
         session.sourceDraft = "Corrected"
         session.translationDraft = "人工译文"
@@ -41,6 +43,8 @@ struct ProofreadingSessionTests {
         #expect(saved.cues.first?.hasTranslation == true)
         #expect(session.editingSnapshot == nil)
         #expect(session.canUndo(in: saved))
+        #expect(session.transcriptRows.first?.cue == saved.cues.first)
+        #expect(session.transcriptRows.first?.nextCue == nil)
     }
 
     @Test func undoPersistsThePreviousTimelineAndRejectsInterveningEdits() throws {
@@ -53,6 +57,9 @@ struct ProofreadingSessionTests {
         let library = TaskLibrary(tasksDirectory: root)
         try library.save(task)
         let session = ProofreadingSession(item: original)
+        session.searchQuery = "Line 0"
+        #expect(session.transcriptRows.count == 1)
+        #expect(session.transcriptRows.first?.nextCue == cues[1])
         var deleted = original
         try deleted.deleteSubtitles(comparedTo: [cues[0]])
         try session.saveChanges(deleted, comparedTo: original) { edited, before in
@@ -62,6 +69,7 @@ struct ProofreadingSessionTests {
         try newer.editSubtitle(comparedTo: cues[1], sourceText: "New manual edit", translationText: "")
         try library.updateItem(newer, taskID: task.id, comparedTo: deleted)
         #expect(!session.canUndo(in: newer))
+        #expect(session.transcriptRows.isEmpty)
         #expect(throws: CheckpointError.editedCue) { try session.undo(in: newer) { _, _ in Issue.record("Stale undo reached persistence") } }
         #expect(library.task(for: task.id)?.items[0] == newer)
         // A separately saved operation can be undone against its exact accepted timeline.

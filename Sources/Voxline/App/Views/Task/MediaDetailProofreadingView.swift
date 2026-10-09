@@ -37,7 +37,7 @@ public struct MediaDetailProofreadingView: View {
     }
 
     public var body: some View {
-        let activeCue = playbackController.activeCue(in: item.cues)
+        let activeCue = playbackController.activeSubtitle
         HSplitView {
             // Left Column: QuickTime Player with Floating Glass Capsule Controls
             quickTimePlayerPane(activeCue: activeCue)
@@ -144,6 +144,10 @@ public struct MediaDetailProofreadingView: View {
         } message: { Text(session.errorMessage ?? "") }
         .task(id: MediaPlaybackController.SourceIdentity(item: item)) {
             await playbackController.loadMedia(for: item)
+        }
+        .onChange(of: item.cues) { _, cues in
+            session.updateSubtitles(cues)
+            playbackController.updateSubtitles(cues)
         }
         .onDisappear {
             playbackController.releaseMedia()
@@ -389,14 +393,15 @@ public struct MediaDetailProofreadingView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 16) {
-                            ForEach(session.filteredCues(in: item)) { cue in
+                            ForEach(session.transcriptRows) { row in
+                                let cue = row.cue
                                 let isActive = cue.id == activeCueID
                                 let isHovered = cue.id == hoveredCueID
-                                let isPast = Double(cue.endMilliseconds) <= playbackController.currentTimeSeconds * 1000
+                                let isPast = cue.endMilliseconds <= playbackController.completedSubtitleEndMilliseconds
 
                                 ProofreadingCueRow(
                                     cue: cue,
-                                    item: item,
+                                    nextCue: row.nextCue,
                                     session: session,
                                     isActive: isActive,
                                     isHovered: isHovered,

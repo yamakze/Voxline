@@ -5,8 +5,18 @@ import VoxlineCore
 /// Shared editing state; platform views supply their current item and atomic commit operation.
 @Observable @MainActor
 final class ProofreadingSession {
+    struct TranscriptRow: Identifiable {
+        var id: UUID { cue.id }
+        let cue: SubtitleCue
+        let nextCue: SubtitleCue?
+    }
+
     var previewKind: SRTOutputKind
-    var searchQuery = ""
+    var searchQuery = "" {
+        didSet { filterTranscriptRows() }
+    }
+    private(set) var transcriptRows: [TranscriptRow] = []
+    @ObservationIgnored private var allTranscriptRows: [TranscriptRow] = []
     var errorMessage: String?
     var editingSnapshot: SubtitleCue?
     var sourceDraft = ""
@@ -18,13 +28,20 @@ final class ProofreadingSession {
 
     init(item: TaskMediaItem?) {
         previewKind = item?.cues.contains(where: \.hasTranslation) == true ? .bilingual : .source
+        updateSubtitles(item?.cues ?? [])
     }
 
-    func filteredCues(in item: TaskMediaItem) -> [SubtitleCue] {
-        guard !searchQuery.isEmpty else { return item.cues }
-        return item.cues.filter { cue in
-            if cue.sourceText.localizedCaseInsensitiveContains(searchQuery) { return true }
-            if case .succeeded(let text, _) = cue.translation { return text.localizedCaseInsensitiveContains(searchQuery) }
+    func updateSubtitles(_ cues: [SubtitleCue]) {
+        allTranscriptRows = cues.indices.map { index in
+            TranscriptRow(cue: cues[index], nextCue: index + 1 < cues.count ? cues[index + 1] : nil)
+        }
+        filterTranscriptRows()
+    }
+
+    private func filterTranscriptRows() {
+        transcriptRows = searchQuery.isEmpty ? allTranscriptRows : allTranscriptRows.filter { row in
+            if row.cue.sourceText.localizedCaseInsensitiveContains(searchQuery) { return true }
+            if case .succeeded(let text, _) = row.cue.translation { return text.localizedCaseInsensitiveContains(searchQuery) }
             return false
         }
     }
@@ -51,6 +68,7 @@ final class ProofreadingSession {
         try onCommit(updated, original)
         if updated.cues != original.cues {
             lastEdit = (original.id, original.cues, updated.cues)
+            updateSubtitles(updated.cues)
         }
         selectedCueIDs.formIntersection(updated.cues.map(\.id))
         errorMessage = nil
@@ -65,6 +83,7 @@ final class ProofreadingSession {
         var updated = item
         try updated.replaceSubtitles(edit.before, comparedTo: edit.after)
         try onCommit(updated, item)
+        updateSubtitles(updated.cues)
         lastEdit = nil
         selectedCueIDs.formIntersection(updated.cues.map(\.id))
         errorMessage = nil
