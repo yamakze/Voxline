@@ -60,17 +60,19 @@ public final class SubtitleBurnInPlan {
     public let renderSize: CGSize
     public let duration: CMTime
     public let options: BurnInOptions
+    fileprivate let renderer: BurnInTextRenderer
     private let hasScopedAccess: Bool
     private var accessReleased = false
 
-    init(asset: AVComposition, videoComposition: AVVideoComposition, sourceURL: URL,
-         duration: CMTime, options: BurnInOptions, hasScopedAccess: Bool) {
+    fileprivate init(asset: AVComposition, videoComposition: AVVideoComposition, sourceURL: URL,
+         duration: CMTime, options: BurnInOptions, renderer: BurnInTextRenderer, hasScopedAccess: Bool) {
         self.asset = asset
         self.videoComposition = videoComposition
         self.sourceURL = sourceURL
         self.renderSize = videoComposition.renderSize
         self.duration = duration
         self.options = options
+        self.renderer = renderer
         self.hasScopedAccess = hasScopedAccess
     }
 
@@ -79,13 +81,16 @@ public final class SubtitleBurnInPlan {
         accessReleased = true
     }
 
-    public func preview(atMilliseconds time: Int64) async throws -> CGImage {
+    public func preview(atMilliseconds time: Int64, maximumSize: CGSize = .zero) async throws -> CGImage {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.videoComposition = videoComposition
+        generator.maximumSize = maximumSize
         generator.appliesPreferredTrackTransform = true
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
-        let frame = try await generator.image(at: CMTime(value: time, timescale: 1000))
+        let frame = try await withTaskCancellationHandler {
+            try await generator.image(at: CMTime(value: time, timescale: 1000))
+        } onCancel: { generator.cancelAllCGImageGeneration() }
         try Task.checkCancellation()
         return frame.image
     }
@@ -159,11 +164,9 @@ public enum SubtitleBurnInExporter {
         }
         let duration = try await composition.load(.duration)
         try Task.checkCancellation()
-        // Validate all text layouts now, rather than failing on a late subtitle after encoding most of a movie.
-        try renderer.validateLayouts(size: size)
         retained = true
         return SubtitleBurnInPlan(asset: composition, videoComposition: videoComposition,
-                                  sourceURL: bookmark.url, duration: duration, options: options, hasScopedAccess: access)
+                                  sourceURL: bookmark.url, duration: duration, options: options, renderer: renderer, hasScopedAccess: access)
     }
 
     @MainActor
@@ -186,6 +189,14 @@ public enum SubtitleBurnInExporter {
             }
             guard allowOverwrite else { throw BurnInError.fileAlreadyExists }
         }
+        // Validate the full film before encoding, without blocking the sheet's main actor.
+        let renderer = plan.renderer
+        let renderSize = plan.renderSize
+        let layoutWork = Task.detached(priority: .utility) { try renderer.validateLayouts(size: renderSize) }
+        try await withTaskCancellationHandler {
+            try await layoutWork.value
+        } onCancel: { layoutWork.cancel() }
+        try Task.checkCancellation()
         let preset = plan.options.quality.preset(codec: plan.options.codec)
         guard await AVAssetExportSession.compatibility(ofExportPreset: preset, with: plan.asset, outputFileType: .mp4),
               let session = AVAssetExportSession(asset: plan.asset, presetName: preset) else {
@@ -256,7 +267,7 @@ public enum SubtitleBurnInExporter {
 }
 
 /// Core Text does offscreen layout on the video render thread. Only the active cue image is retained.
-private final class BurnInTextRenderer: @unchecked Sendable {
+fileprivate final class BurnInTextRenderer: @unchecked Sendable {
     private let cues: [SubtitleCue]
     private let options: BurnInOptions
     private let lock = NSLock()
@@ -267,13 +278,22 @@ private final class BurnInTextRenderer: @unchecked Sendable {
     init(cues: [SubtitleCue], options: BurnInOptions) { self.cues = cues; self.options = options }
 
     func validateLayouts(size: CGSize) throws {
-        for cue in cues { _ = try layout(cue: cue, size: size) }
+        for cue in cues {
+            try Task.checkCancellation()
+            _ = try autoreleasepool { try layout(cue: cue, size: size) }
+        }
     }
 
     func frame(source: CIImage, time: Double) throws -> CIImage {
-        guard let cue = cues.first(where: { Double($0.startMilliseconds) <= time * 1000 && time * 1000 < Double($0.endMilliseconds) }) else {
-            return source
+        let milliseconds = time * 1000
+        var lower = 0, upper = cues.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if Double(cues[middle].startMilliseconds) <= milliseconds { lower = middle + 1 }
+            else { upper = middle }
         }
+        guard lower > 0, milliseconds < Double(cues[lower - 1].endMilliseconds) else { return source }
+        let cue = cues[lower - 1]
         lock.lock()
         defer { lock.unlock() }
         let size = source.extent.size

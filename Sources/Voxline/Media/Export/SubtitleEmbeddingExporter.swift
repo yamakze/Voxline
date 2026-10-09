@@ -24,7 +24,7 @@ public enum SubtitleEmbeddingExporter {
     public static func export(item: TaskMediaItem, kind: SRTOutputKind, to destination: URL,
                               languageTag: String = "und", allowOverwrite: Bool = false,
                               mediaStore: LocalMediaStore = .shared, inspector: MediaInspector = .shared,
-                              progress: @escaping @MainActor (Double) -> Void = { _ in }) async throws {
+                              progress: @escaping @MainActor @Sendable (Double) -> Void = { _ in }) async throws {
         guard item.kind == .video else { throw SubtitleEmbeddingError.videoRequired }
         guard let identity = item.media,
               let bookmark = try await mediaStore.resolve(projectID: item.id, identity: identity) else { throw SubtitleEmbeddingError.missingMedia }
@@ -32,6 +32,21 @@ public enum SubtitleEmbeddingExporter {
         defer { if access { bookmark.url.stopAccessingSecurityScopedResource() } }
         let inspection = try await inspector.inspect(bookmark.url)
         guard identity.matchesContent(of: try inspection.identity(audioTrackID: identity.audioTrackID)) else { throw MediaAccessError.fileChanged }
+        let sourceURL = bookmark.url
+        let work = Task.detached(priority: .utility) {
+            try await remux(item: item, identity: identity, sourceURL: sourceURL, kind: kind,
+                            destination: destination, languageTag: languageTag,
+                            allowOverwrite: allowOverwrite, progress: progress)
+        }
+        try await withTaskCancellationHandler {
+            try await work.value
+        } onCancel: { work.cancel() }
+    }
+
+    /// Owns the reader/writer and file publication off the main actor for the full export lifetime.
+    private static func remux(item: TaskMediaItem, identity: MediaIdentity, sourceURL: URL,
+                              kind: SRTOutputKind, destination: URL, languageTag: String,
+                              allowOverwrite: Bool, progress: @escaping @MainActor @Sendable (Double) -> Void) async throws {
         let cues = try SubtitleCue.clampedToMedia(item.cues, media: identity)
         guard !cues.isEmpty else { throw SubtitleExportError.emptyCues }
         let texts = try cues.map { try SubtitleExporter.subtitleText(for: $0, kind: kind) }
@@ -39,15 +54,15 @@ public enum SubtitleEmbeddingExporter {
               !destination.lastPathComponent.contains("\\"), !destination.lastPathComponent.contains("\0"),
               !destination.deletingPathExtension().lastPathComponent.isEmpty else { throw BurnInError.invalidFileName }
         let manager = FileManager.default
-        guard destination.standardizedFileURL.resolvingSymlinksInPath() != bookmark.url.standardizedFileURL.resolvingSymlinksInPath() else { throw BurnInError.sourceIsOutput }
+        guard destination.standardizedFileURL.resolvingSymlinksInPath() != sourceURL.standardizedFileURL.resolvingSymlinksInPath() else { throw BurnInError.sourceIsOutput }
         if manager.fileExists(atPath: destination.path) {
-            let source = try manager.attributesOfItem(atPath: bookmark.url.path)
+            let source = try manager.attributesOfItem(atPath: sourceURL.path)
             let target = try manager.attributesOfItem(atPath: destination.path)
             if source[.systemNumber] as? NSNumber == target[.systemNumber] as? NSNumber,
                source[.systemFileNumber] as? NSNumber == target[.systemFileNumber] as? NSNumber { throw BurnInError.sourceIsOutput }
             guard allowOverwrite else { throw BurnInError.fileAlreadyExists }
         }
-        let asset = AVURLAsset(url: bookmark.url)
+        let asset = AVURLAsset(url: sourceURL)
         let duration = try await asset.load(.duration)
         guard let video = try await asset.loadTracks(withMediaType: .video).first,
               let audio = try await asset.loadTracks(withMediaType: .audio).first(where: { $0.trackID == identity.audioTrackID }) else { throw BurnInError.videoRequired }
@@ -96,12 +111,15 @@ public enum SubtitleEmbeddingExporter {
             samples.append(try textSample("", start: previousEnd, end: identity.durationMilliseconds, format: format))
         }
         do {
+            await progress(0)
             try Task.checkCancellation()
             guard writer.startWriting() else { throw writer.error ?? SubtitleEmbeddingError.unsupportedFormat }
             writer.startSession(atSourceTime: .zero)
             guard reader.startReading() else { throw reader.error ?? SubtitleEmbeddingError.unsupportedFormat }
             var ended = Set<Int>()
             var subtitleIndex = 0
+            let clock = ContinuousClock()
+            var lastPublication = clock.now
             var lastProgress: Double = 0
             var audioPriming = CMTime.zero
             var audioStarted = false
@@ -123,7 +141,10 @@ public enum SubtitleEmbeddingExporter {
                         guard pair.1.append(sample) else { throw writer.error ?? SubtitleEmbeddingError.invalidOutput }
                         if index == 0 {
                             lastProgress = max(lastProgress, min(0.99, CMSampleBufferGetPresentationTimeStamp(sample).seconds / duration.seconds))
-                            progress(lastProgress)
+                            if lastPublication.duration(to: clock.now) >= .milliseconds(200) {
+                                await progress(lastProgress)
+                                lastPublication = clock.now
+                            }
                         }
                     } else { pair.1.markAsFinished(); ended.insert(index) }
                     advanced = true
@@ -144,7 +165,7 @@ public enum SubtitleEmbeddingExporter {
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? SubtitleEmbeddingError.invalidOutput }
             if audioPriming > .zero {
-                try SubtitleEmbeddingAudioTiming.preserveImplicitPriming(audioPriming, from: bookmark.url, audioTrackID: audio.trackID, in: temporary)
+                try SubtitleEmbeddingAudioTiming.preserveImplicitPriming(audioPriming, from: sourceURL, audioTrackID: audio.trackID, in: temporary)
             }
             let result = AVURLAsset(url: temporary)
             let resultAudio = try await result.loadTracks(withMediaType: .audio)
@@ -165,7 +186,7 @@ public enum SubtitleEmbeddingExporter {
                 guard allowOverwrite else { throw BurnInError.fileAlreadyExists }
                 _ = try manager.replaceItemAt(destination, withItemAt: temporary)
             } else { try manager.moveItem(at: temporary, to: destination) }
-            progress(1)
+            await progress(1)
         } catch {
             reader.cancelReading(); writer.cancelWriting()
             if manager.fileExists(atPath: temporary.path) {

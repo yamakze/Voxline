@@ -127,7 +127,8 @@ struct SubtitleEmbeddingTests {
         var fractions: [Double] = []
         try await SubtitleEmbeddingExporter.export(item: item, kind: kind, to: output, languageTag: "zh-Hans",
             mediaStore: store) { fractions.append($0) }
-        #expect(fractions.last == 1)
+        #expect(fractions.first == 0 && fractions.last == 1)
+        #expect(zip(fractions, fractions.dropFirst()).allSatisfy { $0 <= $1 })
         let sourceAsset = AVURLAsset(url: source), result = AVURLAsset(url: output)
         let sourceVideo = try #require(try await sourceAsset.loadTracks(withMediaType: .video).first)
         let resultVideo = try #require(try await result.loadTracks(withMediaType: .video).first)

@@ -86,7 +86,10 @@ struct SubtitleBurnInTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = LocalMediaStore(directory: directory.appendingPathComponent("access"))
         let inspector = MediaInspector()
-        let item = try await fixture(store: store, inspector: inspector, directory: directory)
+        var item = try await fixture(store: store, inspector: inspector, directory: directory)
+        var next = try SubtitleCue(id: UUID(), startMilliseconds: 2000, endMilliseconds: 2400, sourceText: "Next cue")
+        next.translation = .succeeded(text: "下一句", sourceRevision: next.sourceRevision)
+        item.cues.append(next)
         var options = BurnInOptions()
         options.fontSize = 48
         let plan = try await SubtitleBurnInExporter.composition(for: item, options: options, mediaStore: store, inspector: inspector)
@@ -96,7 +99,21 @@ struct SubtitleBurnInTests {
         #expect((segments.first as? AVCompositionTrackSegment)?.sourceTrackID == item.media?.audioTrackID)
         let before = try await plan.preview(atMilliseconds: 500)
         let during = try await plan.preview(atMilliseconds: 1500)
+        let boundary = try await plan.preview(atMilliseconds: 2000)
+        let second = try await plan.preview(atMilliseconds: 2250)
         let after = try await plan.preview(atMilliseconds: 2500)
+        let repeated = try await plan.preview(atMilliseconds: 1500)
+        let compact = try await plan.preview(atMilliseconds: 1500, maximumSize: CGSize(width: 16, height: 16))
+        #expect(compact.width <= 16 && compact.height <= 16)
+        #expect(compact.width < during.width || compact.height < during.height)
+        var secondOnly = item
+        secondOnly.cues = [next]
+        let secondPlan = try await SubtitleBurnInExporter.composition(for: secondOnly, options: options, mediaStore: store, inspector: inspector)
+        defer { secondPlan.releaseAccess() }
+        let referenceBoundary = try await secondPlan.preview(atMilliseconds: 2000)
+        #expect(try Self.pixels(boundary) == Self.pixels(referenceBoundary))
+        #expect(try Self.pixels(during) != Self.pixels(second))
+        #expect(try Self.pixels(during) == Self.pixels(repeated))
         #expect(before.width == during.width && before.height == during.height)
         #expect(try Self.pixels(before) != Self.pixels(during))
         #expect(try Self.pixels(before) == Self.pixels(after))

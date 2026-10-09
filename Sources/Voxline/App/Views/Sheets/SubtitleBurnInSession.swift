@@ -50,7 +50,7 @@ final class SubtitleBurnInSession {
             do {
                 if plan == nil { plan = try await SubtitleBurnInExporter.composition(for: item, options: options) }
                 guard let plan else { throw BurnInError.invalidGeometry }
-                previewImage = try await plan.preview(atMilliseconds: previewTime)
+                previewImage = try await plan.preview(atMilliseconds: previewTime, maximumSize: CGSize(width: 1280, height: 720))
             } catch {
                 previewImage = nil
                 errorMessage = error is CancellationError ? String(localized: "预览已取消。", bundle: appLocalizationBundle) : error.localizedDescription
