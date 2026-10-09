@@ -16,10 +16,7 @@ struct IOSMediaDetailView: View {
     @State private var importingMedia = false
     @State private var association: IOSMediaAssociationCandidate?
     @State private var showingOffset = false
-    @State private var insertingSubtitle = false
-    @State private var timingCue: SubtitleCue?
-    @State private var splittingCue: SubtitleCue?
-    @State private var mergingCues: [SubtitleCue]?
+    @State private var structureState = SubtitleStructureState()
 
     // 多选重译
 
@@ -75,7 +72,7 @@ struct IOSMediaDetailView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button {
-                        insertingSubtitle = true
+                        structureState.insert(at: playback.currentTimeSeconds)
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -151,64 +148,11 @@ struct IOSMediaDetailView: View {
             .sheet(item: Binding(get: { sharingURL.map { SharePayload(url: $0) } }, set: { sharingURL = $0?.url })) { payload in
                 ShareActivitySheet(activityItems: [payload.url])
             }
-            .sheet(isPresented: $insertingSubtitle) {
-                InsertSubtitleSheet(
-                    initialStartSeconds: playback.currentTimeSeconds
-                ) { newCue in
-                    guard let current = self.item else { throw TaskValidationError.taskChanged }
-                    var updated = current
-                    try updated.insertSubtitle(newCue)
-                    try session.saveChanges(updated, comparedTo: current) { updated, original in
-                        try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
-                    }
-                }
-            }
-            .sheet(item: $timingCue) { cue in
-                AdjustTimingSheet(cue: cue) { startMs, endMs in
-                    guard let current = self.item else { throw TaskValidationError.taskChanged }
-                    var updated = current
-                    try updated.setSubtitleTiming(comparedTo: cue, startMilliseconds: startMs, endMilliseconds: endMs)
-                    try session.saveChanges(updated, comparedTo: current) { updated, original in
-                        try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
-                    }
-                }
-            }
-            .sheet(item: $splittingCue) { cue in
-                SplitSubtitleSheet(cue: cue) { atMs, s1, s2, t1, t2 in
-                    guard let current = self.item else { throw TaskValidationError.taskChanged }
-                    var updated = current
-                    try updated.splitSubtitle(
-                        comparedTo: cue,
-                        atMilliseconds: atMs,
-                        firstSourceText: s1,
-                        secondSourceText: s2,
-                        firstTranslationText: t1,
-                        secondTranslationText: t2
-                    )
-                    try session.saveChanges(updated, comparedTo: current) { updated, original in
-                        try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
-                    }
-                }
-            }
-            .sheet(item: Binding(
-                get: { mergingCues.map { IdentifiableCueList(cues: $0) } },
-                set: { mergingCues = $0?.cues }
-            )) { payload in
-                MergeSubtitlesSheet(cues: payload.cues) { mergedSource, mergedTrans in
-                    guard let current = self.item else { throw TaskValidationError.taskChanged }
-                    var updated = current
-                    try updated.mergeSubtitles(
-                        comparedTo: payload.cues,
-                        sourceText: mergedSource,
-                        translationText: mergedTrans
-                    )
-                    try session.saveChanges(updated, comparedTo: current) { updated, original in
-                        try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
-                    }
-                    session.selectedCueIDs.removeAll()
-                    session.isSelecting = false
-                }
-            }
+            .subtitleStructureSheets(state: structureState, item: item, session: session, onCommit: { updated, original in
+                try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
+                session.selectedCueIDs.removeAll()
+                session.isSelecting = false
+            })
             .confirmationDialog(String(localized: "重新翻译所选字幕？", bundle: appLocalizationBundle),
                                 isPresented: Binding(get: { session.retranslatingCues != nil }, set: { if !$0 { session.retranslatingCues = nil } }), titleVisibility: .visible) {
                 if let selected = session.retranslatingCues {
@@ -301,55 +245,7 @@ struct IOSMediaDetailView: View {
             }
 
             // 精致播放控制卡片
-            VStack(spacing: 6) {
-                HStack(spacing: 10) {
-                    Text(playback.formattedCurrentTime)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-
-                    Slider(
-                        value: Binding(
-                            get: { playback.currentTimeSeconds },
-                            set: { playback.seek(to: $0) }
-                        ),
-                        in: 0...max(playback.durationSeconds, 0.1)
-                    )
-                    .tint(Color.voxlineAccent)
-                    .disabled(!playback.isReady)
-
-                    Text(playback.formattedDuration)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14)
-
-                HStack(spacing: 30) {
-                    Button {
-                        playback.seekRelative(by: -5)
-                    } label: {
-                        Image(systemName: "gobackward.5")
-                            .font(.title3)
-                    }
-
-                    Button {
-                        playback.togglePlayPause()
-                    } label: {
-                        Image(systemName: playback.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 38))
-                            .foregroundStyle(Color.voxlineAccent)
-                    }
-
-                    Button {
-                        playback.seekRelative(by: 5)
-                    } label: {
-                        Image(systemName: "goforward.5")
-                            .font(.title3)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.vertical, 8)
-            .background(Color.secondary.opacity(0.05))
+            ProofreadingPlayerControls(playback: playback, style: .card)
         } else if playback.isLoading {
             ProgressView(String(localized: "读取本地媒体…", bundle: appLocalizationBundle))
                 .frame(maxWidth: .infinity, minHeight: 140)
@@ -432,8 +328,25 @@ struct IOSMediaDetailView: View {
                 }
 
                 ForEach(session.filteredCues(in: item)) { cue in
-                    cueRow(cue: cue, item: item, isActive: activeCue?.id == cue.id)
-                        .id(cue.id)
+                    ProofreadingCueRow(
+                        cue: cue,
+                        item: item,
+                        session: session,
+                        isActive: activeCue?.id == cue.id,
+                        canRetranslate: task?.parameters.translation != nil,
+                        isTaskRunning: library.queue.taskID != nil,
+                        onSeek: { playback.seek(toMilliseconds: $0) },
+                        onRetranslate: { targetCue in
+                            do { try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: [targetCue.id]) }
+                            catch { session.errorMessage = error.localizedDescription }
+                        },
+                        onBeginEdit: { targetCue in session.beginEditing(targetCue) },
+                        onAdjustTiming: { targetCue in structureState.adjustTiming(for: targetCue) },
+                        onSplit: { targetCue in structureState.split(cue: targetCue) },
+                        onMerge: { cues in structureState.merge(cues: cues) },
+                        onDelete: { targetCue in deleteCue(targetCue) }
+                    )
+                    .id(cue.id)
                 }
             }
             .listStyle(.plain)
@@ -444,162 +357,6 @@ struct IOSMediaDetailView: View {
                     }
                 }
             }
-        }
-    }
-
-    // MARK: - 单行字幕卡片
-    @ViewBuilder
-    private func cueRow(cue: SubtitleCue, item: TaskMediaItem, isActive: Bool) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            if session.isSelecting {
-                Button {
-                    if session.selectedCueIDs.contains(cue.id) {
-                        session.selectedCueIDs.remove(cue.id)
-                    } else {
-                        session.selectedCueIDs.insert(cue.id)
-                    }
-                } label: {
-                    Image(systemName: session.selectedCueIDs.contains(cue.id) ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(session.selectedCueIDs.contains(cue.id) ? Color.voxlineAccent : .secondary)
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 4)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                // 时间轴与操作按钮
-                HStack(spacing: 6) {
-                    Button {
-                        playback.seek(toMilliseconds: cue.startMilliseconds)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 8))
-                            Text(formatTime(cue.startMilliseconds))
-                            Text("→")
-                            Text(formatTime(cue.endMilliseconds))
-                        }
-                        .font(.caption2.monospacedDigit().weight(.medium))
-                        .foregroundStyle(isActive ? Color.voxlineAccent : .secondary)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(!playback.isReady)
-
-                    Spacer()
-
-                    if task?.parameters.translation != nil && !session.isSelecting {
-                        Button {
-                            do { try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: [cue.id]) }
-                            catch { session.errorMessage = error.localizedDescription }
-                        } label: {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .disabled(library.queue.taskID != nil)
-                    }
-
-                    if !session.isSelecting {
-                        Button {
-                            session.beginEditing(cue)
-                        } label: {
-                            Image(systemName: "pencil")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.borderless)
-
-                        Menu {
-                            subtitleEditingActions(cue, in: item)
-
-                            Divider()
-
-                            Button {
-                                UIPasteboard.general.string = cue.sourceText
-                            } label: {
-                                Label(String(localized: "复制原文", bundle: appLocalizationBundle), systemImage: "doc.on.doc")
-                            }
-
-                            Divider()
-
-                            Button(role: .destructive) {
-                                deleteCue(cue)
-                            } label: {
-                                Label(String(localized: "删除字幕", bundle: appLocalizationBundle), systemImage: "trash")
-                            }
-                            .disabled(library.queue.taskID != nil || session.editingSnapshot?.id != nil)
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 20, height: 20)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                }
-
-                // 原文
-                Text(cue.sourceText)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-
-                // 译文状态
-                switch cue.translation {
-                case .succeeded(let text, _):
-                    Text(text)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-
-                case .failed(let reason):
-                    Text(reason)
-                        .font(.caption2)
-                        .foregroundStyle(.red)
-
-                case .pending:
-                    Text(String(localized: "待翻译", bundle: appLocalizationBundle))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-
-            }
-        }
-        .padding(.vertical, 4)
-        .listRowBackground(isActive ? Color.voxlineAccent.opacity(0.08) : nil)
-        .contextMenu {
-            subtitleEditingActions(cue, in: item)
-
-            if task?.parameters.translation != nil {
-                Divider()
-                Button {
-                    do { try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: [cue.id]) }
-                    catch { session.errorMessage = error.localizedDescription }
-                } label: {
-                    Label(String(localized: "重译本句", bundle: appLocalizationBundle), systemImage: "arrow.triangle.2.circlepath")
-                }
-                .disabled(session.editingSnapshot?.id != nil || library.queue.taskID != nil)
-            }
-
-            Divider()
-
-            Button {
-                UIPasteboard.general.string = cue.sourceText
-            } label: {
-                Label(String(localized: "复制原文", bundle: appLocalizationBundle), systemImage: "doc.on.doc")
-            }
-
-            Divider()
-
-            Button(role: .destructive) {
-                deleteCue(cue)
-            } label: {
-                Label(String(localized: "删除字幕", bundle: appLocalizationBundle), systemImage: "trash")
-            }
-            .disabled(library.queue.taskID != nil || session.editingSnapshot?.id != nil)
         }
     }
 
@@ -624,7 +381,7 @@ struct IOSMediaDetailView: View {
 
             if let adjacent = selectedAdjacentCues(in: item) {
                 Button {
-                    mergingCues = adjacent
+                    structureState.merge(cues: adjacent)
                 } label: {
                     Label(String(localized: "合并", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge")
                         .font(.subheadline)
@@ -671,7 +428,7 @@ struct IOSMediaDetailView: View {
     private func mediaActionMenu(_ item: TaskMediaItem) -> some View {
         Menu {
             Button(String(localized: "添加字幕…", bundle: appLocalizationBundle), systemImage: "plus") {
-                insertingSubtitle = true
+                structureState.insert(at: playback.currentTimeSeconds)
             }
             .disabled(library.queue.taskID != nil)
 
@@ -766,41 +523,6 @@ struct IOSMediaDetailView: View {
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.title3)
-        }
-    }
-
-    @ViewBuilder
-    private func subtitleEditingActions(_ cue: SubtitleCue, in item: TaskMediaItem) -> some View {
-        Button {
-            session.beginEditing(cue)
-        } label: {
-            Label(String(localized: "编辑文字", bundle: appLocalizationBundle), systemImage: "pencil")
-        }
-        .disabled(session.editingSnapshot?.id != nil)
-
-        Button {
-            timingCue = cue
-        } label: {
-            Label(String(localized: "调整时间…", bundle: appLocalizationBundle), systemImage: "timer")
-        }
-        .disabled(library.queue.taskID != nil || session.editingSnapshot?.id != nil)
-
-        Button {
-            splittingCue = cue
-        } label: {
-            Label(String(localized: "拆分字幕…", bundle: appLocalizationBundle), systemImage: "scissors")
-        }
-        .disabled(library.queue.taskID != nil || session.editingSnapshot?.id != nil)
-
-        if let currentIndex = item.cues.firstIndex(where: { $0.id == cue.id }),
-           currentIndex + 1 < item.cues.count {
-            let nextCue = item.cues[currentIndex + 1]
-            Button {
-                mergingCues = [cue, nextCue]
-            } label: {
-                Label(String(localized: "与下一句合并…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge")
-            }
-            .disabled(library.queue.taskID != nil || session.editingSnapshot?.id != nil)
         }
     }
 
