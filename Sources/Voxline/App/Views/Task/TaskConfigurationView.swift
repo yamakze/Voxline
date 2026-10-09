@@ -657,14 +657,6 @@ public struct TaskConfigurationView: View {
 
                         if let serviceID = selectedCloudServiceID, let service = cloudStore.services.first(where: { $0.id == serviceID }) {
                             HStack {
-                                Text(String(localized: "协议", bundle: appLocalizationBundle))
-                                Spacer()
-                                Text(service.protocolKind.label)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .font(.caption)
-
-                            HStack {
                                 Text(String(localized: "API 地址", bundle: appLocalizationBundle))
                                 Spacer()
                                 Text((originalTask.canChangeTranscription ? service.baseURL
@@ -764,7 +756,15 @@ public struct TaskConfigurationView: View {
                         .padding(.vertical, 2)
 
                         if showAdvancedTranslationOptions {
-                            TextField(String(localized: "每批字幕数", bundle: appLocalizationBundle), value: $translationBatchSize, format: .number)
+                            HStack {
+                                Text(String(localized: "单批字幕数量", bundle: appLocalizationBundle))
+                                Spacer()
+                                TextField("15", value: $translationBatchSize, format: .number)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(maxWidth: 70)
+                                Stepper("", value: $translationBatchSize, in: 1...100)
+                                    .labelsHidden()
+                            }
 
                             LabeledContent {
                                 VStack(alignment: .trailing, spacing: 4) {
@@ -778,11 +778,18 @@ public struct TaskConfigurationView: View {
                                                 .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
                                         )
 
-                                    Button(String(localized: "恢复默认", bundle: appLocalizationBundle)) {
-                                        translationSystemPrompt = TranslationSettings.defaultSystemPrompt
+                                    HStack {
+                                        Text(String(localized: "告诉模型如何理解与翻译（如语气、术语或风格）。模型会自动按结构返回，无需在此指定数据格式。", bundle: appLocalizationBundle))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .multilineTextAlignment(.leading)
+                                        Spacer()
+                                        Button(String(localized: "恢复默认", bundle: appLocalizationBundle)) {
+                                            translationSystemPrompt = TranslationSettings.defaultSystemPrompt
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .font(.caption)
                                     }
-                                    .buttonStyle(.borderless)
-                                    .font(.caption)
                                 }
                             } label: {
                                 Text(String(localized: "系统提示词", bundle: appLocalizationBundle))

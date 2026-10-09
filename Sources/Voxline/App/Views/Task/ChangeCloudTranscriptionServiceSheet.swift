@@ -58,7 +58,6 @@ public struct ChangeCloudTranscriptionServiceSheet: View {
                     if let currentCloud {
                         let currentServiceName = store.services.first(where: { $0.id == currentCloud.serviceID })?.name ?? String(localized: "未在本机配置的服务", bundle: appLocalizationBundle)
                         LabeledContent(String(localized: "当前服务", bundle: appLocalizationBundle), value: currentServiceName)
-                        LabeledContent(String(localized: "预设协议", bundle: appLocalizationBundle), value: currentCloud.protocolKind.label)
                         LabeledContent(String(localized: "转写模型", bundle: appLocalizationBundle), value: currentTranscription.modelID)
                         LabeledContent(String(localized: "API 地址", bundle: appLocalizationBundle), value: currentCloud.baseURL.absoluteString)
                     } else {
@@ -87,12 +86,11 @@ public struct ChangeCloudTranscriptionServiceSheet: View {
                         }
 
                         if let service = selectedService {
-                            LabeledContent(String(localized: "协议", bundle: appLocalizationBundle), value: service.protocolKind.label)
                             LabeledContent(String(localized: "模型", bundle: appLocalizationBundle), value: service.modelID)
                             LabeledContent(String(localized: "API 地址", bundle: appLocalizationBundle), value: service.baseURL.absoluteString)
 
                             if isIncompatibleProtocolSwitch {
-                                Text(String(localized: "⚠️ 当前任务已有转写成果。Audio Transcriptions（整段转写）与音频聊天预设（语音分块）之间的切分机制不同，已有检查点的任务无法切换，请新建任务。", bundle: appLocalizationBundle))
+                                Text(String(localized: "⚠️ 当前任务已有转写成果，因转写机制不兼容，无法在不同类型的服务间直接切换。如需使用新服务，请新建任务。", bundle: appLocalizationBundle))
                                     .font(.caption)
                                     .foregroundStyle(.red)
                             } else if service.id == currentCloud?.serviceID {

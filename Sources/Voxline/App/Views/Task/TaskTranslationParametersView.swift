@@ -44,13 +44,13 @@ struct TaskTranslationParametersView: View {
                 Section(String(localized: "转写", bundle: appLocalizationBundle)) {
                     let transcription = original.parameters.transcription
                     if transcription.provider == .openAICompatible {
-                        LabeledContent(String(localized: "转写路线", bundle: appLocalizationBundle), value: String(localized: "云端 OpenAI 兼容", bundle: appLocalizationBundle))
+                        LabeledContent(String(localized: "转写服务", bundle: appLocalizationBundle), value: String(localized: "云端 OpenAI 兼容", bundle: appLocalizationBundle))
                         LabeledContent(String(localized: "转写模型", bundle: appLocalizationBundle), value: transcription.modelID)
                         if let baseURL = transcription.cloud?.baseURL {
                             LabeledContent(String(localized: "服务地址", bundle: appLocalizationBundle), value: baseURL.absoluteString)
                         }
                     } else {
-                        LabeledContent(String(localized: "转写路线", bundle: appLocalizationBundle), value: String(localized: "本地 WhisperKit", bundle: appLocalizationBundle))
+                        LabeledContent(String(localized: "转写服务", bundle: appLocalizationBundle), value: String(localized: "本地 WhisperKit", bundle: appLocalizationBundle))
                         LabeledContent(String(localized: "转写模型", bundle: appLocalizationBundle), value: transcription.modelID)
                     }
                     LabeledContent(String(localized: "语言识别", bundle: appLocalizationBundle), value: transcription.languageMode == .specified ? (transcription.languageCode ?? String(localized: "未指定", bundle: appLocalizationBundle)) : String(localized: "自动识别", bundle: appLocalizationBundle))
@@ -58,14 +58,14 @@ struct TaskTranslationParametersView: View {
                 Section(String(localized: "字幕翻译", bundle: appLocalizationBundle)) {
                     Toggle(String(localized: "启用翻译", bundle: appLocalizationBundle), isOn: $enabled)
                     if enabled {
-                        Picker(String(localized: "引擎", bundle: appLocalizationBundle), selection: $apple) {
+                        Picker(String(localized: "翻译引擎", bundle: appLocalizationBundle), selection: $apple) {
                             Text(String(localized: "OpenAI 兼容接口", bundle: appLocalizationBundle)).tag(false)
                             Text(String(localized: "Apple 本机翻译", bundle: appLocalizationBundle)).tag(true)
                         }
                         if apple {
                             AppleTranslationLanguageSettings(source: $source, target: $target, batchSize: $batchSize)
                         } else {
-                            Picker(String(localized: "本机服务", bundle: appLocalizationBundle), selection: $serviceID) {
+                            Picker(String(localized: "服务", bundle: appLocalizationBundle), selection: $serviceID) {
                                 Text(String(localized: "请选择服务", bundle: appLocalizationBundle)).tag(nil as UUID?)
                                 if let serviceID, !store.services.contains(where: { $0.id == serviceID }) {
                                     Text(String(localized: "原服务未在此设备配置", bundle: appLocalizationBundle)).tag(Optional(serviceID))
@@ -77,8 +77,41 @@ struct TaskTranslationParametersView: View {
                             }
                             TextField(String(localized: "翻译模型", bundle: appLocalizationBundle), text: $model)
                             LanguagePicker(title: String(localized: "目标语言", bundle: appLocalizationBundle), selection: $target)
-                            TextField(String(localized: "每批字幕数量", bundle: appLocalizationBundle), value: $batchSize, format: .number)
-                            TextEditor(text: $prompt).frame(minHeight: 100).accessibilityLabel(String(localized: "系统提示词", bundle: appLocalizationBundle))
+
+                            HStack {
+                                Text(String(localized: "单批字幕数量", bundle: appLocalizationBundle))
+                                Spacer()
+                                TextField("15", value: $batchSize, format: .number)
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(maxWidth: 70)
+                                Stepper("", value: $batchSize, in: 1...100)
+                                    .labelsHidden()
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text(String(localized: "系统提示词", bundle: appLocalizationBundle))
+                                    Spacer()
+                                    Button(String(localized: "恢复默认", bundle: appLocalizationBundle)) {
+                                        prompt = TranslationSettings.defaultSystemPrompt
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .font(.caption)
+                                }
+                                TextEditor(text: $prompt)
+                                    .font(.callout)
+                                    .frame(minHeight: 85)
+                                    .padding(4)
+                                    .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                                    )
+                                Text(String(localized: "告诉模型如何理解与翻译（如语气、术语或风格）。模型会自动按结构返回，无需在此指定数据格式。", bundle: appLocalizationBundle))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 2)
                         }
                     }
                 }
