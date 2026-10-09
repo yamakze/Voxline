@@ -1,26 +1,36 @@
 import SwiftUI
 
 // MARK: - Storage usage
-public struct StorageBreakdownBar: View {
-    public struct Segment: Identifiable {
-        public let id = UUID()
-        public let title: String
-        public let byteCount: Int64
-        public let color: Color
+public struct StorageSegment: Identifiable {
+    public let id = UUID()
+    public let title: String
+    public let byteCount: Int64
+    public let color: Color
 
-        public init(title: String, byteCount: Int64, color: Color) {
-            self.title = title
-            self.byteCount = byteCount
-            self.color = color
-        }
+    public init(title: String, byteCount: Int64, color: Color) {
+        self.title = title
+        self.byteCount = byteCount
+        self.color = color
     }
+}
+
+public struct StorageBreakdownBar<Trailing: View>: View {
+    public typealias Segment = StorageSegment
 
     public let totalDiskBytes: Int64
-    public let segments: [Segment]
+    public let segments: [StorageSegment]
+    private let trailing: Trailing
 
-    public init(totalDiskBytes: Int64, segments: [Segment]) {
+    public init(totalDiskBytes: Int64, segments: [StorageSegment], @ViewBuilder trailing: () -> Trailing) {
         self.totalDiskBytes = totalDiskBytes
         self.segments = segments
+        self.trailing = trailing()
+    }
+
+    public init(totalDiskBytes: Int64, segments: [StorageSegment]) where Trailing == EmptyView {
+        self.totalDiskBytes = totalDiskBytes
+        self.segments = segments
+        self.trailing = EmptyView()
     }
 
     public var body: some View {
@@ -44,7 +54,7 @@ public struct StorageBreakdownBar: View {
             .clipShape(RoundedRectangle(cornerRadius: 4))
 
             // Legend
-            HStack(spacing: 16) {
+            HStack(alignment: .center, spacing: 16) {
                 ForEach(segments) { segment in
                     HStack(spacing: 5) {
                         Circle().fill(segment.color).frame(width: 8, height: 8)
@@ -55,6 +65,7 @@ public struct StorageBreakdownBar: View {
                     }
                 }
                 Spacer()
+                trailing
             }
         }
     }

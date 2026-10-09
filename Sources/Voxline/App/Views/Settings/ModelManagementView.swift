@@ -10,12 +10,12 @@ public struct ModelManagementView: View {
 
     public init() {}
 
-    private var storageSegments: [StorageBreakdownBar.Segment] {
+    private var storageSegments: [StorageSegment] {
         let colors: [Color] = [.blue, .teal, .purple, .indigo, .orange]
-        var segs: [StorageBreakdownBar.Segment] = []
+        var segs: [StorageSegment] = []
         for (idx, model) in ModelManager.availableModels.enumerated() {
             if let bytes = modelManager.diskUsage[model.id], bytes > 0 {
-                segs.append(StorageBreakdownBar.Segment(
+                segs.append(StorageSegment(
                     title: model.name,
                     byteCount: bytes,
                     color: colors[idx % colors.count]
@@ -39,7 +39,12 @@ public struct ModelManagementView: View {
                         Text(mb >= 1000 ? String(format: String(localized: "已用 %.2f GB", bundle: appLocalizationBundle), locale: .current, mb / 1000.0) : String(format: String(localized: "已用 %.0f MB", bundle: appLocalizationBundle), locale: .current, mb))
                             .font(.subheadline.monospacedDigit().bold())
                             .foregroundStyle(.secondary)
+                    }
 
+                    StorageBreakdownBar(
+                        totalDiskBytes: max(modelManager.totalDiskUsage(), 1),
+                        segments: storageSegments
+                    ) {
                         #if os(macOS)
                         Button {
                             if let dir = modelManager.modelDirectories.values.first ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("huggingface/models") {
@@ -53,11 +58,6 @@ public struct ModelManagementView: View {
                         .help(String(localized: "在访达中打开模型存储目录", bundle: appLocalizationBundle))
                         #endif
                     }
-
-                    StorageBreakdownBar(
-                        totalDiskBytes: max(modelManager.totalDiskUsage(), 1),
-                        segments: storageSegments
-                    )
 
                     if let error = modelManager.storageError {
                         Text(error).foregroundStyle(.red).font(.caption)
@@ -263,11 +263,17 @@ public struct ModelManagementView: View {
                 .disabled(modelManager.isOperating || modelManager.deletingModels.contains(model.id))
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.body)
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
+        #if os(macOS)
         .menuStyle(.borderlessButton)
-        .frame(width: 24, height: 24)
+        .menuIndicator(.hidden)
+        #endif
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

@@ -639,5 +639,7 @@
 "正在同步原媒体文件…" = "Syncing original media files…";
 "选择同步文件夹…" = "Choose Sync Folder…";
 "关闭 iCloud 同步" = "Turn Off iCloud Sync";
+"例如 whisper-1 / 自建模型名" = "e.g. whisper-1 / custom model";
+
 
 

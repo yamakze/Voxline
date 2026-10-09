@@ -248,7 +248,9 @@ private struct CloudTranscriptionServiceEditorModal: View {
                         guard oldProto != newProto else { return }
                         switch newProto {
                         case .audioTranscriptions:
-                            modelID = "whisper-1"
+                            if modelID.isEmpty || modelID == Self.defaultModel(for: .geminiAudioChat) || modelID == Self.defaultModel(for: .qwenAudioChat) {
+                                modelID = Self.defaultModel(for: .audioTranscriptions)
+                            }
                             if baseURLString.isEmpty || baseURLString == Self.defaultURL(for: .geminiAudioChat) || baseURLString == Self.defaultURL(for: .qwenAudioChat) {
                                 baseURLString = Self.defaultURL(for: .audioTranscriptions)
                             }
@@ -271,17 +273,7 @@ private struct CloudTranscriptionServiceEditorModal: View {
 
                     TextField(String(localized: "名称", bundle: appLocalizationBundle), text: $name, prompt: Text(placeholderName))
                     TextField(String(localized: "API 根地址", bundle: appLocalizationBundle), text: $baseURLString, prompt: Text(Self.defaultURL(for: protocolKind)))
-
-                    if protocolKind == .audioTranscriptions {
-                        HStack {
-                            Text(String(localized: "转写模型", bundle: appLocalizationBundle))
-                            Spacer()
-                            Text("whisper-1")
-                                .foregroundStyle(.secondary)
-                        }
-                    } else {
-                        TextField(String(localized: "转写模型", bundle: appLocalizationBundle), text: $modelID, prompt: Text(placeholderModel))
-                    }
+                    TextField(String(localized: "转写模型", bundle: appLocalizationBundle), text: $modelID, prompt: Text(placeholderModel))
 
                     if isLoadingKey {
                         ProgressView(String(localized: "正在从钥匙串安全读取密钥…", bundle: appLocalizationBundle))
@@ -315,7 +307,7 @@ private struct CloudTranscriptionServiceEditorModal: View {
                 Button(String(localized: "保存", bundle: appLocalizationBundle)) { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isSaving || isLoadingKey || (keyReadFailed && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (protocolKind != .audioTranscriptions && modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                    .disabled(isSaving || isLoadingKey || (keyReadFailed && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -345,7 +337,7 @@ private struct CloudTranscriptionServiceEditorModal: View {
 
     private var placeholderModel: String {
         switch protocolKind {
-        case .audioTranscriptions: "whisper-1"
+        case .audioTranscriptions: String(localized: "例如 whisper-1 / 自建模型名", bundle: appLocalizationBundle)
         case .geminiAudioChat: String(localized: "例如 gemini-2.5-flash", bundle: appLocalizationBundle)
         case .qwenAudioChat: String(localized: "例如 qwen3-asr-flash", bundle: appLocalizationBundle)
         }
@@ -358,7 +350,8 @@ private struct CloudTranscriptionServiceEditorModal: View {
             errorMessage = String(localized: "请输入有效的 HTTP 或 HTTPS API 根地址。", bundle: appLocalizationBundle)
             return
         }
-        let finalModel = protocolKind == .audioTranscriptions ? "whisper-1" : modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawModel = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalModel = rawModel.isEmpty ? Self.defaultModel(for: protocolKind) : rawModel
         guard !finalModel.isEmpty else {
             errorMessage = String(localized: "请输入转写模型 ID。", bundle: appLocalizationBundle)
             return
