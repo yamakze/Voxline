@@ -10,7 +10,7 @@ iOS 的 Core、Media、WhisperKit、Translation 与 Workflow 框架直接编译�
 
 - VoxlineCore：ProcessingTask、参数快照、有序媒体条目、字幕版本、媒体身份、JSON 编解码、验证、转写协议、原始证据、字幕切分与检查点。阶段状态和文本、SRT 生成与导出也在此模块；SRT 文件写入使用调用方传入的 URL，不管理设备目录。只依赖 Foundation，不保存设备路径、书签或密钥。
 - VoxlineWhisperKit：固定模型清单、下载与安装校验、本地占用、实例生命周期、有界输入 Provider 和 ModelManager 的可观察状态。SDK 类型只存在于该模块；应用接收真实下载、加载和推理状态。同一进程复用唯一已加载实例；删除或重新下载已加载模型时自动卸载内存挂载，收敛交互状态。
-- VoxlineMedia：AVFoundation 原生能力检查、有界采样指纹、设备本地书签、有界 PCM 提取和共用播放器。字幕烧录的快照、合成、预览与导出在此模块，Mac 与 iOS 共享原生 Core Image 与 AVAssetExportSession 烧录服务。AVFoundation 类型不进入 Core 或 Task 文件。
+- VoxlineMedia：AVFoundation 原生能力检查、有界采样指纹、设备本地书签、有界 PCM 提取、按已完成范围裁切的音频切片和共用播放器。字幕烧录的快照、合成、预览与导出在此模块，Mac 与 iOS 共享原生 Core Image 与 AVAssetExportSession 烧录服务。AVFoundation 类型不进入 Core 或 Task 文件。
 - VoxlineTranslation：聊天／Audio Transcriptions 客户端、上下文批次、结果校验、HTTP 错误、设备服务元数据和异步 Keychain 凭据。依赖 Foundation、Observation、Security 与 Core，不依赖应用或 SwiftUI。
 - VoxlineWorkflow：TaskLibrary、单执行者 TaskProcessingQueue 与媒体／翻译外部调用边界。依赖 Core、Media、WhisperKit、Translation；组织实际操作、恢复与原子成果提交，不导入 AppKit、SwiftUI 或应用模块。翻译执行实例由应用接线传入。
 - VoxlineApp：两平台入口、主要页面、导航与原生适配。MacWorkflow 配置任务目录与系统最近文档；翻译引擎接线和 Apple Translation 视图会话共用，视图会话保持在稳定根页面。iOS 设备副本库适配同一 TaskLibrary 和 TaskProcessingQueue，通过同一 ConfiguredMediaTranscriptionPipeline 执行本地媒体处理；已有完整转写成果的继续翻译保持独立入口与来源检查。UI 不导入第三方 WhisperKit SDK。
@@ -50,11 +50,11 @@ Mac 新任务保存至应用本地 Application Support/Voxline/Tasks；导入已
 
 版本 7 的 .voxline 根对象为 ProcessingTask。当前本地开发阶段只读写此格式，旧格式明确拒绝，不维护迁移分支。任务不保存导出类型或校对确认标记；媒体指纹为文件大小及头尾采样。运行媒体及内部转写块／翻译批次转换为 interrupted，保留已提交成果。
 
-Task 保存一份参数，有序媒体条目分别保存来源、身份、字幕与状态。整体状态和统计从条目计算。参数冻结要求至少一个可处理媒体，已失败或取消的输入不阻塞其余合法条目。冻结只固定参数，不调用 Provider 或生成成果。
+Task 保存一份参数，有序媒体条目分别保存来源、身份、字幕与状态。整体状态和统计从条目计算。首次开始要求至少一个可处理媒体，已失败或取消的输入不阻塞其余合法条目。recordStart 记录首次开始时间；执行者在每次启动时取得当前任务参数快照，不调用 Provider 或生成成果。
 
 格式、ID、字幕结构和失败原因在编码前与读取后验证；恢复所需原始段与未完成识别证据保持原值，切分只在新识别提交或显式恢复时执行。损坏、未来版本或非法数据抛出错误，不创建空 Task 替代原文件。
 
-停止执行时可显式修改翻译参数；已有转写记录或字幕时转写设置保持。ProcessingTask.updateParameters 同步更新检查点参数，翻译设置变化移除旧批次，保留原文、时间、原始转写证据和已有同目标译文。目标语言变化且已有译文时必须明确确认，再将旧译文置为待翻译；完整转写的媒体根据已有译文转为完成或待翻译。执行者仍占用任务时拒绝保存，草稿提交对照当前 Task。选择理由见 [ADR-0017](../ADR/0017-explicit-task-parameter-edits.md)。
+停止执行后可显式修改转写方式、服务、模型、原文语言及翻译参数。参数保存保留全部已有字幕、人工译文和历史识别来源，不自动重新转写。ProcessingTask.updateParameters 同步更新检查点参数，翻译设置变化移除旧批次，保留原文、时间、原始转写证据和已有同目标译文。目标语言变化且已有译文时必须明确确认，再将旧译文置为待翻译；完整转写的媒体根据已有译文转为完成或待翻译。执行者仍占用任务时拒绝保存，草稿提交对照当前 Task。选择理由见 [ADR-0017](../ADR/0017-explicit-task-parameter-edits.md)。
 
 TaskLibrary 的 task-order.json 保存本设备任务列表的稳定条目 ID 顺序，合法任务使用 Task ID，损坏文档使用文件 URL；同步迁移不改变任务排序身份，独立于成果文档；拖拽先原子写入顺序，成功后发布。登记已有任务与检查点保存保持现有位置。删除前界面展示实际文件和成果影响；文档去重使用规范路径，实际读取保留原始 security-scoped URL。删除先核对已知活动文档和副本引用，再移除目标文档、排序及最近文档记录，最后按媒体 ID 清理未共享的本地关联、PCM 和转写缓存。缓存损坏或清理失败不阻止文档删除，具体失败路径显示为独立清理错误。其他任务无法读取时保留缓存并显示原因；未知历史平铺证据不解码、不猜测归属。原媒体、其他副本、导出物、模型、服务和密钥保留。正在执行的任务不能删除；排列顺序不自动启动任务。选择理由见 [ADR-0018](../ADR/0018-task-resource-cleanup.md)。
 
@@ -266,7 +266,7 @@ SharedTaskDocuments 使用 NSFileCoordinator 读写和 NSFileVersion 完整版�
 
 ## 云端转写
 
-Task 保存多协议、时间来源与独立识别成果，格式规则统一见 Task 持久化。TranscriptionSettings 的 openAICompatible 保存服务 ID、API 根地址、模型、原文语言及 CloudTranscriptionProtocol 预设。历史云配置缺少 protocolKind 时按原 Audio Transcriptions 协议读取；历史本地配置缺少 cloud 时保持 WhisperKit。密钥由本设备 Keychain 维护；设备服务改变地址或协议后拒绝发送旧任务。已开始任务调整标题和翻译时保留冻结转写配置，不从服务默认值重建。
+Task 保存多协议、时间来源与独立识别成果，格式规则统一见 Task 持久化。TranscriptionSettings 的 openAICompatible 保存服务 ID、API 根地址、模型、原文语言及 CloudTranscriptionProtocol 预设。历史云配置缺少 protocolKind 时按原 Audio Transcriptions 协议读取；历史本地配置缺少 cloud 时保持 WhisperKit。密钥由本设备 Keychain 维护；设备服务改变地址或协议后拒绝发送旧任务。调整标题或翻译时保留当前转写配置，不从服务默认值重建；显式选择新转写服务才采用其配置。
 
 ConfiguredMediaTranscriptionPipeline 共用所选音轨的最多 120 秒 PCM 提取。Audio Transcriptions 使用用户配置的模型 ID、WAV multipart、verbose_json 与 segment 时间戳；不通过模型名称猜测服务能力。兼容转写与聊天服务的 API 根地址允许查询参数，追加协议路径时保留原参数、端口及路径前缀。服务配置只校验模型非空，执行时按实际响应读取有效分段时间；不支持所需参数或缺少时间戳的服务明确失败。音频聊天先由 VoxlineWhisperKit 的 SpeechAudioChunker 复用固定 SDK EnergyVAD，20 毫秒检测、200 毫秒语音边界扩展、合并相交区间，连续语音拆为最多 8 秒的 PCM16 WAV，保留源时间偏移及分块检查点。检测无活动的块记录空结果且不请求服务。能量 VAD 是粗粒度检测，噪声、低音量和语音边界的质量需实际校对，不声明词级精度。
 
@@ -274,7 +274,7 @@ AudioChatTranscriptionProvider 为 Gemini 构造裸 Base64 加 format 和固定 
 
 CloudTranscriptionResult 保存完整文本、可选相对段时间及时间来源；RawTranscriptionSegment 记录 service、modelGenerated 或 audioRange，不伪造词时间或概率。模型生成时间通过范围、顺序和文本覆盖校验，纯文本对应实际语音区间；时间来源保存在证据中，生成字幕直接可用，不增加校对打卡。CloudTranscriptionAlignment 独立于 HTTP，队列恢复失败／取消块中的识别结果时只重做对齐，失败保留原结果。有效服务时间继续走原切分路径。
 
-ProcessingTask.bindCloudTranscription 是显式服务重绑定：只支持同一音频区间划分及同一原文语言，保留已完成块、原服务识别来源和人工字幕，后续请求使用新配置；聊天预设之间可切换。120 秒 Audio Transcriptions 与短语音块之间不可在已有检查点上切换，须新建任务。普通参数编辑继续锁定已有转写参数。
+转写服务切换与普通参数编辑统一使用 ProcessingTask.updateParameters；本地、Audio Transcriptions 与音频聊天之间可切换。历史识别证据独立校验自身参数与范围，不要求等于当前配置；新提交仍必须匹配当前配置与运行 sourceID。续跑按当前协议划分音频，并裁除全部已完成区间，保留已有块 ID、证据和校对字幕；同范围未完成块复用其 ID，新范围建立待处理块。失败识别仅在参数完全相同时复用，参数改变后请求新配置，不继续恢复旧服务证据。边界切片使用现有 16 kHz PCM 输入及绝对毫秒范围。
 
 上传进度来自 URLSession；等待来自上传完成，不推算服务处理百分比。客户端取消只停止请求和等待，不宣称服务端取消。成功／失败证据先写设备缓存；云端 2xx 响应原文也存设备缓存，用于解析和对齐失败定位。HTTP 错误只展示状态码和请求 ID，不保存上游错误正文、请求音频 JSON 或密钥。任务检查点保留识别成果及来源，远端执行 ID 不进入同步文档。百炼异步文件转写和专门词对齐是后续接入边界。
 

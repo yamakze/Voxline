@@ -234,7 +234,7 @@ struct ProcessingCheckpointTests {
         let parameters = TaskParameters(transcription: .whisperKitBaseline, translation: translation)
         var task = ProcessingTask(items: [.init(title: "Sample", kind: .video,
             source: .localFile(fileName: media.fileName), media: media)], parameters: parameters)
-        try task.freezeParameters()
+        try task.recordStart()
         try task.items[0].initializeCheckpoint(parameters: parameters, ranges: ranges)
         return task
     }
@@ -246,7 +246,7 @@ struct ProcessingCheckpointTests {
             cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://first.example/v1")!, protocolKind: .geminiAudioChat))
         var task = ProcessingTask(items: [.init(title: "Sample", kind: .video,
             source: .localFile(fileName: media.fileName), media: media)], parameters: .init(transcription: first))
-        try task.freezeParameters()
+        try task.recordStart()
         try task.items[0].initializeCheckpoint(parameters: task.parameters, ranges: ranges)
         let chunk = task.items[0].checkpoint!.chunks[0]
         let sourceID = try task.items[0].beginTranscriptionChunk(chunk.id)
@@ -262,15 +262,23 @@ struct ProcessingCheckpointTests {
         let completed = task.items[0].checkpoint!.chunks[0]
         let second = TranscriptionSettings(provider: .openAICompatible, modelID: "qwen3-asr-flash",
             cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://second.example/v1")!, protocolKind: .qwenAudioChat))
-        try task.bindCloudTranscription(second)
+        try task.updateParameters(.init(transcription: second))
         #expect(task.items[0].cues == cues)
         #expect(task.items[0].checkpoint!.chunks[0] == completed)
         #expect(task.parameters.transcription == second)
         #expect(task.items[0].checkpoint?.parameters.transcription == second)
         #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)) == task)
-        let incompatible = TranscriptionSettings(provider: .openAICompatible, modelID: "whisper-1",
-            cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://third.example/v1")!))
-        #expect(throws: CheckpointError.incompatibleContext) { try task.bindCloudTranscription(incompatible) }
+        let alternatives: [TranscriptionSettings] = [
+            .init(provider: .openAICompatible, modelID: "custom-asr", languageMode: .specified, languageCode: "ja",
+                cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://third.example/v1")!)),
+            .init(modelID: "different-local-model", languageMode: .specified, languageCode: "en")
+        ]
+        for settings in alternatives {
+            try task.updateParameters(.init(transcription: settings))
+            #expect(task.items[0].cues == cues)
+            #expect(task.items[0].checkpoint!.chunks[0] == completed)
+            #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)) == task)
+        }
     }
 
     @Test func explicitTranslationEditsPreserveASRAndManualEditsAndRequireApprovalForANewTarget() throws {
@@ -284,7 +292,8 @@ struct ProcessingCheckpointTests {
         try original.items[0].recordTranslationFailure(pending, reason: "Unknown service")
         var conflictingParameters = original.parameters
         conflictingParameters.transcription = .init(modelID: "different-model")
-        #expect(throws: TaskValidationError.parametersFrozen) { try original.updateParameters(conflictingParameters) }
+        try original.updateParameters(conflictingParameters)
+        #expect(original.parameters == conflictingParameters)
         let chunks = original.items[0].checkpoint!.chunks
         let cues = original.items[0].cues
         var parameters = original.parameters
@@ -705,7 +714,7 @@ struct ProcessingCheckpointTests {
         let parameters = TaskParameters(transcription: first.settings)
         var task = ProcessingTask(items: [.init(title: "S001", kind: .video,
             source: .localFile(fileName: manifest.identity.fileName), media: manifest.identity)], parameters: parameters)
-        try task.freezeParameters()
+        try task.recordStart()
         try task.items[0].initializeCheckpoint(parameters: parameters, ranges: declaredRanges)
         let url = directory.appendingPathComponent("sample.voxline")
         var completed = 0

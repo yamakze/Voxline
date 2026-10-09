@@ -1,6 +1,6 @@
 import Foundation
 
-public struct TranscriptionChunkRange: Codable, Equatable, Sendable {
+public struct TranscriptionChunkRange: Codable, Hashable, Sendable {
     public let sourceStartMilliseconds: Int64
     public let durationMilliseconds: Int64
 
@@ -154,15 +154,7 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
         guard evidence.sourceStartMilliseconds == range.sourceStartMilliseconds,
               evidence.durationMilliseconds == range.durationMilliseconds else { throw CheckpointError.incompatibleContext }
         try evidence.settings.validate()
-        if evidence.settings != parameters.transcription {
-            // Explicit service rebinding keeps the original recognition provenance and range partition.
-            let current = parameters.transcription
-            guard current.provider == .openAICompatible, evidence.settings.provider == .openAICompatible,
-                  let oldCloud = evidence.settings.cloud, let newCloud = current.cloud,
-                  oldCloud.protocolKind.usesSpeechChunks == newCloud.protocolKind.usesSpeechChunks,
-                  evidence.settings.languageMode == current.languageMode,
-                  evidence.settings.languageCode == current.languageCode else { throw CheckpointError.incompatibleContext }
-        }
+        // Historical evidence retains the configuration used for that recognition attempt.
         if evidence.outcome == .failed {
             guard let reason = evidence.failureReason, !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw CheckpointError.invalidRecord
@@ -196,6 +188,23 @@ public extension TaskMediaItem {
         self = updated
     }
 
+    /// Replan unfinished audio without replacing committed recognition or the editable timeline.
+    mutating func reconcileTranscriptionChunks(ranges: [TranscriptionChunkRange]) throws {
+        var record = try requiredCheckpoint()
+        var unfinished: [TranscriptionChunkRange: TranscriptionChunkCheckpoint] = [:]
+        for chunk in record.chunks where !chunk.isCompleted {
+            guard unfinished.updateValue(chunk, forKey: chunk.range) == nil else { throw CheckpointError.invalidRecord }
+        }
+        record.chunks = record.chunks.filter(\.isCompleted) + ranges.map { range in
+            unfinished[range] ?? .init(id: UUID(), range: range, state: .pending)
+        }
+        record.chunks.sort { $0.range.sourceStartMilliseconds < $1.range.sourceStartMilliseconds }
+        var updated = self
+        updated.checkpoint = record
+        try updated.validate()
+        self = updated
+    }
+
     mutating func beginTranscriptionChunk(_ chunkID: UUID) throws -> UUID {
         var record = try requiredCheckpoint()
         guard let media, record.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
@@ -221,6 +230,7 @@ public extension TaskMediaItem {
             throw CheckpointError.staleResult
         }
         try record.validateEvidence(result.evidence, range: record.chunks[index].range)
+        guard result.evidence.settings == record.parameters.transcription else { throw CheckpointError.staleResult }
         guard result.evidence.outcome == .completed else { throw SubtitleSegmentationError.incompleteTranscription }
         let recognized = result.evidence.segments.map(\.text).joined().precomposedStringWithCanonicalMapping.filter { !$0.isWhitespace }
         let subtitled = result.cues.map(\.sourceText).joined().precomposedStringWithCanonicalMapping.filter { !$0.isWhitespace }

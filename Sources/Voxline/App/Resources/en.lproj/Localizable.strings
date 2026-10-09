@@ -232,7 +232,6 @@
 "已将草稿另存为独立副本：“%@”" = "The draft has been saved as an independent copy: \"%1$@\"";
 "已就绪" = "Ready";
 "已暂停" = "Paused";
-"已有转写记录，转写方式与参数已锁定" = "Transcription settings are locked because recognition results already exist";
 "已生成软字幕视频" = "Soft subtitle video created";
 "已用 %.0f MB" = "%.0f MB used";
 "已用 %.2f GB" = "%.2f GB used";
@@ -626,7 +625,6 @@
 "快进 5 秒" = "Skip Forward 5 Seconds";
 "翻译引擎" = "Translation Engine";
 "服务" = "Service";
-"⚠️ 当前任务已有转写成果，因转写机制不兼容，无法在不同类型的服务间直接切换。如需使用新服务，请新建任务。" = "This task already has transcription results. Create a new task to use a service with a different transcription method.";
 "暂无媒体" = "No Media";
 "偏移秒数" = "Offset (seconds)";
 "当前字幕" = "Current Subtitle";

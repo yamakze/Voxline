@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import Testing
 import VoxlineCore
 import VoxlineMedia
@@ -49,6 +50,9 @@ struct TaskProcessingQueueTests {
             "decode:\(task.items[1].id):0", "decode:\(task.items[1].id):2000"])
         var edited = processed
         try edited.items[0].cues[0].replaceSourceText(with: "Manual correction")
+        var parameters = edited.parameters
+        parameters.transcription = .init(modelID: "replacement-model", languageMode: .specified, languageCode: "ja")
+        try edited.updateParameters(parameters)
         try library.save(edited)
         let unchanged = edited.items[1]
         try queue.start(taskID: task.id, mediaID: task.items[0].id)
@@ -58,8 +62,68 @@ struct TaskProcessingQueueTests {
         #expect(saved.items[0].cues.count == 2)
         #expect(saved.items[0].cues[1].sourceText == "Manual correction")
         #expect(saved.items[1] == unchanged)
+        #expect(await pipeline.settingsUsed.last == parameters.transcription)
         #expect(await pipeline.events.suffix(2) == ["extract:\(task.items[0].id)", "decode:\(task.items[0].id):0"])
         #expect(throws: QueueError.noWork) { try queue.start(taskID: task.id) }
+    }
+
+    @Test(arguments: ["local-to-chat", "chat-to-local", "cloud-model-language", "chat-to-transcriptions"])
+    func changedTranscriptionResumesRealAudioWithoutOverwritingCommittedEdits(route: String) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("speech.wav")
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 20 * 16_000))
+        buffer.frameLength = buffer.frameCapacity
+        let samples = try #require(buffer.floatChannelData?[0])
+        for index in 0..<Int(buffer.frameLength) { samples[index] = Float(sin(Double(index) * 0.1) * 0.5) }
+        try autoreleasepool {
+            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            try file.write(from: buffer)
+        }
+        let chat = TranscriptionSettings(provider: .openAICompatible, modelID: "chat-model",
+            cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://chat.example/v1")!, protocolKind: .geminiAudioChat))
+        let cloud = TranscriptionSettings(provider: .openAICompatible, modelID: "arbitrary-asr-model",
+            languageMode: .specified, languageCode: "ja",
+            cloud: .init(serviceID: UUID(), baseURL: URL(string: "https://asr.example/v1")!))
+        let first = route.hasPrefix("chat-") ? chat : route == "cloud-model-language"
+            ? TranscriptionSettings(provider: .openAICompatible, modelID: "old-cloud-model", cloud: cloud.cloud)
+            : .whisperKitBaseline
+        let next = route == "local-to-chat" ? chat : ["chat-to-transcriptions", "cloud-model-language"].contains(route) ? cloud
+            : TranscriptionSettings(modelID: "new-local-model", languageMode: .specified, languageCode: "en")
+        let media = try await MediaInspector.shared.inspect(url).identity(audioTrackID: 1)
+        var task = ProcessingTask(items: [.init(title: "Speech", kind: .audio,
+            source: .localFile(fileName: media.fileName), media: media)], parameters: .init(transcription: first))
+        let library = TaskLibrary(tasksDirectory: directory.appendingPathComponent("tasks"))
+        try library.save(task)
+        let pipeline = ControlledPipeline(failFirstChunkOf: task.items[0].id, audioURL: url,
+            retainCloudRecognitionOnFailure: first.provider == .openAICompatible)
+        let queue = TaskProcessingQueue(library: library, pipeline: pipeline, translationPipeline: TranslationNotExpected())
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        task = try #require(library.task(for: task.id))
+        let completed = try #require(task.items[0].checkpoint).chunks.filter(\.isCompleted)
+        #expect(!completed.isEmpty && task.items[0].status != .completed)
+        let original = try #require(task.items[0].cues.first)
+        try task.items[0].editSubtitle(comparedTo: original, sourceText: "Manual source", translationText: "人工译文")
+        let manual = task.items[0].cues
+        try task.updateParameters(.init(transcription: next))
+        try library.save(task)
+        // A fresh library exercises persisted history and configuration, not just in-memory mutation.
+        let reopened = TaskLibrary(tasksDirectory: library.tasksDirectory)
+        let resumed = TaskProcessingQueue(library: reopened, pipeline: pipeline, translationPipeline: TranslationNotExpected())
+        let previousCalls = await pipeline.settingsUsed.count
+        try resumed.start(taskID: task.id)
+        await resumed.waitUntilIdle()
+        let saved = try TaskDocumentCodec.decode(Data(contentsOf: reopened.defaultURL(for: task.id)))
+        #expect(saved.items[0].status == .completed)
+        #expect(saved.parameters.transcription == next)
+        #expect(saved.items[0].checkpoint!.chunks.filter { completed.map(\.id).contains($0.id) } == completed)
+        for cue in manual { #expect(saved.items[0].cues.first(where: { $0.id == cue.id }) == cue) }
+        let newSettings = await pipeline.settingsUsed.dropFirst(previousCalls)
+        #expect(!newSettings.isEmpty && newSettings.allSatisfy { $0 == next })
+        #expect(saved.items[0].cues.allSatisfy { !$0.sourceText.contains("Old stale cloud text") })
     }
 
     @Test func publicationConflictKeepsProcessingRemainingMediaAndAllLocalResults() async throws {
@@ -97,7 +161,7 @@ struct TaskProcessingQueueTests {
         let parameters = TaskParameters(transcription: try config.settings())
         var task = initial
         try task.updateParameters(parameters)
-        try task.freezeParameters()
+        try task.recordStart()
         try task.items[0].initializeCheckpoint(parameters: parameters, ranges: [
             .init(sourceStartMilliseconds: 0, durationMilliseconds: 2000),
             .init(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)])
@@ -128,7 +192,7 @@ struct TaskProcessingQueueTests {
         let (directory, library, initial) = try fixture(count: 1)
         defer { try? FileManager.default.removeItem(at: directory) }
         var task = initial
-        try task.freezeParameters()
+        try task.recordStart()
         try task.items[0].initializeCheckpoint(parameters: task.parameters, ranges: [
             .init(sourceStartMilliseconds: 0, durationMilliseconds: 2000),
             .init(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)])
@@ -343,11 +407,11 @@ struct TaskProcessingQueueTests {
         #expect(library.task(for: task.id)?.items[0].cues[0].sourceText == "Saved correction")
     }
 
-    @Test func incompatibleRangesFailOnlyTheirMediaAndMissingTranslationServiceIsExplicit() async throws {
+    @Test func unfinishedRangesCanBeReplannedAndMissingTranslationServiceIsExplicit() async throws {
         let (directory, library, initial) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         var task = initial
-        try task.freezeParameters()
+        try task.recordStart()
         try task.items[0].initializeCheckpoint(parameters: task.parameters,
             ranges: [.init(sourceStartMilliseconds: 0, durationMilliseconds: 4000)])
         task.items[0].status = .interrupted(stage: .transcription)
@@ -355,7 +419,7 @@ struct TaskProcessingQueueTests {
         let queue = TaskProcessingQueue(library: library, pipeline: ControlledPipeline(), translationPipeline: UnavailableServicePipeline())
         try queue.start(taskID: task.id)
         await queue.waitUntilIdle()
-        #expect(library.task(for: task.id)?.items[0].status == .failed(reason: CheckpointError.incompatibleContext.localizedDescription))
+        #expect(library.task(for: task.id)?.items[0].status == .completed)
         #expect(library.task(for: task.id)?.items[1].status == .completed)
         var configured = ProcessingTask(items: initial.items)
         var parameters = configured.parameters
@@ -800,12 +864,18 @@ private actor ControlledPipeline: MediaTranscriptionPipeline {
     private var held: CheckedContinuation<Void, Never>?
     private var observer: CheckedContinuation<Void, Never>?
     private let cuesPerChunk: Int
+    private let audioURL: URL?
+    private let retainCloudRecognitionOnFailure: Bool
     private(set) var events: [String] = []
+    private(set) var settingsUsed: [TranscriptionSettings] = []
 
-    init(failFirstChunkOf: UUID? = nil, holdFirstDecode: Bool = false, holdStartMilliseconds: Int64? = nil, cuesPerChunk: Int = 1) {
+    init(failFirstChunkOf: UUID? = nil, holdFirstDecode: Bool = false, holdStartMilliseconds: Int64? = nil,
+         cuesPerChunk: Int = 1, audioURL: URL? = nil, retainCloudRecognitionOnFailure: Bool = false) {
         failingMedia = failFirstChunkOf
         holdStart = holdFirstDecode ? 0 : holdStartMilliseconds
         self.cuesPerChunk = cuesPerChunk
+        self.audioURL = audioURL
+        self.retainCloudRecognitionOnFailure = retainCloudRecognitionOnFailure
     }
 
     func waitForHeldDecode() async {
@@ -820,16 +890,28 @@ private actor ControlledPipeline: MediaTranscriptionPipeline {
 
     func extract(item: TaskMediaItem, progress: @escaping @Sendable (AudioExtractionProgress) -> Void) async throws -> [TranscriptionAudio] {
         events.append("extract:\(item.id)")
+        if let audioURL {
+            let audio = try TranscriptionAudio(localURL: audioURL, sourceStartMilliseconds: 0, durationMilliseconds: 20_000)
+            return try [0, 10_000].map { start in
+                try TranscriptionAudioSlicer.slice(audio, range: .init(sourceStartMilliseconds: Int64(start), durationMilliseconds: 10_000))
+            }
+        }
         return try [0, 2000].map { start in
             try TranscriptionAudio(localURL: URL(fileURLWithPath: "/tmp/\(item.id).wav"),
                 sourceStartMilliseconds: Int64(start), durationMilliseconds: 2000)
         }
     }
 
+    func speechChunks(from audio: [TranscriptionAudio], settings: TranscriptionSettings) async throws -> [TranscriptionAudio] {
+        guard audioURL != nil else { return audio }
+        return try await ConfiguredMediaTranscriptionPipeline().speechChunks(from: audio, settings: settings)
+    }
+
     func transcribe(mediaID: UUID, audio: TranscriptionAudio, settings: TranscriptionSettings,
                     progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> TranscriptionEvidence {
-        let id = audio.localURL.deletingPathExtension().lastPathComponent
+        let id = mediaID.uuidString
         events.append("decode:\(id):\(audio.sourceStartMilliseconds)")
+        settingsUsed.append(settings)
         if holdStart == audio.sourceStartMilliseconds {
             holdStart = nil
             await withCheckedContinuation { continuation in
@@ -841,13 +923,16 @@ private actor ControlledPipeline: MediaTranscriptionPipeline {
         var evidence = TranscriptionEvidence(settings: settings, audio: audio)
         let start = Double(audio.sourceStartMilliseconds) / 1000
         evidence.segments = (0..<cuesPerChunk).map { index in
-            .init(startSeconds: start + Double(index) * 0.12, endSeconds: start + Double(index) * 0.12 + 0.08, text: "Keep.", words: nil)
+            .init(startSeconds: start + Double(index) * 0.12, endSeconds: start + Double(index) * 0.12 + min(0.08, Double(audio.durationMilliseconds) / 1000), text: "Keep.", words: nil)
         }
         evidence.outcome = .completed
         if failingMedia?.uuidString == id && audio.sourceStartMilliseconds == 0 {
             failingMedia = nil
             evidence.outcome = .failed
             evidence.failureReason = "Test alignment failure"
+            if retainCloudRecognitionOnFailure {
+                evidence.cloudResult = .init(text: "Old stale cloud text", segments: nil, timingSource: .audioRange)
+            }
             throw TranscriptionFailure(cause: QueueError.unavailable("Test alignment failure"), evidence: evidence, evidenceURL: nil)
         }
         return evidence

@@ -252,7 +252,7 @@ struct TaskLibraryTests {
         let media = try MediaIdentity(fileName: "sample.wav", byteCount: 42, fingerprint: String(repeating: "a", count: 64),
             durationMilliseconds: 5000, audioTrackID: 1)
         var task = ProcessingTask(items: [.init(title: "Sample", kind: .audio, source: .localFile(fileName: media.fileName), media: media)])
-        try task.freezeParameters()
+        try task.recordStart()
         try task.items[0].initializeCheckpoint(parameters: task.parameters, ranges: [
             .init(sourceStartMilliseconds: 0, durationMilliseconds: 2000),
             .init(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)])

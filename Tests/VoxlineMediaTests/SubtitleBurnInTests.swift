@@ -280,7 +280,7 @@ struct SubtitleBurnInTests {
         var sampleItem = item
         sampleItem.status = .pending
         var sampleTask = ProcessingTask(title: "VXL-039 S001 烧录验收", items: [sampleItem])
-        try sampleTask.freezeParameters()
+        try sampleTask.recordStart()
         sampleTask.items[0].status = .completed
         try TaskDocumentCodec.encode(sampleTask).write(to: directory.appendingPathComponent("S001.voxline"),options: .atomic)
     }

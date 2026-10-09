@@ -659,8 +659,8 @@ public struct TaskConfigurationView: View {
                             HStack {
                                 Text(String(localized: "API 地址", bundle: appLocalizationBundle))
                                 Spacer()
-                                Text((originalTask.canChangeTranscription ? service.baseURL
-                                      : originalTask.parameters.transcription.cloud?.baseURL ?? service.baseURL).absoluteString)
+                                Text((selectedCloudServiceID == originalTask.parameters.transcription.cloud?.serviceID
+                                      ? originalTask.parameters.transcription.cloud?.baseURL ?? service.baseURL : service.baseURL).absoluteString)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
@@ -671,9 +671,9 @@ public struct TaskConfigurationView: View {
                     HStack {
                         Text(String(localized: "服务模型", bundle: appLocalizationBundle))
                         Spacer()
-                        let serviceModel = originalTask.canChangeTranscription
-                            ? cloudStore.services.first(where: { $0.id == selectedCloudServiceID })?.modelID
-                            : originalTask.parameters.transcription.modelID
+                        let serviceModel = selectedCloudServiceID != nil && selectedCloudServiceID == originalTask.parameters.transcription.cloud?.serviceID
+                            ? originalTask.parameters.transcription.modelID
+                            : cloudStore.services.first(where: { $0.id == selectedCloudServiceID })?.modelID
                         Text(serviceModel ?? String(localized: "未选择", bundle: appLocalizationBundle))
                             .foregroundStyle(.secondary)
                     }
@@ -684,20 +684,13 @@ public struct TaskConfigurationView: View {
                     }
 
                     if languageMode == .specified {
-                        let selectedProtocol = selectedCloudServiceID.flatMap { id in cloudStore.services.first(where: { $0.id == id })?.protocolKind }
-                            ?? originalTask.parameters.transcription.cloud?.protocolKind
-                            ?? .audioTranscriptions
+                        let selectedProtocol = selectedCloudServiceID == originalTask.parameters.transcription.cloud?.serviceID
+                            ? originalTask.parameters.transcription.cloud?.protocolKind ?? .audioTranscriptions
+                            : selectedCloudServiceID.flatMap { id in cloudStore.services.first(where: { $0.id == id })?.protocolKind } ?? .audioTranscriptions
                         LanguagePicker(title: String(localized: "语言代码", bundle: appLocalizationBundle), selection: $languageCode, identifiers: cloudLanguageIdentifiers(for: selectedProtocol))
                     }
                 }
-
-                if !originalTask.canChangeTranscription {
-                    Text(String(localized: "已有转写记录，转写方式与参数已锁定", bundle: appLocalizationBundle))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
-            .disabled(!originalTask.canChangeTranscription)
 
             Section(String(localized: "字幕翻译", bundle: appLocalizationBundle)) {
                 Toggle(String(localized: "启用字幕翻译", bundle: appLocalizationBundle), isOn: $translates)
@@ -837,7 +830,7 @@ public struct TaskConfigurationView: View {
                 return String(localized: "媒体“\(candidate.url.lastPathComponent)”尚未选择音轨。", bundle: appLocalizationBundle)
             }
         }
-        if originalTask.canChangeTranscription, transcriptionProvider == .openAICompatible {
+        if transcriptionProvider == .openAICompatible, selectedCloudServiceID == nil || selectedCloudServiceID != originalTask.parameters.transcription.cloud?.serviceID {
             if cloudStore.isLoading || cloudStore.isSaving { return String(localized: "云端转写服务配置正在读取或保存。", bundle: appLocalizationBundle) }
             if let error = cloudStore.errorMessage { return error }
             if !cloudStore.services.contains(where: { $0.id == selectedCloudServiceID }) {
@@ -870,9 +863,7 @@ public struct TaskConfigurationView: View {
 
         do {
             let transcription: TranscriptionSettings
-            if !originalTask.canChangeTranscription {
-                transcription = originalTask.parameters.transcription
-            } else if transcriptionProvider == .whisperKit {
+            if transcriptionProvider == .whisperKit {
                 transcription = TranscriptionSettings(
                     provider: .whisperKit,
                     modelID: modelID,
@@ -880,6 +871,11 @@ public struct TaskConfigurationView: View {
                     languageCode: languageMode == .specified ? languageCode : nil,
                     cloud: nil
                 )
+            } else if let cloud = originalTask.parameters.transcription.cloud, selectedCloudServiceID == cloud.serviceID {
+                transcription = TranscriptionSettings(provider: .openAICompatible,
+                    modelID: originalTask.parameters.transcription.modelID, languageMode: languageMode,
+                    languageCode: languageMode == .specified ? languageCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() : nil,
+                    cloud: cloud)
             } else {
                 guard let serviceID = selectedCloudServiceID,
                       let service = cloudStore.services.first(where: { $0.id == serviceID }) else {

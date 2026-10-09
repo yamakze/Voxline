@@ -42,7 +42,6 @@
 "已完成" = "Completed";
 "已有处理或翻译批次占用这些输入。" = "There have been processing or translation batches occupying these inputs.";
 "已有字幕成果或当前译文，请明确选择重跑或重译。" = "If there are already subtitle results or current translations, please clearly choose to rerun or retranslate.";
-"已有转写记录或字幕；更换模型或原文语言需新建任务。" = "There are already transcription records or subtitles; new tasks are required to change the model or original language.";
 "当前处理尚未结束。" = "Processing is still in progress.";
 "当前媒体没有字幕，无法导出。" = "The current media has no subtitles and cannot be exported.";
 "待上传音频为空。" = "The audio to be uploaded is empty.";
@@ -105,3 +104,4 @@
 "待翻译" = "Translation pending";
 
 "请选择相邻字幕合并。" = "Select adjacent subtitles to merge.";
+"任务已经开始。" = "The task has already started.";

@@ -43,17 +43,10 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
         startedAt = try values.decodeIfPresent(Date.self, forKey: .startedAt)
     }
 
-    public var canChangeTranscription: Bool {
-        items.allSatisfy { $0.checkpoint == nil && $0.cues.isEmpty }
-    }
-
     /// Explicit edits retain ASR evidence; target changes require approval to replace translations.
     public mutating func updateParameters(_ parameters: TaskParameters, discardingTranslations: Bool = false) throws {
         guard !items.contains(where: { if case .running = $0.status { true } else { false } }) else {
             throw CheckpointError.workRunning
-        }
-        guard parameters.transcription == self.parameters.transcription || canChangeTranscription else {
-            throw TaskValidationError.parametersFrozen
         }
         try parameters.validate()
         let translationChanged = parameters.translation != self.parameters.translation
@@ -85,31 +78,9 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
         self = updated
     }
 
-    /// An explicit cloud service change affects future requests; recognition and edited cues survive.
-    public mutating func bindCloudTranscription(_ settings: TranscriptionSettings) throws {
-        try settings.validate()
-        guard !items.contains(where: { if case .running = $0.status { true } else { false } }) else {
-            throw CheckpointError.workRunning
-        }
-        let previous = parameters.transcription
-        guard previous.provider == .openAICompatible, settings.provider == .openAICompatible,
-              let oldCloud = previous.cloud, let newCloud = settings.cloud,
-              oldCloud.protocolKind.usesSpeechChunks == newCloud.protocolKind.usesSpeechChunks,
-              previous.languageMode == settings.languageMode, previous.languageCode == settings.languageCode else {
-            throw CheckpointError.incompatibleContext
-        }
-        var updated = self
-        updated.parameters.transcription = settings
-        for index in updated.items.indices where updated.items[index].checkpoint != nil {
-            updated.items[index].checkpoint?.parameters.transcription = settings
-        }
-        try updated.validate()
-        self = updated
-    }
-
-    /// Freezes configuration only. The queue sets running states when actual work begins.
-    public mutating func freezeParameters(at date: Date = Date()) throws {
-        guard startedAt == nil else { throw TaskValidationError.parametersFrozen }
+    /// Record the first start; the executor snapshots the current parameters for each run.
+    public mutating func recordStart(at date: Date = Date()) throws {
+        guard startedAt == nil else { throw TaskValidationError.alreadyStarted }
         try validate()
         guard !items.isEmpty else { throw TaskValidationError.noMedia }
         var hasReadyMedia = false
@@ -322,7 +293,7 @@ public enum ProcessingTaskStatus: Sendable {
 }
 
 public enum TaskValidationError: Error, LocalizedError, Equatable {
-    case emptyTitle, taskChanged, translationReplacementRequired, parametersFrozen, noMedia, noReadyMedia, unconfiguredTranslationService
+    case emptyTitle, taskChanged, translationReplacementRequired, alreadyStarted, noMedia, noReadyMedia, unconfiguredTranslationService
     case duplicateMedia(UUID), emptyMediaTitle(UUID), invalidSource(UUID), unassociatedMedia(UUID)
     case workBeforeStart(UUID), emptyFailureReason(UUID)
 
@@ -330,7 +301,7 @@ public enum TaskValidationError: Error, LocalizedError, Equatable {
         switch self {
         case .emptyTitle: String(localized: "任务名称不能为空。", bundle: voxlineLocalizationBundle)
         case .taskChanged: String(localized: "提交期间任务已改变，请重新打开任务准备。", bundle: voxlineLocalizationBundle)
-        case .parametersFrozen: String(localized: "已有转写记录或字幕；更换模型或原文语言需新建任务。", bundle: voxlineLocalizationBundle)
+        case .alreadyStarted: String(localized: "任务已经开始。", bundle: voxlineLocalizationBundle)
         case .translationReplacementRequired: String(localized: "目标语言已改变，需要确认清除现有译文；原文、时间与转写成果保持。", bundle: voxlineLocalizationBundle)
         case .noMedia: String(localized: "请先添加本地媒体。", bundle: voxlineLocalizationBundle)
         case .noReadyMedia: String(localized: "任务没有可开始的媒体，请修复失败条目或添加可用媒体。", bundle: voxlineLocalizationBundle)

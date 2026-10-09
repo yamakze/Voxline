@@ -424,7 +424,6 @@ private struct IOSTaskDetailView: View {
     let library: IOSTaskLibrary
     let taskID: UUID
     @State private var syncSettings = TaskSyncSettings.shared
-    @State private var editingParameters = false
     @State private var configuringTask = false
     @State private var showConflictSheet = false
     @State private var errorMessage: String?
@@ -528,7 +527,7 @@ private struct IOSTaskDetailView: View {
                         }
 
                         Button {
-                            editingParameters = true
+                            configuringTask = true
                         } label: {
                             Label(String(localized: "调整参数…", bundle: appLocalizationBundle), systemImage: "slider.horizontal.3")
                         }
@@ -554,12 +553,6 @@ private struct IOSTaskDetailView: View {
                 ChangeCloudTranscriptionServiceSheet(task: task) { updated in
                     try library.save(updated)
                     library.load()
-                }
-            }
-            .sheet(isPresented: $editingParameters) {
-                TaskTranslationParametersView(task: task) { updated, original in
-                    guard library.task(taskID) == original else { throw TaskValidationError.taskChanged }
-                    try library.save(updated)
                 }
             }
             .sheet(isPresented: $configuringTask) {

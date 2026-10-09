@@ -10,13 +10,13 @@ struct ProcessingTaskTests {
         let failed = TaskMediaItem(title: "Broken", kind: .video, source: .localFile(fileName: "broken.mov"),
                                    status: .failed(reason: "Empty file"))
         var task = ProcessingTask(items: [failed, healthy])
-        try task.freezeParameters()
+        try task.recordStart()
         let reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task))
         #expect(reopened.items == [failed, healthy])
         #expect(reopened.startedAt != nil)
         #expect(reopened.completedCount == 0)
         var unusable = ProcessingTask(items: [failed])
-        #expect(throws: TaskValidationError.noReadyMedia) { try unusable.freezeParameters() }
+        #expect(throws: TaskValidationError.noReadyMedia) { try unusable.recordStart() }
         #expect(unusable.startedAt == nil)
     }
 
@@ -26,7 +26,7 @@ struct ProcessingTaskTests {
         first.cues = [try SubtitleCue(id: UUID(), startMilliseconds: 100, endMilliseconds: 700, sourceText: "First")]
         second.cues = [try SubtitleCue(id: UUID(), startMilliseconds: 800, endMilliseconds: 1600, sourceText: "Second")]
         var task = ProcessingTask(title: "Batch", items: [first, second])
-        try task.freezeParameters()
+        try task.recordStart()
         task.items[0].status = .completed
         task.items[1].status = .failed(reason: "Service unavailable")
         let reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task))
@@ -48,7 +48,7 @@ struct ProcessingTaskTests {
                                         translation: translation)
         var task = ProcessingTask(items: [try associatedItem()], parameters: parameters)
         let startedAt = Date(timeIntervalSince1970: 1_000)
-        try task.freezeParameters(at: startedAt)
+        try task.recordStart(at: startedAt)
         #expect(task.status == .queued)
         parameters.transcription = .whisperKitBaseline
         try task.updateParameters(parameters)
@@ -57,7 +57,7 @@ struct ProcessingTaskTests {
         #expect(reopened.startedAt == startedAt)
         #expect(reopened.parameters == task.parameters)
         #expect(reopened.parameters.translation?.api?.serviceID == serviceID)
-        #expect(throws: TaskValidationError.parametersFrozen) { try reopened.freezeParameters() }
+        #expect(throws: TaskValidationError.alreadyStarted) { try reopened.recordStart() }
         let json = try #require(String(data: TaskDocumentCodec.encode(reopened), encoding: .utf8))
         #expect(!json.contains("apiKey"))
         #expect(!json.contains("bookmark"))
@@ -68,7 +68,7 @@ struct ProcessingTaskTests {
 
     @Test func interruptedWorkKeepsAlreadyCommittedResults() throws {
         var task = ProcessingTask(items: [try associatedItem(), try associatedItem()])
-        try task.freezeParameters()
+        try task.recordStart()
         task.items[0].status = .completed
         task.items[1].status = .running(stage: .translation)
         task.items[1].cues = [try SubtitleCue(id: UUID(), startMilliseconds: 0, endMilliseconds: 500, sourceText: "Keep")]
@@ -107,14 +107,14 @@ struct ProcessingTaskTests {
 
     @Test func noExecutionSnapshotCanBeCreatedWithoutRealMediaOrAConfiguredService() throws {
         var empty = ProcessingTask()
-        #expect(throws: TaskValidationError.noMedia) { try empty.freezeParameters() }
+        #expect(throws: TaskValidationError.noMedia) { try empty.recordStart() }
         var unassociated = ProcessingTask(items: [TaskMediaItem(title: "File", kind: .video, source: .unassociated)])
-        #expect(throws: TaskValidationError.unassociatedMedia(unassociated.items[0].id)) { try unassociated.freezeParameters() }
+        #expect(throws: TaskValidationError.unassociatedMedia(unassociated.items[0].id)) { try unassociated.recordStart() }
         let translation = try TranslationSettings(baseURL: URL(string: "https://example.test/v1")!,
                                                    modelID: "model", targetLanguage: "zh-Hans")
         var task = ProcessingTask(items: [try associatedItem()],
                                   parameters: TaskParameters(transcription: .whisperKitBaseline, translation: translation))
-        #expect(throws: TaskValidationError.unconfiguredTranslationService) { try task.freezeParameters() }
+        #expect(throws: TaskValidationError.unconfiguredTranslationService) { try task.recordStart() }
         #expect(task.startedAt == nil)
     }
 

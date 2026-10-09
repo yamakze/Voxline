@@ -30,17 +30,8 @@ public struct ChangeCloudTranscriptionServiceSheet: View {
         task.items.contains(where: { if case .running = $0.status { true } else { false } })
     }
 
-    private var hasCheckpoints: Bool {
-        task.items.contains { $0.checkpoint != nil }
-    }
-
     private var selectedService: CloudTranscriptionServiceConfig? {
         selectedServiceID.flatMap { id in store.services.first(where: { $0.id == id }) }
-    }
-
-    private var isIncompatibleProtocolSwitch: Bool {
-        guard let currentCloud, let selectedService else { return false }
-        return hasCheckpoints && (currentCloud.protocolKind.usesSpeechChunks != selectedService.protocolKind.usesSpeechChunks)
     }
 
     public var body: some View {
@@ -89,11 +80,7 @@ public struct ChangeCloudTranscriptionServiceSheet: View {
                             LabeledContent(String(localized: "模型", bundle: appLocalizationBundle), value: service.modelID)
                             LabeledContent(String(localized: "API 地址", bundle: appLocalizationBundle), value: service.baseURL.absoluteString)
 
-                            if isIncompatibleProtocolSwitch {
-                                Text(String(localized: "⚠️ 当前任务已有转写成果，因转写机制不兼容，无法在不同类型的服务间直接切换。如需使用新服务，请新建任务。", bundle: appLocalizationBundle))
-                                    .font(.caption)
-                                    .foregroundStyle(.red)
-                            } else if service.id == currentCloud?.serviceID {
+                            if service.id == currentCloud?.serviceID {
                                 Text(String(localized: "所选服务与当前已绑定的服务相同。", bundle: appLocalizationBundle))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -134,7 +121,7 @@ public struct ChangeCloudTranscriptionServiceSheet: View {
                         applyChange()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(isSaving || isTaskRunning || selectedServiceID == nil || selectedServiceID == currentCloud?.serviceID || isIncompatibleProtocolSwitch)
+                    .disabled(isSaving || isTaskRunning || selectedServiceID == nil)
                 }
             }
             .sheet(isPresented: $showManageServices) {
@@ -151,7 +138,9 @@ public struct ChangeCloudTranscriptionServiceSheet: View {
             var updated = task
             let languageCode = currentTranscription.languageMode == .specified ? currentTranscription.languageCode : nil
             let newSettings = try service.settings(languageCode: languageCode)
-            try updated.bindCloudTranscription(newSettings)
+            var parameters = updated.parameters
+            parameters.transcription = newSettings
+            try updated.updateParameters(parameters)
             try onCommit(updated)
             isSaving = false
             dismiss()

@@ -53,7 +53,7 @@ public final class TaskProcessingQueue {
                 if case .running = current.items[index].status { throw CheckpointError.workRunning }
                 current.items[index].status = .pending
             }
-            if current.startedAt == nil { try current.freezeParameters() }
+            if current.startedAt == nil { try current.recordStart() }
         }
         self.taskID = taskID
         library.protectedTaskID = taskID
@@ -216,7 +216,31 @@ public final class TaskProcessingQueue {
                     }
                 }
             }
-            audio = try await pipeline.speechChunks(from: extracted, settings: parameters.transcription)
+            let proposed = try await pipeline.speechChunks(from: extracted, settings: parameters.transcription)
+            let completedRanges = item.checkpoint?.chunks.filter(\.isCompleted).map(\.range) ?? []
+            var completedIndex = 0
+            var remaining: [TranscriptionAudio] = []
+            for input in proposed {
+                let end = input.sourceStartMilliseconds + input.durationMilliseconds
+                var start = input.sourceStartMilliseconds
+                while completedIndex < completedRanges.count {
+                    let completed = completedRanges[completedIndex]
+                    let completedEnd = completed.sourceStartMilliseconds + completed.durationMilliseconds
+                    if completedEnd <= start { completedIndex += 1; continue }
+                    if completed.sourceStartMilliseconds >= end { break }
+                    if start < completed.sourceStartMilliseconds {
+                        remaining.append(try TranscriptionAudioSlicer.slice(input, range: .init(
+                            sourceStartMilliseconds: start, durationMilliseconds: completed.sourceStartMilliseconds - start)))
+                    }
+                    start = max(start, completedEnd)
+                    if start >= end { break }
+                }
+                if start < end {
+                    remaining.append(try TranscriptionAudioSlicer.slice(input, range: .init(
+                        sourceStartMilliseconds: start, durationMilliseconds: end - start)))
+                }
+            }
+            audio = remaining
             try Task.checkCancellation()
         } catch {
             try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
@@ -232,11 +256,17 @@ public final class TaskProcessingQueue {
         do {
             chunkIDs = try updateMedia(taskID: taskID, mediaID: mediaID) { item in
                 if item.checkpoint == nil { try item.initializeCheckpoint(parameters: parameters, ranges: ranges) }
-                return try item.recoveryPlan(media: media, parameters: parameters, ranges: ranges).transcriptionChunkIDs
+                else { try item.reconcileTranscriptionChunks(ranges: ranges) }
+                guard let checkpoint = item.checkpoint else { throw CheckpointError.missingCheckpoint }
+                return try item.recoveryPlan(media: media, parameters: parameters, ranges: checkpoint.chunks.map(\.range)).transcriptionChunkIDs
             }
         } catch let error as CheckpointError {
             try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .failed(reason: error.localizedDescription) }
             return
+        }
+        var audioByRange: [TranscriptionChunkRange: TranscriptionAudio] = [:]
+        for (index, range) in ranges.enumerated() {
+            guard audioByRange.updateValue(audio[index], forKey: range) == nil else { throw CheckpointError.invalidRecord }
         }
         for chunkID in chunkIDs {
             if Task.isCancelled {
@@ -244,12 +274,13 @@ public final class TaskProcessingQueue {
                 return
             }
             guard let chunks = library.task(for: taskID)?.items.first(where: { $0.id == mediaID })?.checkpoint?.chunks,
-                  let index = chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
+                  let index = chunks.firstIndex(where: { $0.id == chunkID }),
+                  let input = audioByRange[chunks[index].range] else { throw CheckpointError.unknownWork }
             let savedRecognition: TranscriptionEvidence?
             switch chunks[index].state {
             case .failed(_, let evidence), .cancelled(let evidence):
-                savedRecognition = evidence?.cloudResult != nil ||
-                    (evidence?.outcome == .completed && evidence?.settings.provider == .whisperKit && evidence?.windows.isEmpty == false)
+                savedRecognition = evidence?.settings == parameters.transcription && (evidence?.cloudResult != nil ||
+                    (evidence?.outcome == .completed && evidence?.settings.provider == .whisperKit && evidence?.windows.isEmpty == false))
                     ? evidence : nil
             default: savedRecognition = nil
             }
@@ -264,7 +295,7 @@ public final class TaskProcessingQueue {
                         ? CloudTranscriptionAlignment.completedEvidence(from: savedRecognition)
                         : WhisperKitTranscriptionProvider.recoverCompletedEvidence(savedRecognition)
                 } else {
-                    evidence = try await pipeline.transcribe(mediaID: mediaID, audio: audio[index], settings: parameters.transcription) { progress in
+                    evidence = try await pipeline.transcribe(mediaID: mediaID, audio: input, settings: parameters.transcription) { progress in
                         Task { @MainActor in
                             guard self.progressID == decodingID else { return }
                             let detail: String
