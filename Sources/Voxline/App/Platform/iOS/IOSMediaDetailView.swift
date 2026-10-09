@@ -650,10 +650,8 @@ private struct IOSSubtitleOffsetEditor: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(String(localized: "偏移秒数（支持小数或负数）", bundle: appLocalizationBundle), text: $secondsText)
+                    TextField(String(localized: "偏移秒数", bundle: appLocalizationBundle), text: $secondsText)
                         .keyboardType(.numbersAndPunctuation)
-                } footer: {
-                    Text(String(localized: "正数延后，负数提前。", bundle: appLocalizationBundle))
                 }
 
                 if let errorMessage {

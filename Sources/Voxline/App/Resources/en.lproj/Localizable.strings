@@ -628,3 +628,14 @@
 "服务" = "Service";
 "⚠️ 当前任务已有转写成果，因转写机制不兼容，无法在不同类型的服务间直接切换。如需使用新服务，请新建任务。" = "This task already has transcription results. Create a new task to use a service with a different transcription method.";
 "暂无媒体" = "No Media";
+"偏移秒数" = "Offset (seconds)";
+"当前字幕" = "Current Subtitle";
+"未启用 iCloud 同步" = "iCloud Sync Disabled";
+"同步状态与目录" = "Sync Status & Folder";
+"媒体同步策略" = "Media Sync Policy";
+"同步原音视频媒体文件" = "Sync Original Media Files";
+"完整镜像模式：音视频文件将同步至云端，供其他设备直接播放，消耗较多云盘空间。" = "Full mirror mode: media files will sync to the cloud for playback on other devices, consuming more cloud storage.";
+"节省空间模式：仅同步任务配置与字幕文字，原始音视频保留在本地。" = "Storage saver mode: only task configs and subtitle text are synced, original media remains local.";
+"正在同步原媒体文件…" = "Syncing original media files…";
+"选择同步文件夹…" = "Choose Sync Folder…";
+

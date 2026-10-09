@@ -25,10 +25,9 @@ public struct TimeOffsetSheet: View {
             HStack {
                 Text(String(localized: "整体时间偏移", bundle: appLocalizationBundle)).font(.headline)
                 Spacer()
-                Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }.keyboardShortcut(.cancelAction)
             }
 
-            Text(String(localized: "调整当前媒体中全部 \(cues.count) 条字幕的时间位置。正数向后延后，负数向前提前。", bundle: appLocalizationBundle))
+            Text(String(format: String(localized: "共 %lld 条字幕", bundle: appLocalizationBundle), locale: .current, Int64(cues.count)))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -67,8 +66,13 @@ public struct TimeOffsetSheet: View {
             .padding()
             .liquidGlassSurface()
 
-            HStack {
+            HStack(spacing: 12) {
                 Spacer()
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
                 Button(String(localized: "应用偏移", bundle: appLocalizationBundle)) {
                     applyOffset()
                 }

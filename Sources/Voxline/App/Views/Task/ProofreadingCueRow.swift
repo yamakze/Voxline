@@ -118,42 +118,17 @@ struct ProofreadingCueRow: View {
                     .help(String(localized: "保存", bundle: appLocalizationBundle))
                 }
             } else if !session.isSelecting {
-                Button {
-                    session.beginEditing(cue)
-                } label: {
-                    Image(systemName: "pencil")
-                        .font(.caption)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel(String(localized: "编辑字幕", bundle: appLocalizationBundle))
-                .help(String(localized: "编辑字幕", bundle: appLocalizationBundle))
-                .disabled(session.editingSnapshot?.id != nil)
-
-                if canRetranslate {
-                    Button {
-                        onRetranslate(cue)
-                    } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel(String(localized: "重新翻译", bundle: appLocalizationBundle))
-                    .help(String(localized: "重新翻译", bundle: appLocalizationBundle))
-                    .disabled(session.editingSnapshot?.id != nil || isTaskRunning)
-                }
-
                 Menu {
                     actionMenuItems
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.caption)
-                        .frame(width: 18, height: 18)
+                        .frame(width: 20, height: 20)
                         .contentShape(Rectangle())
                 }
                 #if os(macOS)
                 .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
                 #endif
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)

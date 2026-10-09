@@ -78,15 +78,7 @@ struct TaskTranslationParametersView: View {
                             TextField(String(localized: "翻译模型", bundle: appLocalizationBundle), text: $model)
                             LanguagePicker(title: String(localized: "目标语言", bundle: appLocalizationBundle), selection: $target)
 
-                            HStack {
-                                Text(String(localized: "每批字幕数量", bundle: appLocalizationBundle))
-                                Spacer()
-                                TextField("\(TranslationSettings.defaultBatchSize)", value: $batchSize, format: .number)
-                                    .multilineTextAlignment(.trailing)
-                                    .frame(maxWidth: 70)
-                                Stepper("", value: $batchSize, in: 1...100)
-                                    .labelsHidden()
-                            }
+                            TextField(String(localized: "每批字幕数", bundle: appLocalizationBundle), value: $batchSize, format: .number)
 
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {

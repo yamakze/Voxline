@@ -756,15 +756,7 @@ public struct TaskConfigurationView: View {
                         .padding(.vertical, 2)
 
                         if showAdvancedTranslationOptions {
-                            HStack {
-                                Text(String(localized: "每批字幕数量", bundle: appLocalizationBundle))
-                                Spacer()
-                                TextField("\(TranslationSettings.defaultBatchSize)", value: $translationBatchSize, format: .number)
-                                    .multilineTextAlignment(.trailing)
-                                    .frame(maxWidth: 70)
-                                Stepper("", value: $translationBatchSize, in: 1...100)
-                                    .labelsHidden()
-                            }
+                            TextField(String(localized: "每批字幕数", bundle: appLocalizationBundle), value: $translationBatchSize, format: .number)
 
                             LabeledContent {
                                 VStack(alignment: .trailing, spacing: 4) {

@@ -28,7 +28,6 @@ public struct MediaRelinkSheet: View {
             HStack {
                 Text(String(localized: "重新关联本地媒体", bundle: appLocalizationBundle)).font(.headline)
                 Spacer()
-                Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }.keyboardShortcut(.cancelAction)
             }
 
             VStack(alignment: .leading, spacing: 14) {
@@ -83,8 +82,13 @@ public struct MediaRelinkSheet: View {
             .padding()
             .liquidGlassSurface()
 
-            HStack {
+            HStack(spacing: 12) {
                 Spacer()
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
                 Button(String(localized: "确认关联", bundle: appLocalizationBundle)) {
                     commitAssociation()
                 }

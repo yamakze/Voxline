@@ -1,6 +1,7 @@
 import SwiftUI
 import VoxlineCore
 
+// MARK: - 1. 添加单句字幕
 struct InsertSubtitleSheet: View {
     let onSave: (SubtitleCue) throws -> Void
 
@@ -22,23 +23,34 @@ struct InsertSubtitleSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            HStack {
+                Text(String(localized: "添加字幕", bundle: appLocalizationBundle))
+                    .font(.headline)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(.regularMaterial)
+
+            Divider()
+
             Form {
                 Section(String(localized: "时间轴（秒）", bundle: appLocalizationBundle)) {
-                    HStack {
-                        Text(String(localized: "开始时间（秒）", bundle: appLocalizationBundle))
-                        Spacer()
+                    LabeledContent(String(localized: "开始时间", bundle: appLocalizationBundle)) {
                         TextField("0.000", text: $startText)
                             .multilineTextAlignment(.trailing)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 120)
                             #if os(iOS)
                             .keyboardType(.decimalPad)
                             #endif
                     }
-                    HStack {
-                        Text(String(localized: "结束时间（秒）", bundle: appLocalizationBundle))
-                        Spacer()
+                    LabeledContent(String(localized: "结束时间", bundle: appLocalizationBundle)) {
                         TextField("0.000", text: $endText)
                             .multilineTextAlignment(.trailing)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 120)
                             #if os(iOS)
                             .keyboardType(.decimalPad)
                             #endif
@@ -46,38 +58,75 @@ struct InsertSubtitleSheet: View {
                 }
 
                 Section(String(localized: "字幕内容", bundle: appLocalizationBundle)) {
-                    TextField(String(localized: "原文内容", bundle: appLocalizationBundle), text: $sourceText, axis: .vertical)
-                        .lineLimit(2...5)
-                    TextField(String(localized: "译文内容（选填）", bundle: appLocalizationBundle), text: $translationText, axis: .vertical)
-                        .lineLimit(2...5)
-                }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "原文内容", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $sourceText)
+                            .font(.body)
+                            .frame(minHeight: 56, maxHeight: 110)
+                            .padding(4)
+                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                    }
 
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "译文内容（选填）", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $translationText)
+                            .font(.body)
+                            .frame(minHeight: 56, maxHeight: 110)
+                            .padding(4)
+                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
                     }
                 }
             }
-            .navigationTitle(String(localized: "添加字幕", bundle: appLocalizationBundle))
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
+            .formStyle(.grouped)
+
+            if let errorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "保存", bundle: appLocalizationBundle)) { save() }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
             }
-            #if os(macOS)
-            .frame(minWidth: 420, minHeight: 300)
-            #endif
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button(String(localized: "保存", bundle: appLocalizationBundle)) {
+                    save()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(.regularMaterial)
         }
+        #if os(macOS)
+        .frame(width: 480, height: 460)
+        #endif
     }
 
     private func save() {
@@ -116,6 +165,7 @@ struct InsertSubtitleSheet: View {
     }
 }
 
+// MARK: - 2. 逐条校时表单
 struct AdjustTimingSheet: View {
     let cue: SubtitleCue
     let onSave: (Int64, Int64) throws -> Void
@@ -134,64 +184,90 @@ struct AdjustTimingSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            HStack {
+                Text(String(localized: "调整时间", bundle: appLocalizationBundle))
+                    .font(.headline)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(.regularMaterial)
+
+            Divider()
+
             Form {
-                Section(String(localized: "字幕预览", bundle: appLocalizationBundle)) {
-                    Text(cue.sourceText)
-                        .font(.body)
-                    if case .succeeded(let trans, _) = cue.translation {
-                        Text(trans)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                Section(String(localized: "当前字幕", bundle: appLocalizationBundle)) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(cue.sourceText)
+                            .font(.body)
+                        if case .succeeded(let trans, _) = cue.translation {
+                            Text(trans)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    .padding(.vertical, 2)
                 }
 
-                Section(String(localized: "起止时间（秒）", bundle: appLocalizationBundle)) {
-                    HStack {
-                        Text(String(localized: "开始时间（秒）", bundle: appLocalizationBundle))
-                        Spacer()
+                Section(String(localized: "时间轴（秒）", bundle: appLocalizationBundle)) {
+                    LabeledContent(String(localized: "开始时间", bundle: appLocalizationBundle)) {
                         TextField("0.000", text: $startText)
                             .multilineTextAlignment(.trailing)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 120)
                             #if os(iOS)
                             .keyboardType(.decimalPad)
                             #endif
                     }
-                    HStack {
-                        Text(String(localized: "结束时间（秒）", bundle: appLocalizationBundle))
-                        Spacer()
+                    LabeledContent(String(localized: "结束时间", bundle: appLocalizationBundle)) {
                         TextField("0.000", text: $endText)
                             .multilineTextAlignment(.trailing)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 120)
                             #if os(iOS)
                             .keyboardType(.decimalPad)
                             #endif
                     }
                 }
+            }
+            .formStyle(.grouped)
 
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+            if let errorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
             }
-            .navigationTitle(String(localized: "调整时间", bundle: appLocalizationBundle))
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                    dismiss()
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "保存", bundle: appLocalizationBundle)) { save() }
-                        .keyboardShortcut(.defaultAction)
+                .keyboardShortcut(.cancelAction)
+
+                Button(String(localized: "保存", bundle: appLocalizationBundle)) {
+                    save()
                 }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
             }
-            #if os(macOS)
-            .frame(minWidth: 400, minHeight: 280)
-            #endif
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(.regularMaterial)
         }
+        #if os(macOS)
+        .frame(width: 460, height: 380)
+        #endif
     }
 
     private func save() {
@@ -220,6 +296,7 @@ struct AdjustTimingSheet: View {
     }
 }
 
+// MARK: - 3. 拆分字幕表单
 struct SplitSubtitleSheet: View {
     let cue: SubtitleCue
     let onSave: (Int64, String, String, String, String) throws -> Void
@@ -255,14 +332,25 @@ struct SplitSubtitleSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            HStack {
+                Text(String(localized: "拆分字幕", bundle: appLocalizationBundle))
+                    .font(.headline)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(.regularMaterial)
+
+            Divider()
+
             Form {
                 Section(String(localized: "拆分时间点（秒）", bundle: appLocalizationBundle)) {
-                    HStack {
-                        Text(String(localized: "拆分时间点（秒）", bundle: appLocalizationBundle))
-                        Spacer()
+                    LabeledContent(String(localized: "拆分时间点", bundle: appLocalizationBundle)) {
                         TextField("0.000", text: $splitSecondsText)
                             .multilineTextAlignment(.trailing)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 120)
                             #if os(iOS)
                             .keyboardType(.decimalPad)
                             #endif
@@ -273,49 +361,111 @@ struct SplitSubtitleSheet: View {
                 }
 
                 Section(String(localized: "前半句", bundle: appLocalizationBundle)) {
-                    TextField(String(localized: "前半句原文", bundle: appLocalizationBundle), text: $firstSource, axis: .vertical)
-                        .lineLimit(2...4)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "前半句原文", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $firstSource)
+                            .font(.body)
+                            .frame(minHeight: 48, maxHeight: 85)
+                            .padding(4)
+                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                    }
+
                     if cue.hasTranslation {
-                        TextField(String(localized: "前半句译文", bundle: appLocalizationBundle), text: $firstTranslation, axis: .vertical)
-                            .lineLimit(2...4)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(String(localized: "前半句译文", bundle: appLocalizationBundle))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $firstTranslation)
+                                .font(.body)
+                                .frame(minHeight: 48, maxHeight: 85)
+                                .padding(4)
+                                .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                                .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                        }
                     }
                 }
 
                 Section(String(localized: "后半句", bundle: appLocalizationBundle)) {
-                    TextField(String(localized: "后半句原文", bundle: appLocalizationBundle), text: $secondSource, axis: .vertical)
-                        .lineLimit(2...4)
-                    if cue.hasTranslation {
-                        TextField(String(localized: "后半句译文", bundle: appLocalizationBundle), text: $secondTranslation, axis: .vertical)
-                            .lineLimit(2...4)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "后半句原文", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $secondSource)
+                            .font(.body)
+                            .frame(minHeight: 48, maxHeight: 85)
+                            .padding(4)
+                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
                     }
-                }
 
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                    if cue.hasTranslation {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(String(localized: "后半句译文", bundle: appLocalizationBundle))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $secondTranslation)
+                                .font(.body)
+                                .frame(minHeight: 48, maxHeight: 85)
+                                .padding(4)
+                                .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                                .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                        }
                     }
                 }
             }
-            .navigationTitle(String(localized: "拆分字幕", bundle: appLocalizationBundle))
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
+            .formStyle(.grouped)
+
+            if let errorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "保存", bundle: appLocalizationBundle)) { save() }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(firstSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || secondSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
             }
-            #if os(macOS)
-            .frame(minWidth: 460, minHeight: 380)
-            #endif
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button(String(localized: "保存", bundle: appLocalizationBundle)) {
+                    save()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(firstSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || secondSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(.regularMaterial)
         }
+        #if os(macOS)
+        .frame(width: 500, height: 560)
+        #endif
     }
 
     private func save() {
@@ -381,6 +531,7 @@ struct SplitSubtitleSheet: View {
     }
 }
 
+// MARK: - 4. 合并相邻字幕表单
 struct MergeSubtitlesSheet: View {
     let cues: [SubtitleCue]
     let onSave: (String, String) throws -> Void
@@ -406,58 +557,102 @@ struct MergeSubtitlesSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            HStack {
+                Text(String(localized: "合并字幕", bundle: appLocalizationBundle))
+                    .font(.headline)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(.regularMaterial)
+
+            Divider()
+
             Form {
                 Section(String(localized: "合并范围", bundle: appLocalizationBundle)) {
                     if let first = cues.first, let last = cues.last {
-                        HStack {
-                            Text(String(localized: "起止时间", bundle: appLocalizationBundle))
-                            Spacer()
+                        LabeledContent(String(localized: "起止时间", bundle: appLocalizationBundle)) {
                             Text(String(format: String(localized: "%.2f 秒 – %.2f 秒", bundle: appLocalizationBundle), locale: .current, Double(first.startMilliseconds)/1000.0, Double(last.endMilliseconds)/1000.0))
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    HStack {
-                        Text(String(localized: "合并数量", bundle: appLocalizationBundle))
-                        Spacer()
+                    LabeledContent(String(localized: "合并条数", bundle: appLocalizationBundle)) {
                         Text(String(localized: "\(cues.count) 句", bundle: appLocalizationBundle))
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Section(String(localized: "合并内容", bundle: appLocalizationBundle)) {
-                    TextField(String(localized: "原文内容", bundle: appLocalizationBundle), text: $mergedSource, axis: .vertical)
-                        .lineLimit(2...5)
-                    TextField(String(localized: "译文内容（选填）", bundle: appLocalizationBundle), text: $mergedTranslation, axis: .vertical)
-                        .lineLimit(2...5)
-                }
+                Section(String(localized: "合并后内容", bundle: appLocalizationBundle)) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "合并后原文", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $mergedSource)
+                            .font(.body)
+                            .frame(minHeight: 56, maxHeight: 110)
+                            .padding(4)
+                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                    }
 
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "合并后译文（选填）", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $mergedTranslation)
+                            .font(.body)
+                            .frame(minHeight: 56, maxHeight: 110)
+                            .padding(4)
+                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
                     }
                 }
             }
-            .navigationTitle(String(localized: "合并字幕", bundle: appLocalizationBundle))
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
+            .formStyle(.grouped)
+
+            if let errorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "保存", bundle: appLocalizationBundle)) { save() }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(mergedSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
             }
-            #if os(macOS)
-            .frame(minWidth: 440, minHeight: 320)
-            #endif
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button(String(localized: "保存", bundle: appLocalizationBundle)) {
+                    save()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(mergedSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(.regularMaterial)
         }
+        #if os(macOS)
+        .frame(width: 480, height: 460)
+        #endif
     }
 
     private func save() {
