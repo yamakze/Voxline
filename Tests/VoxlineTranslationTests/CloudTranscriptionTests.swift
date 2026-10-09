@@ -149,6 +149,11 @@ struct CloudTranscriptionTests {
         #expect(cues.first?.startMilliseconds == 5200)
         #expect(ASRStubProtocol.lastRequest.withLock { $0?.url?.path } == "/openai/chat/completions")
         ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello.","segments":[{"start":1.8,"end":9.5,"text":"Hello."}]}"#)) }
+        let padded = try await provider.transcribeEvidence(audio: audio)
+        #expect(padded.cloudResult?.segments?.first?.end == 9.5)
+        #expect(try SubtitleSegmenter.segment(padded, sourceID: UUID(), mediaDurationMilliseconds: 7000)
+            .cues.first?.endMilliseconds == 7000)
+        ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello.","segments":[{"start":2.8,"end":9.5,"text":"Hello."}]}"#)) }
         do { _ = try await provider.transcribeEvidence(audio: audio); Issue.record("Invalid model timing accepted") }
         catch let error as TranscriptionFailure {
             #expect(error.evidence.cloudResult?.text == "Hello.")

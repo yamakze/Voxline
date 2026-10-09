@@ -14,10 +14,16 @@ struct SubtitleSegmentationTests {
         #expect(result.cues.map(\.startMilliseconds) == [0, 600])
         #expect(result.cues.map(\.endMilliseconds) == [600, 1000])
         #expect(result.evidence == input)
-        let largeError = try evidence([.init(startSeconds: 0, endSeconds: 1.2, text: "Last", words: nil)], duration: 1000)
-        #expect(throws: SubtitleSegmentationError.invalidSegment(0)) {
-            try SubtitleSegmenter.segment(largeError, sourceID: sourceID, mediaDurationMilliseconds: 1000)
-        }
+        let paddedTail = try evidence([
+            .init(startSeconds: 0, endSeconds: 12.66, text: "Opening dialogue", words: nil),
+            .init(startSeconds: 103.36, endSeconds: 133.34, text: "Tail dialogue", words: nil)
+        ], duration: 120_000)
+        let clamped = try SubtitleSegmenter.segment(paddedTail, sourceID: sourceID, mediaDurationMilliseconds: 120_000)
+        #expect(clamped.cues.map(\.sourceText) == ["Opening dialogue", "Tail dialogue"])
+        #expect(clamped.cues.last?.endMilliseconds == 120_000)
+        #expect(clamped.evidence == paddedTail)
+        #expect(try SubtitleSegmenter.segment(clamped.evidence, sourceID: sourceID,
+            mediaDurationMilliseconds: 120_000).entries == clamped.entries)
     }
     private let sourceID = UUID(uuidString: "E53D56C0-E3B1-46C0-A953-734DFDA90F45")!
 
@@ -121,6 +127,14 @@ struct SubtitleSegmentationTests {
         #expect(output.cues[0].startMilliseconds == 19_600)
         #expect(output.cues[0].endMilliseconds == 20_000)
         #expect(output.entries[0].reviewReasons == [.shortDisplay])
+        let trailing = try evidence([raw([
+            word(" The", 7.68, 9.08), word(" end", 9.08, 10.48), word(" is", 10.48, 11.3),
+            word(" in", 11.3, 11.3), word(" the", 11.3, 11.3), word(" middle", 11.3, 11.3),
+            word(" of", 11.3, 11.3), word(" the", 11.3, 23.2), word(" night.", 23.2, 23.2)
+        ])], duration: 30_000)
+        let split = try SubtitleSegmenter.segment(trailing, sourceID: sourceID, mediaDurationMilliseconds: 30_000)
+        #expect(split.cues.map(\.sourceText).joined(separator: " ") == "The end is in the middle of the night.")
+        #expect(split.cues.allSatisfy { $0.endMilliseconds > $0.startMilliseconds })
     }
 
     @Test func failedCancelledAndInvalidRangesCannotBecomeCompletedCues() throws {
@@ -150,7 +164,7 @@ struct SubtitleSegmentationTests {
         let invalid: [(RawTranscriptionSegment, SubtitleSegmentationError)] = [
             (.init(startSeconds: 0, endSeconds: 0, text: "Text", words: nil), .invalidSegment(0)),
             (.init(startSeconds: .nan, endSeconds: 1, text: "Text", words: nil), .invalidSegment(0)),
-            (.init(startSeconds: 0, endSeconds: 21, text: "Text", words: nil), .invalidSegment(0)),
+            (.init(startSeconds: 21, endSeconds: 22, text: "Text", words: nil), .invalidSegment(0)),
             (.init(startSeconds: 0, endSeconds: 1, text: "Text lost", words: [word(" Text", 0, 1)]), .textMismatch(0)),
             (raw([word(" A", 0, 0.7), word(" B", 0.5, 1)]), .invalidWords(0)),
             (.init(startSeconds: 0, endSeconds: 1, text: "Text", words: [word(" Text", 0, 21)]), .invalidWords(0)),

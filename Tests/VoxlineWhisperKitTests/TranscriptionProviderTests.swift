@@ -177,6 +177,22 @@ struct TranscriptionProviderTests {
             try TranscriptionEvidenceSeeker.selectTiming(segments: original, aligned: aligned,
                 offset: 120, lower: 120, upper: 124)
         }
+        let paddedTail = [TranscriptionSegment(start: 112.81994, end: 142.79994, text: "Tail dialogue")]
+        var collapsedTail = paddedTail
+        collapsedTail[0].start = 116.1
+        collapsedTail[0].end = 116.1
+        let tail = try TranscriptionEvidenceSeeker.selectTiming(segments: paddedTail, aligned: collapsedTail,
+            offset: 120, lower: 232.8199375, upper: 240)
+        #expect(tail.usesSegmentTimings)
+        let tailWindow = TranscriptionWindowEvidence(seekFrame: 1_805_119, frameCount: 114_881,
+            decodedText: "Tail dialogue", decodedTokens: [], language: "en", skippedAsNoSpeech: false,
+            segmentsBeforeAlignment: paddedTail.map { TranscriptionEvidenceSeeker.raw($0, offset: 120) },
+            alignedSegments: collapsedTail.map { TranscriptionEvidenceSeeker.raw($0, offset: 120) }, usesSegmentTimings: true)
+        let bounded = try TranscriptionEvidenceSeeker.selectedSegments(windows: [tailWindow], offset: 120)
+        #expect(bounded.first?.endSeconds == 240)
+        #expect(bounded.first?.text == "Tail dialogue")
+        #expect(tailWindow.segmentsBeforeAlignment.first?.endSeconds ?? 0 > 260)
+        #expect(tailWindow.alignedSegments?.first?.startSeconds == tailWindow.alignedSegments?.first?.endSeconds)
     }
 
     @Test func rejectsUnknownLanguageAndModelWithoutSubstitution() throws {

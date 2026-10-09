@@ -97,11 +97,10 @@ public enum SubtitleSegmenter {
                 excluded.append(segmentIndex)
                 continue
             }
-            // Service timestamps and container ranges can disagree by a codec frame.
-            // Clamp only a 50 ms edge discrepancy; preserve raw evidence for inspection.
+            // A decoder may timestamp a tail segment to the end of its padded window.
+            // Keep its text and intersect with actual input; raw evidence remains unchanged.
             guard raw.startSeconds.isFinite, raw.endSeconds.isFinite,
-                  raw.startSeconds >= previousSegmentEnd - 0.05,
-                  raw.endSeconds <= upper + 0.05 else { throw SubtitleSegmentationError.invalidSegment(segmentIndex) }
+                  raw.startSeconds >= previousSegmentEnd - 0.05 else { throw SubtitleSegmentationError.invalidSegment(segmentIndex) }
             let segmentStart = max(previousSegmentEnd, raw.startSeconds)
             let segmentEnd = min(upper, raw.endSeconds)
             guard segmentEnd > segmentStart else { throw SubtitleSegmentationError.invalidSegment(segmentIndex) }
@@ -156,6 +155,12 @@ public enum SubtitleSegmenter {
                             if width >= policy.maximumWidth / 2 || duration >= 2500 { break }
                         }
                     }
+                }
+                // A trailing zero-duration word belongs to the preceding timed speech.
+                // Width or punctuation splitting must not leave it as an unrenderable cue.
+                while end < words.count, words[end].startSeconds == words[end].endSeconds,
+                      words[end].startSeconds == words[end - 1].endSeconds {
+                    end += 1
                 }
                 let cue = try timedCue(sourceID: sourceID, segmentIndex: segmentIndex, wordIndex: start,
                                        start: words[start].startSeconds, end: words[end - 1].endSeconds,

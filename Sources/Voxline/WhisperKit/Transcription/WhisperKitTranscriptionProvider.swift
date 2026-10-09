@@ -28,27 +28,41 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
         try await transcribeEvidence(audio: audio).segments
     }
 
-    /// Only completed recognition can be realigned; partial decoding never becomes a completed result.
+    /// A timing failure in the final window still retains a complete recognition.
+    /// Partial decoding, cancellation and incomplete coverage require new inference.
+    public static func hasCompleteRecognition(_ evidence: TranscriptionEvidence) -> Bool {
+        guard evidence.settings.provider == .whisperKit, evidence.outcome != .cancelled,
+              evidence.partialDecodedText == nil, evidence.partialDecodedTokens == nil,
+              !evidence.windows.isEmpty, evidence.durationMilliseconds > 0,
+              evidence.durationMilliseconds <= 120_000 else { return false }
+        var coveredFrames = 0
+        var previousSeek = -1
+        for window in evidence.windows {
+            guard window.seekFrame > previousSeek, window.seekFrame <= coveredFrames,
+                  window.frameCount > 0, window.frameCount <= 480_000,
+                  window.seekFrame + window.frameCount <= 1_920_000 else { return false }
+            previousSeek = window.seekFrame
+            coveredFrames = max(coveredFrames, window.seekFrame + window.frameCount)
+        }
+        return Int64((coveredFrames + 15) / 16) == evidence.durationMilliseconds
+    }
+
+    /// Only full input coverage can be realigned; partial decoding never becomes a completed result.
     public static func recoverCompletedEvidence(_ original: TranscriptionEvidence) throws -> TranscriptionEvidence {
-        guard original.settings.provider == .whisperKit, original.outcome == .completed,
-              original.failureReason == nil, original.partialDecodedText == nil, original.partialDecodedTokens == nil,
-              !original.windows.isEmpty, original.durationMilliseconds <= 120_000 else {
+        guard hasCompleteRecognition(original) else {
             throw WhisperTranscriptionError.invalidAlignment(String(localized: "没有完整的本地识别结果可恢复。", bundle: voxlineLocalizationBundle))
         }
-        guard original.windows.allSatisfy({ $0.seekFrame >= 0 && $0.seekFrame <= 1_920_000 &&
-            $0.frameCount > 0 && $0.frameCount <= 480_000 && $0.seekFrame + $0.frameCount <= 1_920_000 }) else {
-            throw WhisperTranscriptionError.invalidAudio
-        }
         let frameCount = original.windows.map { $0.seekFrame + $0.frameCount }.max()!
-        guard Int64((frameCount + 15) / 16) == original.durationMilliseconds else { throw WhisperTranscriptionError.invalidAudio }
+        let offset = Double(original.sourceStartMilliseconds) / 1000
         let selected = original.windows.flatMap { $0.usesSegmentTimings == true ? $0.segmentsBeforeAlignment :
             ($0.alignedSegments ?? $0.segmentsBeforeAlignment) }
+        let bounded = try TranscriptionEvidenceSeeker.selectedSegments(windows: original.windows, offset: offset)
+        let saved = original.segments.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard selected.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ==
-                original.segments.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+                saved || bounded.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) == saved else {
             throw WhisperTranscriptionError.invalidAlignment(String(localized: "保存的识别结果遗漏或改变了窗口文本。", bundle: voxlineLocalizationBundle))
         }
         var evidence = original
-        let offset = Double(evidence.sourceStartMilliseconds) / 1000
         for index in evidence.windows.indices where evidence.windows[index].usesSegmentTimings != true {
             let window = evidence.windows[index]
             guard let aligned = window.alignedSegments else { continue }
@@ -61,6 +75,8 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
             ($0.alignedSegments ?? $0.segmentsBeforeAlignment) }
         evidence.segments = try TranscriptionEvidenceSeeker.validatedSegments(windows: evidence.windows,
             sourceOffsetSeconds: offset, frameCount: frameCount, returnedSegments: recovered)
+        evidence.outcome = .completed
+        evidence.failureReason = nil
         return evidence
     }
 

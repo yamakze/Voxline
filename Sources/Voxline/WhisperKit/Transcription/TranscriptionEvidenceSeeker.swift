@@ -93,8 +93,35 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
             try validate(aligned, lower: lower, upper: upper)
             return false
         } catch WhisperTranscriptionError.invalidTiming {
-            try validate(original, lower: lower, upper: upper)
+            _ = try segmentTimingsWithinWindow(original, lower: lower, upper: upper)
             return true
+        }
+    }
+
+    /// Decoder timestamps can include the padded tail of the 30-second model window.
+    /// Intersect segment times with real audio; never invent a duration for collapsed text.
+    static func segmentTimingsWithinWindow(_ segments: [RawTranscriptionSegment], lower: Double,
+                                          upper: Double) throws -> [RawTranscriptionSegment] {
+        let bounded = segments.map { segment in
+            guard !segment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  segment.startSeconds.isFinite, segment.endSeconds.isFinite else { return segment }
+            return RawTranscriptionSegment(startSeconds: max(lower, segment.startSeconds),
+                endSeconds: min(upper, segment.endSeconds), text: segment.text, words: nil,
+                averageLogProbability: segment.averageLogProbability,
+                noSpeechProbability: segment.noSpeechProbability, timingSource: segment.timingSource)
+        }
+        try validate(bounded, lower: lower, upper: upper)
+        return bounded
+    }
+
+    static func selectedSegments(windows: [TranscriptionWindowEvidence], offset: Double) throws -> [RawTranscriptionSegment] {
+        try windows.flatMap { window in
+            if window.usesSegmentTimings == true {
+                return try segmentTimingsWithinWindow(window.segmentsBeforeAlignment,
+                    lower: offset + Double(window.seekFrame) / 16_000,
+                    upper: offset + Double(window.seekFrame + window.frameCount) / 16_000)
+            }
+            return window.alignedSegments ?? window.segmentsBeforeAlignment
         }
     }
 
@@ -191,12 +218,14 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
             window.usesSegmentTimings == true ? window.segmentsBeforeAlignment :
                 (window.alignedSegments ?? window.segmentsBeforeAlignment)
         }
+        let selected = try selectedSegments(windows: evidence, offset: sourceOffsetSeconds)
         // The SDK filters zero-duration segments. Fail if any nonempty evidence was lost in that path.
-        guard raw.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ==
-                returnedSegments.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+        let returned = returnedSegments.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard raw.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) == returned ||
+                selected.filter({ !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) == returned else {
             throw WhisperTranscriptionError.invalidAlignment(String(localized: "SDK 输出遗漏或改变了非空识别证据。", bundle: voxlineLocalizationBundle))
         }
-        try Self.validate(raw, lower: sourceOffsetSeconds, upper: sourceOffsetSeconds + Double(frameCount) / 16_000)
-        return raw
+        try Self.validate(selected, lower: sourceOffsetSeconds, upper: sourceOffsetSeconds + Double(frameCount) / 16_000)
+        return selected
     }
 }

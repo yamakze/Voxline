@@ -202,13 +202,14 @@ struct TaskProcessingQueueTests {
         for (index, chunk) in chunks.enumerated() {
             let sourceID = try task.items[0].beginTranscriptionChunk(chunk.id)
             let start = Double(chunk.range.sourceStartMilliseconds) / 1000
-            let original = RawTranscriptionSegment(startSeconds: start, endSeconds: start + 2, text: "Saved recognition.", words: nil)
-            let aligned = RawTranscriptionSegment(startSeconds: start, endSeconds: start + 2, text: original.text,
+            let original = RawTranscriptionSegment(startSeconds: start, endSeconds: start + (index == 0 ? 2 : 30), text: "Saved recognition.", words: nil)
+            let aligned = RawTranscriptionSegment(startSeconds: start, endSeconds: start, text: original.text,
                 words: [.init(text: "Wrong words.", startSeconds: start, endSeconds: start + 2, probability: 0.9)])
             var evidence = TranscriptionEvidence(settings: task.parameters.transcription,
                 audio: try .init(localURL: directory.appendingPathComponent("unused.wav"),
                     sourceStartMilliseconds: chunk.range.sourceStartMilliseconds, durationMilliseconds: 2000))
-            evidence.outcome = .completed
+            evidence.outcome = index == 0 ? .completed : .failed
+            evidence.failureReason = index == 0 ? nil : "Tail alignment collapsed"
             evidence.segments = index == 0 ? [original] : [aligned]
             evidence.windows = [.init(seekFrame: 0, frameCount: 32_000, decodedText: original.text,
                 decodedTokens: [1], language: "en", skippedAsNoSpeech: false, segmentsBeforeAlignment: [original],
@@ -250,6 +251,7 @@ struct TaskProcessingQueueTests {
         let saved = try TaskDocumentCodec.decode(Data(contentsOf: reopened.defaultURL(for: task.id)))
         #expect(saved.items[0].cues[0] == edited)
         #expect(saved.items[0].cues[1].sourceText == "Saved recognition.")
+        #expect(saved.items[0].cues[1].endMilliseconds == 4000)
         #expect(saved.items[0].checkpoint?.chunks.allSatisfy(\.isCompleted) == true)
         #expect(saved.items[0].status == .completed)
     }
@@ -279,8 +281,11 @@ struct TaskProcessingQueueTests {
         for cue in originalCues { #expect(saved.items[0].cues.first(where: { $0.id == cue.id }) == cue) }
         #expect(await pipeline.requestCount == 0)
         #expect(saved.items[0].cues.count > originalCues.count)
+        if let opening = originalChunks.first, !opening.isCompleted, opening.range.sourceStartMilliseconds == 0 {
+            #expect(try #require(saved.items[0].cues.first).startMilliseconds < opening.range.durationMilliseconds)
+        }
         #expect(saved.items[0].status == .completed)
-        print("SAVED_TASK_RECOVERY completed=\(completed.count) retainedCues=\(originalCues.count) totalCues=\(saved.items[0].cues.count) providerRequests=0")
+        print("SAVED_TASK_RECOVERY completed=\(completed.count) retainedCues=\(originalCues.count) totalCues=\(saved.items[0].cues.count) firstStart=\(saved.items[0].cues.first?.startMilliseconds ?? -1) providerRequests=0")
     }
 
     @Test func itemCancellationWaitsForOldInferenceAndContinuesOtherMedia() async throws {

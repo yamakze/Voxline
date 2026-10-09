@@ -279,9 +279,10 @@ public final class TaskProcessingQueue {
             let savedRecognition: TranscriptionEvidence?
             switch chunks[index].state {
             case .failed(_, let evidence), .cancelled(let evidence):
-                savedRecognition = evidence?.settings == parameters.transcription && (evidence?.cloudResult != nil ||
-                    (evidence?.outcome == .completed && evidence?.settings.provider == .whisperKit && evidence?.windows.isEmpty == false))
-                    ? evidence : nil
+                if let evidence, evidence.settings == parameters.transcription,
+                   evidence.cloudResult != nil || WhisperKitTranscriptionProvider.hasCompleteRecognition(evidence) {
+                    savedRecognition = evidence
+                } else { savedRecognition = nil }
             default: savedRecognition = nil
             }
             let sourceID = try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.beginTranscriptionChunk(chunkID) }
