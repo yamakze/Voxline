@@ -443,7 +443,8 @@ public struct TaskSyncSettingsView: View {
             Spacer()
             Button(String(localized: "重试 / 刷新", bundle: appLocalizationBundle)) {
                 localError = nil
-                settings.refresh()
+                do { try settings.retryPublication() }
+                catch { localError = error.localizedDescription }
             }
             .buttonStyle(.bordered)
             .controlSize(.small)

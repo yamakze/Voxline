@@ -7,10 +7,10 @@ struct SubtitleExporterTests {
     @Test func lastCueCodecRoundingClampsAtExportWithoutMutatingTheEditedCue() throws {
         let media = try MediaIdentity(fileName: "clip.mp4", byteCount: 10, fingerprint: String(repeating: "a", count: 64),
                                       durationMilliseconds: 1000, audioTrackID: 1)
-        let last = try cue(start: 500, end: 1005)
+        let last = try cue(start: 500, end: 1100)
         let result = try SubtitleExporter.generateSRT(cues: [last], kind: .bilingual, media: media)
         #expect(result.contains("00:00:00,500 --> 00:00:01,000"))
-        #expect(last.endMilliseconds == 1005)
+        #expect(last.endMilliseconds == 1100)
         #expect(result.contains("你好。"))
     }
     private func cue(start: Int64 = 3_600_001, end: Int64 = 3_602_999) throws -> SubtitleCue {
@@ -61,7 +61,9 @@ struct SubtitleExporterTests {
         #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [first, overlapping], kind: .bilingual) }
         #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [first, first], kind: .source) }
         let media = try MediaIdentity(fileName: "clip.mp4", byteCount: 1, fingerprint: String(repeating: "a", count: 64), durationMilliseconds: 500, audioTrackID: 1)
-        #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [first], kind: .source, media: media) }
+        #expect(try SubtitleExporter.generateSRT(cues: [first], kind: .source, media: media).contains("00:00:00,000 --> 00:00:00,500"))
+        let outside = try cue(start: 500, end: 1000)
+        #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [outside], kind: .source, media: media) }
     }
 
     @Test func atomicUTF8WriteRequiresOverwriteChoiceAndPreservesFileOnValidationFailure() throws {

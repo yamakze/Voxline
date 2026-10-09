@@ -33,7 +33,7 @@ public final class TaskLibrary {
 
     public var backupsDirectory: URL { tasksDirectory.appendingPathComponent("Backups", isDirectory: true) }
     public let tasksDirectory: URL
-    private var orderedURLs: [URL] = []
+    private var orderedEntryIDs: [String] = []
     private var orderURL: URL { tasksDirectory.appendingPathComponent("task-order.json") }
     private let recentDocumentURLs: @MainActor () -> [URL]
     private let noteRecentDocument: @MainActor (URL) -> Void
@@ -135,9 +135,15 @@ public final class TaskLibrary {
     /// Flushes actual pending documents; a failure leaves local recovery intact and visible.
     public func publishSharedCheckpoints() throws {
         guard let documents = sharedDocuments else { return }
-        for url in documents.pendingURLs { try documents.publishCheckpoint(at: url) }
         publicationWork?.cancel()
         publicationWork = nil
+        var firstFailure: (any Error)?
+        for url in documents.pendingURLs {
+            do { try documents.publishCheckpoint(at: url) }
+            catch { if firstFailure == nil { firstFailure = error } }
+        }
+        // Each document retains its own error and recovery record; finish independent work first.
+        if let firstFailure { throw firstFailure }
     }
 
     private func scheduleSharedPublication() {
@@ -194,11 +200,11 @@ public final class TaskLibrary {
                 catch { cleanupWarnings.append("\(otherURL.path)：\(error.localizedDescription)") }
             }
         }
-        let remainingOrder = orderedURLs.filter { $0 != url }
+        let remainingOrder = orderedEntryIDs.filter { $0 != entry.id }
         try JSONEncoder().encode(remainingOrder).write(to: orderURL, options: .atomic)
         if let sharedDocuments, sharedDocuments.contains(url) { try sharedDocuments.remove(url) }
         else { try FileManager.default.removeItem(at: url) }
-        orderedURLs = remainingOrder
+        orderedEntryIDs = remainingOrder
         openTasks[entry.taskID] = nil
         entries.removeAll { $0.id == entryID }
         forgetRecentDocument(url)
@@ -227,9 +233,8 @@ public final class TaskLibrary {
         }
         let current = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
         let reordered = entryIDs.map { current[$0]! }
-        let urls = reordered.compactMap(\.url)
-        try JSONEncoder().encode(urls).write(to: orderURL, options: .atomic)
-        orderedURLs = urls
+        try JSONEncoder().encode(entryIDs).write(to: orderURL, options: .atomic)
+        orderedEntryIDs = entryIDs
         entries = reordered
     }
 
@@ -265,11 +270,9 @@ public final class TaskLibrary {
                 do { id = try TaskDocumentCodec.decode(Data(contentsOf: url)).id }
                 catch { continue } // Keep unreadable documents as explicit error entries in refresh.
                 guard sharedIDs.contains(id) else { continue }
-                try FileManager.default.createDirectory(at: backupsDirectory, withIntermediateDirectories: true)
-                var backup = backupsDirectory.appendingPathComponent(id.uuidString).appendingPathExtension("voxline")
-                if FileManager.default.fileExists(atPath: backup.path) {
-                    backup = backupsDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("voxline")
-                }
+                let taskBackups = backupsDirectory.appendingPathComponent(id.uuidString, isDirectory: true)
+                try FileManager.default.createDirectory(at: taskBackups, withIntermediateDirectories: true)
+                let backup = taskBackups.appendingPathComponent(UUID().uuidString).appendingPathExtension("voxline")
                 let canonical = url.resolvingSymlinksInPath().standardizedFileURL
                 let knownURLs = openTasks.values.compactMap(\.url) + recentDocumentURLs()
                 try FileManager.default.moveItem(at: url, to: backup)
@@ -292,8 +295,8 @@ public final class TaskLibrary {
     public func refresh() {
         libraryError = nil
         do {
-            orderedURLs = FileManager.default.fileExists(atPath: orderURL.path)
-                ? try JSONDecoder().decode([URL].self, from: Data(contentsOf: orderURL)) : []
+            orderedEntryIDs = FileManager.default.fileExists(atPath: orderURL.path)
+                ? try JSONDecoder().decode([String].self, from: Data(contentsOf: orderURL)) : []
         } catch { libraryError = String(localized: "任务顺序读取失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle) }
         var foundEntries: [Entry] = []
         var seenIDs = Set<UUID>()
@@ -368,7 +371,7 @@ public final class TaskLibrary {
                 task.interruptRunningItems()
                 if !seenIDs.contains(task.id) {
                     seenIDs.insert(task.id)
-                    foundEntries.append(Entry(id: url.absoluteString, taskID: task.id, url: url, task: task, error: nil))
+                    foundEntries.append(Entry(id: task.id.uuidString, taskID: task.id, url: url, task: task, error: nil))
                 }
             } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
                 // Deleted documents can remain in the system's recent-document list.
@@ -380,9 +383,10 @@ public final class TaskLibrary {
             }
         }
 
+        let positions = Dictionary(orderedEntryIDs.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first })
         entries = foundEntries.sorted {
-            let left = $0.url.flatMap { orderedURLs.firstIndex(of: $0) }
-            let right = $1.url.flatMap { orderedURLs.firstIndex(of: $0) }
+            let left = positions[$0.id]
+            let right = positions[$1.id]
             if left != right { return (left ?? -1) < (right ?? -1) }
             if $0.task?.startedAt != $1.task?.startedAt {
                 return ($0.task?.startedAt ?? .distantPast) > ($1.task?.startedAt ?? .distantPast)

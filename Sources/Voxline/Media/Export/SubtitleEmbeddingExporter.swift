@@ -140,9 +140,7 @@ public enum SubtitleEmbeddingExporter {
             guard reader.status == .completed else { throw reader.error ?? SubtitleEmbeddingError.invalidOutput }
             // Track edits can outlast the asset duration; ending at the movie time drops tail packets.
             writer.endSession(atSourceTime: CMTimeMaximum(duration, CMTimeMaximum(videoRange.end, audioRange.end)))
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                writer.finishWriting { continuation.resume() }
-            }
+            await SubtitleEmbeddingFinalization(writer: writer).wait()
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? SubtitleEmbeddingError.invalidOutput }
             if audioPriming > .zero {
@@ -228,4 +226,61 @@ public enum SubtitleEmbeddingExporter {
               let sample else { throw SubtitleEmbeddingError.invalidText }
         return sample
     }
+}
+
+/// Serializes native finish/cancel calls. Cancellation resumes only after cancelWriting has stopped
+/// the writer, so temporary-file cleanup cannot race a still-running native finalization.
+final class SubtitleEmbeddingFinalization: @unchecked Sendable {
+    private let writer: AVAssetWriter
+    private let queue = DispatchQueue(label: "Voxline.SubtitleEmbedding.Finalization")
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var finished = false
+    private var cancelled = false
+
+    init(writer: AVAssetWriter) { self.writer = writer }
+
+    func wait() async {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let alreadyFinished = lock.withLock {
+                    if finished { return true }
+                    self.continuation = continuation
+                    return false
+                }
+                if alreadyFinished { continuation.resume() }
+                else {
+                    queue.async {
+                        guard !self.lock.withLock({ self.cancelled }) else { return }
+                        self.writer.finishWriting { self.complete(cancelled: false) }
+                    }
+                }
+            }
+        } onCancel: { self.cancel() }
+    }
+
+    private func cancel() {
+        let shouldCancel = lock.withLock {
+            guard !finished, !cancelled else { return false }
+            cancelled = true
+            return true
+        }
+        guard shouldCancel else { return }
+        queue.async {
+            self.writer.cancelWriting()
+            self.complete(cancelled: true)
+        }
+    }
+
+    private func complete(cancelled: Bool) {
+        let waiting = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            guard !finished, cancelled || !self.cancelled else { return nil }
+            finished = true
+            let waiting = continuation
+            continuation = nil
+            return waiting
+        }
+        waiting?.resume()
+    }
+
 }

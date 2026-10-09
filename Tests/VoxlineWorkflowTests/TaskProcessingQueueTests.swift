@@ -133,6 +133,8 @@ struct TaskProcessingQueueTests {
             .init(sourceStartMilliseconds: 0, durationMilliseconds: 2000),
             .init(sourceStartMilliseconds: 2000, durationMilliseconds: 2000)])
         let chunks = try #require(task.items[0].checkpoint).chunks
+        let diagnostics = directory.appendingPathComponent("diagnostics", isDirectory: true)
+        try FileManager.default.createDirectory(at: diagnostics, withIntermediateDirectories: true)
         for (index, chunk) in chunks.enumerated() {
             let sourceID = try task.items[0].beginTranscriptionChunk(chunk.id)
             let start = Double(chunk.range.sourceStartMilliseconds) / 1000
@@ -147,6 +149,7 @@ struct TaskProcessingQueueTests {
             evidence.windows = [.init(seekFrame: 0, frameCount: 32_000, decodedText: original.text,
                 decodedTokens: [1], language: "en", skippedAsNoSpeech: false, segmentsBeforeAlignment: [original],
                 alignedSegments: evidence.segments, usesSegmentTimings: false)]
+            try JSONEncoder().encode(evidence).write(to: diagnostics.appendingPathComponent("\(index).json"), options: .atomic)
             if index == 0 {
                 try task.items[0].commitTranscriptionChunk(chunk.id, result: SubtitleSegmenter.segment(evidence,
                     sourceID: sourceID, mediaDurationMilliseconds: 4000))
@@ -157,7 +160,24 @@ struct TaskProcessingQueueTests {
         try task.items[0].cues[0].replaceSourceText(with: "Manual correction")
         let edited = task.items[0].cues[0]
         try library.save(task)
-        let reopened = TaskLibrary(tasksDirectory: directory)
+        let savedBeforeRecovery = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        if case .completed(let snapshot) = savedBeforeRecovery.items[0].checkpoint?.chunks[0].state {
+            #expect(snapshot.evidence.windows.isEmpty && snapshot.evidence.cloudResult == nil)
+            #expect(try SubtitleSegmenter.segment(snapshot.evidence, sourceID: snapshot.sourceID,
+                mediaDurationMilliseconds: 4000, policy: snapshot.policy) == snapshot)
+        } else { Issue.record("Missing compact completed recognition") }
+        if case .failed(_, let evidence) = savedBeforeRecovery.items[0].checkpoint?.chunks[1].state {
+            #expect(evidence?.windows.count == 1)
+            #expect(evidence?.windows.first?.decodedTokens == [1])
+        } else { Issue.record("Missing durable failed recognition") }
+        try FileManager.default.removeItem(at: diagnostics)
+        // A second independent device library receives only the shared task, with no diagnostics.
+        let shared = try SharedTaskDocuments(directory: directory.appendingPathComponent("shared"))
+        let sharedURL = shared.directory.appendingPathComponent(task.id.uuidString).appendingPathExtension("voxline")
+        try shared.write(TaskDocumentCodec.encode(savedBeforeRecovery), to: sharedURL)
+        let reopened = TaskLibrary(tasksDirectory: directory.appendingPathComponent("other-device"))
+        try reopened.connectSharedDocuments(SharedTaskDocuments(directory: shared.directory,
+            recoveryDirectory: reopened.tasksDirectory.appendingPathComponent("SyncRecovery")))
         let pipeline = ControlledPipeline()
         let queue = TaskProcessingQueue(library: reopened, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try queue.start(taskID: task.id)

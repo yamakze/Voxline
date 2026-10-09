@@ -122,7 +122,7 @@ public final class TaskProcessingQueue {
               selected.isSubset(of: Set(item.cues.map(\.id))) else { throw QueueError.noWork }
         let batches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: cueIDs, targetLanguage: settings.targetLanguage, batchSize: settings.batchSize)
         let batchIDs = try updateMedia(taskID: taskID, mediaID: mediaID) { current in
-            try batches.map { try current.prepareTranslationBatch(cueIDs: $0) }
+            try current.prepareTranslationBatches(cueIDBatches: batches)
         }
         self.taskID = taskID
         library.protectedTaskID = taskID
@@ -349,19 +349,14 @@ public final class TaskProcessingQueue {
         let plan = try item.recoveryPlan(media: checkpoint.media, parameters: checkpoint.parameters, ranges: checkpoint.chunks.map(\.range))
         let newBatches: [[UUID]]
         do {
-            let pendingIDs = plan.untranslatedCueIDs.filter { id in
-                guard let cue = item.cues.first(where: { $0.id == id }) else { return false }
-                if case .succeeded = cue.translation { return false }
-                return true
-            }
-            newBatches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: pendingIDs,
+            newBatches = try SubtitleTranslationBatchPlanner.batches(cues: item.cues, pendingIDs: plan.untranslatedCueIDs,
                 targetLanguage: settings.targetLanguage, batchSize: settings.batchSize)
         } catch {
             try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .failed(reason: error.localizedDescription) }
             return
         }
         let batchIDs = try updateMedia(taskID: taskID, mediaID: mediaID) { item in
-            try plan.translationBatchIDs + newBatches.map { try item.prepareTranslationBatch(cueIDs: $0) }
+            try plan.translationBatchIDs + item.prepareTranslationBatches(cueIDBatches: newBatches)
         }
         if batchIDs.isEmpty {
             try updateMedia(taskID: taskID, mediaID: mediaID) {

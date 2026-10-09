@@ -25,6 +25,16 @@ public struct SubtitleSegmentationResult: Codable, Equatable, Sendable {
     public let entries: [SegmentedSubtitle]
     public let excludedEmptySegmentIndices: [Int]
     public var cues: [SubtitleCue] { entries.map(\.cue) }
+
+    /// Completed recognition retains original segments and provenance for resegmentation.
+    /// Decoder windows and duplicate cloud responses belong to device diagnostics.
+    var checkpointSnapshot: Self {
+        var evidence = evidence
+        evidence.windows = []
+        evidence.cloudResult = nil
+        return .init(sourceID: sourceID, evidence: evidence, policy: policy,
+            entries: entries, excludedEmptySegmentIndices: excludedEmptySegmentIndices)
+    }
 }
 
 public struct SegmentedSubtitle: Codable, Equatable, Sendable {

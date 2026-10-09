@@ -214,7 +214,7 @@ public extension TaskMediaItem {
         guard let media, record.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
         guard let index = record.chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
         if case .completed(let committed) = record.chunks[index].state {
-            guard committed == result else { throw CheckpointError.alreadyCommitted }
+            guard committed == result.checkpointSnapshot else { throw CheckpointError.alreadyCommitted }
             return
         }
         guard case .running(let sourceID) = record.chunks[index].state, sourceID == result.sourceID else {
@@ -228,7 +228,7 @@ public extension TaskMediaItem {
         var updated = self
         updated.cues.append(contentsOf: result.cues)
         updated.cues.sort { $0.startMilliseconds < $1.startMilliseconds }
-        record.chunks[index].state = .completed(result)
+        record.chunks[index].state = .completed(result.checkpointSnapshot)
         updated.checkpoint = record
         if let reason = record.chunks.compactMap({ chunk -> String? in
             if case .failed(let reason, _) = chunk.state { return reason }
@@ -270,28 +270,37 @@ public extension TaskMediaItem {
     }
 
     mutating func prepareTranslationBatch(cueIDs: [UUID]) throws -> UUID {
+        try prepareTranslationBatches(cueIDBatches: [cueIDs])[0]
+    }
+
+    /// Prepare a complete plan with one cue index and one recovery scan.
+    mutating func prepareTranslationBatches(cueIDBatches: [[UUID]]) throws -> [UUID] {
         var record = try requiredCheckpoint()
         guard record.parameters.translation != nil, record.chunks.allSatisfy(\.isCompleted) else { throw CheckpointError.incompleteWork }
-        guard !cueIDs.isEmpty, Set(cueIDs).count == cueIDs.count else { throw CheckpointError.invalidTranslationResult }
-        let currentCues = Dictionary(uniqueKeysWithValues: cues.map { ($0.id, $0) })
-        let inputs = try cueIDs.map { id -> TranslationBatchInput in
-            guard let cue = currentCues[id] else { throw CheckpointError.unknownWork }
-            return TranslationBatchInput(cue)
-        }
-        // Failed/cancelled or edited batches remain as history; valid unfinished inputs are reused.
+        let positions = try cuePositions()
         let plan = try recoveryPlan(media: record.media, parameters: record.parameters, ranges: record.chunks.map(\.range))
-        let reusableIDs = Set(plan.translationBatchIDs)
-        guard !record.translationBatches.filter({ reusableIDs.contains($0.id) }).contains(where: { batch in
-            batch.inputs.contains { cueIDs.contains($0.cueID) }
-        }) else { throw CheckpointError.workRunning }
-        for index in record.translationBatches.indices where plan.outdatedTranslationBatchIDs.contains(record.translationBatches[index].id) {
+        let reusable = Set(plan.translationBatchIDs)
+        var reserved = Set(record.translationBatches.filter { reusable.contains($0.id) }.flatMap { $0.inputs.map(\.cueID) })
+        var requested = Set<UUID>()
+        var added: [TranslationBatchCheckpoint] = []
+        for ids in cueIDBatches {
+            guard !ids.isEmpty else { throw CheckpointError.invalidTranslationResult }
+            let inputs = try ids.map { id -> TranslationBatchInput in
+                guard requested.insert(id).inserted else { throw CheckpointError.invalidTranslationResult }
+                guard reserved.insert(id).inserted else { throw CheckpointError.workRunning }
+                guard let position = positions[id] else { throw CheckpointError.unknownWork }
+                return TranslationBatchInput(cues[position])
+            }
+            added.append(.init(id: UUID(), inputs: inputs, state: .pending))
+        }
+        let outdated = Set(plan.outdatedTranslationBatchIDs)
+        for index in record.translationBatches.indices where outdated.contains(record.translationBatches[index].id) {
             record.translationBatches[index].state = .failed(reason: String(localized: "原文或译文已修改，请使用当前内容建立新批次。", bundle: voxlineLocalizationBundle))
         }
-        let batchID = UUID()
-        record.translationBatches.append(.init(id: batchID, inputs: inputs, state: .pending))
+        record.translationBatches.append(contentsOf: added)
         checkpoint = record
-        if !record.translationBatches.contains(where: { $0.state == .running }) { status = .pending }
-        return batchID
+        if !added.isEmpty, !record.translationBatches.contains(where: { $0.state == .running }) { status = .pending }
+        return added.map(\.id)
     }
 
     mutating func beginTranslationBatch(_ batchID: UUID) throws {
@@ -299,8 +308,8 @@ public extension TaskMediaItem {
         guard let index = record.translationBatches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
         guard !record.translationBatches[index].isCompleted else { throw CheckpointError.alreadyCommitted }
         guard !record.translationBatches.contains(where: { $0.state == .running }) else { throw CheckpointError.workRunning }
-        let currentCues = Dictionary(uniqueKeysWithValues: cues.map { ($0.id, $0) })
-        guard record.translationBatches[index].inputs.allSatisfy({ input in currentCues[input.cueID].map(input.matches) == true }) else {
+        let positions = try cuePositions()
+        guard record.translationBatches[index].inputs.allSatisfy({ input in positions[input.cueID].map { input.matches(cues[$0]) } == true }) else {
             throw CheckpointError.editedCue
         }
         record.translationBatches[index].state = .running
@@ -318,16 +327,17 @@ public extension TaskMediaItem {
         }
         guard batch.state == .running else { throw CheckpointError.staleResult }
         try record.validateOutputs(outputs, inputs: batch.inputs)
-        guard batch.inputs.allSatisfy({ input in cues.contains { input.matches($0) } }) else { throw CheckpointError.editedCue }
+        let positions = try cuePositions()
+        guard batch.inputs.allSatisfy({ input in positions[input.cueID].map { input.matches(cues[$0]) } == true }) else { throw CheckpointError.editedCue }
         var updated = self
         for output in outputs {
-            guard let cueIndex = updated.cues.firstIndex(where: { $0.id == output.cueID }) else { throw CheckpointError.unknownWork }
+            guard let cueIndex = positions[output.cueID] else { throw CheckpointError.unknownWork }
             updated.cues[cueIndex].translation = .succeeded(text: output.text, sourceRevision: updated.cues[cueIndex].sourceRevision)
         }
         record.translationBatches[index].state = .completed(outputs)
         updated.checkpoint = record
         let unfinished = record.translationBatches.filter { batch in
-            !batch.isCompleted && batch.inputs.allSatisfy { input in updated.cues.contains { input.matches($0) } }
+            !batch.isCompleted && batch.inputs.allSatisfy { input in positions[input.cueID].map { input.matches(updated.cues[$0]) } == true }
         }
         if updated.cues.allSatisfy(\.hasTranslation) { updated.status = .completed }
         else if let reason = unfinished.compactMap({ batch -> String? in
@@ -336,7 +346,7 @@ public extension TaskMediaItem {
         }).first { updated.status = .failed(reason: reason) }
         else if unfinished.contains(where: { $0.state == .cancelled }) { updated.status = .cancelled }
         else if unfinished.contains(where: { $0.state == .interrupted }) { updated.status = .interrupted(stage: .translation) }
-        else { updated.status = .pending }
+        else { updated.status = unfinished.isEmpty ? .needsTranslation : .running(stage: .translation) }
         try updated.validate()
         self = updated
     }
@@ -364,12 +374,12 @@ public extension TaskMediaItem {
         let record = try requiredCheckpoint()
         guard record.media.matchesContent(of: media), record.parameters == parameters,
               record.chunks.map(\.range) == ranges else { throw CheckpointError.incompatibleContext }
-        let currentCues = Dictionary(uniqueKeysWithValues: cues.map { ($0.id, $0) })
+        let positions = try cuePositions()
         var reusable: [UUID] = []
         var outdated: [UUID] = []
         var reserved = Set<UUID>()
         for batch in record.translationBatches where !batch.isCompleted {
-            if batch.inputs.allSatisfy({ input in currentCues[input.cueID].map(input.matches) == true }) {
+            if batch.inputs.allSatisfy({ input in positions[input.cueID].map { input.matches(cues[$0]) } == true }) {
                 reusable.append(batch.id)
                 reserved.formUnion(batch.inputs.map(\.cueID))
             } else { outdated.append(batch.id) }
@@ -390,6 +400,15 @@ public extension TaskMediaItem {
             if record.translationBatches[index].state == .running { record.translationBatches[index].state = .interrupted }
         }
         checkpoint = record
+    }
+
+    private func cuePositions() throws -> [UUID: Int] {
+        var positions: [UUID: Int] = [:]
+        positions.reserveCapacity(cues.count)
+        for (index, cue) in cues.enumerated() {
+            guard positions.updateValue(index, forKey: cue.id) == nil else { throw ProjectValidationError.duplicateCue(cue.id) }
+        }
+        return positions
     }
 
     private func requiredCheckpoint() throws -> MediaProcessingCheckpoint {

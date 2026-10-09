@@ -95,7 +95,7 @@ public struct TaskConflictResolutionSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if versions.isEmpty {
+                    if versions.isEmpty && errorMessage == nil {
                         ProgressView(String(localized: "正在读取冲突版本…", bundle: appLocalizationBundle))
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.vertical, 40)
@@ -259,6 +259,8 @@ public struct TaskConflictResolutionSheet: View {
         errorMessage = nil
         do {
             versions = try library.conflictVersions(taskID: taskID)
+            let failures = library.sharedDocuments?.versionReadErrors ?? []
+            errorMessage = failures.isEmpty ? nil : failures.joined(separator: "\n")
             if selectedVersionID == nil {
                 selectedVersionID = versions.first(where: { $0.origin == .localRecovery })?.id ?? versions.first?.id
             }

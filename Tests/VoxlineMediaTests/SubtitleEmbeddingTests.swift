@@ -161,6 +161,39 @@ struct SubtitleEmbeddingTests {
         #expect(playerItem.currentMediaSelection.selectedMediaOption(in: group) == nil)
     }
 
+    @Test func nativeFinalizationCancellationCompletesOnce() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = AVURLAsset(url: Bundle.module.url(forResource: "multi-audio", withExtension: "mov", subdirectory: "Fixtures")!)
+        let track = try #require(try await source.loadTracks(withMediaType: .audio).first)
+        let format = try #require(try await track.load(.formatDescriptions).first)
+        for attempt in 0..<24 {
+            let writer = try AVAssetWriter(outputURL: directory.appendingPathComponent("finish-\(attempt).mov"), fileType: .mov)
+            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: format)
+            writer.add(input)
+            #expect(writer.startWriting())
+            writer.startSession(atSourceTime: .zero)
+            let reader = try AVAssetReader(asset: source)
+            let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+            reader.add(output)
+            #expect(reader.startReading())
+            let sample = try #require(output.copyNextSampleBuffer())
+            #expect(input.append(sample))
+            input.markAsFinished()
+            reader.cancelReading()
+            let finalization = SubtitleEmbeddingFinalization(writer: writer)
+            let work = Task {
+                await finalization.wait()
+                try Task.checkCancellation()
+            }
+            if attempt % 2 == 0 { await Task.yield() }
+            work.cancel()
+            await #expect(throws: CancellationError.self) { try await work.value }
+            #expect(writer.status != .writing)
+        }
+    }
+
     @Test func protectionCancellationAndStaleTranslationKeepExistingOutput() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

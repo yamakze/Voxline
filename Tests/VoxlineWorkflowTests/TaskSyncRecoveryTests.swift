@@ -57,7 +57,7 @@ struct TaskSyncRecoveryTests {
         try await settings.enable(folder: root.appendingPathComponent("cloud"), originals: false)
         defer { try? settings.disable() }
         let url = try #require(library.url(for: task.id))
-        let backup = library.backupsDirectory.appendingPathComponent(url.lastPathComponent)
+        let backup = try #require(FileManager.default.contentsOfDirectory(at: library.backupsDirectory.appendingPathComponent(task.id.uuidString), includingPropertiesForKeys: nil).first)
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: backup)) == task)
         try FileManager.default.removeItem(at: url)
         library.refresh()
@@ -101,7 +101,7 @@ struct TaskSyncRecoveryTests {
         library.refresh()
         #expect(library.task(for: task.id) == nil)
         #expect(TaskLibrary(tasksDirectory: local, recentDocumentURLs: { recent }).entries.isEmpty)
-        let backup = library.backupsDirectory.appendingPathComponent(task.id.uuidString).appendingPathExtension("voxline")
+        let backup = try #require(FileManager.default.contentsOfDirectory(at: library.backupsDirectory.appendingPathComponent(task.id.uuidString), includingPropertiesForKeys: nil).first)
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: backup)) == task)
     }
 

@@ -128,17 +128,24 @@ public final class TaskSyncSettings {
             current.interruptRunningItems()
             guard current == task else { throw SharedDocumentError.changed }
             let localURL = library.tasksDirectory.appendingPathComponent(task.id.uuidString).appendingPathExtension("voxline")
-            let backupURL = library.backupsDirectory.appendingPathComponent(localURL.lastPathComponent)
-            let previousURL = FileManager.default.fileExists(atPath: localURL.path) ? localURL : backupURL
-            if FileManager.default.fileExists(atPath: previousURL.path) {
-                let local = try TaskDocumentCodec.decode(Data(contentsOf: previousURL))
+            let taskBackups = library.backupsDirectory.appendingPathComponent(task.id.uuidString, isDirectory: true)
+            let backups = FileManager.default.fileExists(atPath: taskBackups.path)
+                ? try FileManager.default.contentsOfDirectory(at: taskBackups, includingPropertiesForKeys: nil).filter { $0.pathExtension == "voxline" } : []
+            for backup in backups {
+                let local = try TaskDocumentCodec.decode(Data(contentsOf: backup))
+                guard local.id == task.id else { throw SharedDocumentError.changed }
                 if local != task {
                     let copy = try local.duplicated()
                     let copyURL = library.tasksDirectory.appendingPathComponent(copy.id.uuidString).appendingPathExtension("voxline")
                     try TaskDocumentCodec.encode(copy).write(to: copyURL, options: .atomic)
+                    // Consume only a backup whose distinct contents have been durably recovered.
+                    try FileManager.default.removeItem(at: backup)
                 }
             }
             try TaskDocumentCodec.encode(task).write(to: localURL, options: .atomic)
+            for backup in backups where FileManager.default.fileExists(atPath: backup.path) {
+                try FileManager.default.removeItem(at: backup)
+            }
         }
         if FileManager.default.fileExists(atPath: storageURL.path) { try FileManager.default.removeItem(at: storageURL) }
         stopObserving()
@@ -182,6 +189,18 @@ public final class TaskSyncSettings {
         let actual = try await inspector.inspect(url).identity(audioTrackID: identity.audioTrackID)
         guard identity.matchesContent(of: actual) else { throw MediaAccessError.fileChanged }
         try await mediaStore.save(projectID: item.id, identity: identity, url: url)
+    }
+
+    /// The user retry publishes pending documents, then rereads actual system state.
+    public func retryPublication() throws {
+        do {
+            try library.publishSharedCheckpoints()
+            refresh()
+        } catch {
+            refresh()
+            errorMessage = error.localizedDescription
+            throw error
+        }
     }
 
     public func refresh() {

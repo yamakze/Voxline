@@ -155,34 +155,39 @@ public final class SharedTaskDocuments {
     }
     private var presentedLocalData: Data?
     private var presentedCloudData: Data?
-    private var presentedVersions: [UUID: (url: URL, data: Data, version: NSFileVersion?)] = [:]
+    public private(set) var versionReadErrors: [String] = []
+    private var presentedVersions: [UUID: (url: URL, data: Data, task: ProcessingTask?, version: NSFileVersion?)] = [:]
 
     public func versions(at url: URL) throws -> [Version] {
         presentedVersions = [:]
+        versionReadErrors = []
         var versions: [Version] = []
         let current: Data?
         do { current = try coordinatedRead(url, allowingConflict: true) }
         catch let error as CocoaError where error.code == .fileReadNoSuchFile { current = nil }
         presentedCloudData = current
         presentedLocalData = pending[url.standardizedFileURL]?.data
-        if let current {
-            let currentID = UUID()
-            presentedVersions[currentID] = (url, current, nil)
-            versions.append(.init(id: currentID, task: try TaskDocumentCodec.decode(current), modifiedAt: NSFileVersion.currentVersionOfItem(at: url)?.modificationDate,
-                deviceName: NSFileVersion.currentVersionOfItem(at: url)?.localizedNameOfSavingComputer, origin: .shared))
-        }
+        var candidates: [(data: Data, origin: Version.Origin, version: NSFileVersion?)] = []
+        if let current { candidates.append((current, .shared, NSFileVersion.currentVersionOfItem(at: url))) }
         if let local = pending[url.standardizedFileURL], local.data != current {
-            let id = UUID()
-            presentedVersions[id] = (url, local.data, nil)
-            versions.append(.init(id: id, task: try TaskDocumentCodec.decode(local.data), modifiedAt: nil,
-                deviceName: nil, origin: .localRecovery))
+            candidates.append((local.data, .localRecovery, nil))
         }
         for version in NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? [] {
-            let data = try Data(contentsOf: version.url)
+            candidates.append((try Data(contentsOf: version.url), .conflict, version))
+        }
+        for candidate in candidates {
             let id = UUID()
-            presentedVersions[id] = (url, data, version)
-            versions.append(.init(id: id, task: try TaskDocumentCodec.decode(data), modifiedAt: version.modificationDate,
-                deviceName: version.localizedNameOfSavingComputer, origin: .conflict))
+            let task: ProcessingTask?
+            do { task = try TaskDocumentCodec.decode(candidate.data) }
+            catch {
+                task = nil
+                versionReadErrors.append(String(localized: "版本无法读取：\(error.localizedDescription)", bundle: voxlineLocalizationBundle))
+            }
+            presentedVersions[id] = (url, candidate.data, task, candidate.origin == .conflict ? candidate.version : nil)
+            if let task {
+                versions.append(.init(id: id, task: task, modifiedAt: candidate.version?.modificationDate,
+                    deviceName: candidate.version?.localizedNameOfSavingComputer, origin: candidate.origin))
+            }
         }
         return versions
     }
@@ -190,7 +195,7 @@ public final class SharedTaskDocuments {
     /// Preserve every unselected complete version before resolving native conflict markers.
     public func keepVersion(_ id: UUID, at url: URL) throws -> ProcessingTask {
         guard let selected = presentedVersions[id], selected.url == url,
-              pending[url.standardizedFileURL]?.data == presentedLocalData else {
+              selected.task != nil, pending[url.standardizedFileURL]?.data == presentedLocalData else {
             throw SharedDocumentError.changed
         }
         var chosen = try TaskDocumentCodec.decode(selected.data)
@@ -208,9 +213,17 @@ public final class SharedTaskDocuments {
                 throw SharedDocumentError.changed
             }
             for version in presented where version.data != selected.data {
-                let copy = try TaskDocumentCodec.decode(version.data).duplicated()
-                let target = self.directory.appendingPathComponent(copy.id.uuidString).appendingPathExtension("voxline")
-                try self.write(TaskDocumentCodec.encode(copy), to: target)
+                if let task = version.task {
+                    let copy = try task.duplicated()
+                    let target = self.directory.appendingPathComponent(copy.id.uuidString).appendingPathExtension("voxline")
+                    try self.write(TaskDocumentCodec.encode(copy), to: target)
+                } else {
+                    // Keep undecodable bytes outside the active task list before explicit replacement.
+                    let archive = (self.recoveryDirectory ?? self.directory)
+                        .appendingPathComponent("UnreadableVersions", isDirectory: true)
+                    try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+                    try version.data.write(to: archive.appendingPathComponent(UUID().uuidString).appendingPathExtension("voxline"), options: .atomic)
+                }
             }
             try data.write(to: coordinatedURL, options: .atomic)
             for conflict in conflicts { conflict.isResolved = true }
@@ -223,6 +236,7 @@ public final class SharedTaskDocuments {
             publicationErrors[url.standardizedFileURL] = nil
         }
         presentedVersions = [:]
+        versionReadErrors = []
         return chosen
     }
 

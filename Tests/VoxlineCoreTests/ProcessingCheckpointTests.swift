@@ -4,6 +4,40 @@ import Testing
 
 @Suite("Durable processing checkpoints")
 struct ProcessingCheckpointTests {
+    @Test func plannedBatchesKeepRunningBetweenCommitsAndRestartAtTranslation() throws {
+        var processing = try task(translates: true)
+        _ = try complete(&processing, index: 0)
+        _ = try complete(&processing, index: 1)
+        let ids = processing.items[0].cues.map(\.id)
+        let batches = try processing.items[0].prepareTranslationBatches(cueIDBatches: ids.map { [$0] })
+        try processing.items[0].beginTranslationBatch(batches[0])
+        try processing.items[0].commitTranslationBatch(batches[0], outputs: [.init(cueID: ids[0], text: "First")])
+        #expect(processing.items[0].status == .running(stage: .translation))
+        var restarted = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(processing))
+        restarted.interruptRunningItems()
+        #expect(restarted.items[0].status == .interrupted(stage: .translation))
+        try restarted.items[0].beginTranslationBatch(batches[1])
+        try restarted.items[0].commitTranslationBatch(batches[1], outputs: [.init(cueID: ids[1], text: "Second")])
+        #expect(restarted.items[0].status == .completed)
+        #expect(restarted.items[0].cues[0].translation == processing.items[0].cues[0].translation)
+    }
+
+    @Test func duplicateIDsReportAnErrorAndBatchPlanningIsAtomic() throws {
+        var processing = try task(translates: true)
+        _ = try complete(&processing, index: 0)
+        _ = try complete(&processing, index: 1)
+        let original = processing.items[0]
+        let id = original.cues[0].id
+        #expect(throws: CheckpointError.invalidTranslationResult) {
+            try processing.items[0].prepareTranslationBatches(cueIDBatches: [[id], [id]])
+        }
+        #expect(processing.items[0] == original)
+        processing.items[0].cues.append(original.cues[0])
+        #expect(throws: ProjectValidationError.duplicateCue(id)) {
+            try processing.items[0].prepareTranslationBatch(cueIDs: [id])
+        }
+    }
+
     @Test func alternatePlaybackMediaPreservesCompletedEvidenceEditsAndTranslationRecovery() throws {
         var original = try task(translates: true)
         _ = try complete(&original, index: 0)

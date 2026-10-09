@@ -60,8 +60,8 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
-    /// Container and speech timestamps may differ by one codec frame at the end.
-    /// Keep large errors explicit and never drop text or collapse a cue to zero duration.
+    /// Export/edit boundaries clip a cue ending past the media, preserving its text and start.
+    /// A cue starting outside the media, zero duration, duplicate ID or overlap remains an error.
     public static func clampedToMedia(_ cues: [SubtitleCue], media: MediaIdentity?) throws -> [SubtitleCue] {
         guard let media else {
             try validateTimeline(cues, within: nil)
@@ -70,7 +70,7 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
         var result = cues
         for index in result.indices {
             let end = result[index].endMilliseconds
-            if end > media.durationMilliseconds, end - media.durationMilliseconds <= 50,
+            if end > media.durationMilliseconds,
                result[index].startMilliseconds < media.durationMilliseconds {
                 result[index].endMilliseconds = media.durationMilliseconds
             }
