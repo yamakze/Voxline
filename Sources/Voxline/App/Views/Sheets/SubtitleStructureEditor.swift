@@ -285,7 +285,7 @@ struct SplitSubtitleSheet: View {
                             .keyboardType(.decimalPad)
                             #endif
                     }
-                    Text(String(format: String(localized: "原范围：%.3f 秒 → %.3f 秒", bundle: appLocalizationBundle), locale: .current, Double(cue.startMilliseconds)/1000.0, Double(cue.endMilliseconds)/1000.0))
+                    Text(String(format: String(localized: "原时间：%.2f 秒 – %.2f 秒", bundle: appLocalizationBundle), locale: .current, Double(cue.startMilliseconds)/1000.0, Double(cue.endMilliseconds)/1000.0))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -432,22 +432,22 @@ struct MergeSubtitlesSheet: View {
                         HStack {
                             Text(String(localized: "起止时间", bundle: appLocalizationBundle))
                             Spacer()
-                            Text(String(format: String(localized: "%.3f 秒 → %.3f 秒", bundle: appLocalizationBundle), locale: .current, Double(first.startMilliseconds)/1000.0, Double(last.endMilliseconds)/1000.0))
+                            Text(String(format: String(localized: "%.2f 秒 – %.2f 秒", bundle: appLocalizationBundle), locale: .current, Double(first.startMilliseconds)/1000.0, Double(last.endMilliseconds)/1000.0))
                                 .foregroundStyle(.secondary)
                         }
                     }
                     HStack {
-                        Text(String(localized: "合并条数", bundle: appLocalizationBundle))
+                        Text(String(localized: "合并数量", bundle: appLocalizationBundle))
                         Spacer()
                         Text(String(localized: "\(cues.count) 句", bundle: appLocalizationBundle))
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Section(String(localized: "合并后内容", bundle: appLocalizationBundle)) {
-                    TextField(String(localized: "合并后原文", bundle: appLocalizationBundle), text: $mergedSource, axis: .vertical)
+                Section(String(localized: "合并内容", bundle: appLocalizationBundle)) {
+                    TextField(String(localized: "原文内容", bundle: appLocalizationBundle), text: $mergedSource, axis: .vertical)
                         .lineLimit(2...5)
-                    TextField(String(localized: "合并后译文（选填）", bundle: appLocalizationBundle), text: $mergedTranslation, axis: .vertical)
+                    TextField(String(localized: "译文内容（选填）", bundle: appLocalizationBundle), text: $mergedTranslation, axis: .vertical)
                         .lineLimit(2...5)
                 }
 
@@ -1009,7 +1009,7 @@ struct ProofreadingCueRow: View {
         Button {
             onBeginEdit(cue)
         } label: {
-            Label(String(localized: "编辑文字", bundle: appLocalizationBundle), systemImage: "pencil")
+            Label(String(localized: "编辑", bundle: appLocalizationBundle), systemImage: "pencil")
         }
         .disabled(session.editingSnapshot?.id != nil)
 
@@ -1061,7 +1061,7 @@ struct ProofreadingCueRow: View {
         Button(role: .destructive) {
             onDelete(cue)
         } label: {
-            Label(String(localized: "删除字幕", bundle: appLocalizationBundle), systemImage: "trash")
+            Label(String(localized: "删除", bundle: appLocalizationBundle), systemImage: "trash")
         }
         .disabled(isTaskRunning || session.editingSnapshot?.id != nil)
     }

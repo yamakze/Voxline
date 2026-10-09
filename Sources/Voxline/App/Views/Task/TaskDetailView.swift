@@ -156,9 +156,9 @@ public struct TaskDetailView: View {
 
             if task.items.isEmpty {
                 ContentUnavailableView(
-                    String(localized: "流水线队列为空", bundle: appLocalizationBundle),
+                    String(localized: "暂无媒体", bundle: appLocalizationBundle),
                     systemImage: "film.stack",
-                    description: Text(String(localized: "请点击右上角“调整参数与媒体”导入音视频。", bundle: appLocalizationBundle))
+                    description: Text(String(localized: "请点击右上角“调整参数”添加音视频。", bundle: appLocalizationBundle))
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 36)

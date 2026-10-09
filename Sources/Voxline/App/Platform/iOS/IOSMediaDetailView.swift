@@ -491,7 +491,7 @@ struct IOSMediaDetailView: View {
             let hasTranslation = task?.parameters.translation != nil
             if hasTranslation {
                 if !item.cues.isEmpty && !item.cues.allSatisfy(\.hasTranslation) {
-                    Button(String(localized: "继续翻译未完成", bundle: appLocalizationBundle), systemImage: "character.bubble") {
+                    Button(String(localized: "继续翻译", bundle: appLocalizationBundle), systemImage: "character.bubble") {
                         do { try library.startTranslation(taskID: taskID, mediaID: mediaID) }
                         catch { session.errorMessage = error.localizedDescription }
                     }

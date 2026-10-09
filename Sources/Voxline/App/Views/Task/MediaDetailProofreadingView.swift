@@ -79,12 +79,12 @@ public struct MediaDetailProofreadingView: View {
                         .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil || queue.taskID != nil)
                 }
 
-                Button(String(localized: "重新关联", bundle: appLocalizationBundle), systemImage: "link.badge.plus") {
+                Button(String(localized: "重新关联…", bundle: appLocalizationBundle), systemImage: "link.badge.plus") {
                     showRelinkSheet = true
                 }
                 .disabled(queue.taskID != nil)
 
-                Button(String(localized: "偏移行…", bundle: appLocalizationBundle), systemImage: "timer") {
+                Button(String(localized: "整体时间偏移…", bundle: appLocalizationBundle), systemImage: "clock") {
                     showTimeOffsetSheet = true
                 }
                 .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil)
@@ -93,7 +93,7 @@ public struct MediaDetailProofreadingView: View {
                     structureState.insert(at: playbackController.currentTimeSeconds)
                 }
                 .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
-                .help(String(localized: "添加单句字幕", bundle: appLocalizationBundle))
+                .help(String(localized: "添加字幕", bundle: appLocalizationBundle))
 
                 Button(String(localized: "撤销", bundle: appLocalizationBundle), systemImage: "arrow.uturn.backward") {
                     do {
@@ -104,10 +104,10 @@ public struct MediaDetailProofreadingView: View {
                 }
                 .disabled(!session.canUndo(in: item) || queue.taskID != nil)
                 .keyboardShortcut("z", modifiers: [.command])
-                .help(String(localized: "撤销最近一次字幕编辑 (⌘Z)", bundle: appLocalizationBundle))
+                .help(String(localized: "撤销最近一次编辑 (⌘Z)", bundle: appLocalizationBundle))
 
                 Menu {
-                    Section(String(localized: "外挂字幕", bundle: appLocalizationBundle)) {
+                    Section(String(localized: "字幕文件", bundle: appLocalizationBundle)) {
                         Button {
                             showSRTExportSheet = true
                         } label: {
