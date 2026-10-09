@@ -33,16 +33,11 @@ public struct TaskLibraryView: View {
 
                 // Tasks List
                 if library.entries.isEmpty {
-                    VStack(spacing: 16) {
-                        VoxlineAppIconView(size: 72)
-                        VStack(spacing: 6) {
-                            Text(String(localized: "暂无任务", bundle: appLocalizationBundle))
-                                .font(.title3.weight(.medium))
-                            Text(String(localized: "新建任务或打开已有 .voxline 文件以开始逐句转写与校对。", bundle: appLocalizationBundle))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-
+                    ContentUnavailableView {
+                        Label(String(localized: "暂无任务", bundle: appLocalizationBundle), systemImage: "waveform.and.mic")
+                    } description: {
+                        Text(String(localized: "创建新任务开始音视频转写与双语翻译，或打开已有工程。", bundle: appLocalizationBundle))
+                    } actions: {
                         HStack(spacing: 12) {
                             Button(String(localized: "新建任务", bundle: appLocalizationBundle), systemImage: "plus") {
                                 onNewTask?()

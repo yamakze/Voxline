@@ -640,6 +640,8 @@
 "选择同步文件夹…" = "Choose Sync Folder…";
 "关闭 iCloud 同步" = "Turn Off iCloud Sync";
 "例如 whisper-1 / 自建模型名" = "e.g. whisper-1 / custom model";
+"创建新任务开始音视频转写与双语翻译，或打开已有工程。" = "Create a new task to transcribe and translate audio/video, or open an existing project.";
+
 
 
 
