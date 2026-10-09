@@ -45,6 +45,17 @@ public final class TaskSyncSettings {
     private var query: NSMetadataQuery?
     private var observations: [NSObjectProtocol] = []
     private var scopedURL: URL?
+    private struct DocumentRevision: Equatable, Sendable {
+        let modifiedAt: Date?
+        let byteCount: Int?
+        let isDownloaded: Bool
+        let hasConflict: Bool
+    }
+    @ObservationIgnored private var documentRevisions: [URL: DocumentRevision] = [:]
+    @ObservationIgnored private var refreshWork: Task<Void, Never>?
+    @ObservationIgnored private var changedURLs = Set<URL>()
+    @ObservationIgnored private var needsDirectoryScan = false
+    @ObservationIgnored private var refreshGeneration = UUID()
     private var didRestore = false
     private var originalMediaWork: (id: UUID, task: Task<Void, Never>)?
 
@@ -204,37 +215,110 @@ public final class TaskSyncSettings {
     }
 
     public func refresh() {
-        guard let folderURL else { return }
-        do {
-            var states: [URL: FileState] = [:]
-            let files = try FileManager.default.contentsOfDirectory(at: folderURL.appendingPathComponent("Tasks"), includingPropertiesForKeys: nil)
-            for url in files where url.pathExtension == "voxline" { states[url.standardizedFileURL] = try state(of: url) }
-            let mediaDirectory = folderURL.appendingPathComponent("Media", isDirectory: true)
-            if FileManager.default.fileExists(atPath: mediaDirectory.path) {
-                for url in try FileManager.default.contentsOfDirectory(at: mediaDirectory, includingPropertiesForKeys: nil) where !url.lastPathComponent.contains(".partial.") {
-                    states[url.standardizedFileURL] = try state(of: url)
+        documentRevisions = [:] // An explicit refresh also retries files without a metadata change.
+        scheduleRefresh()
+    }
+
+    /// Merge native notifications without repeatedly decoding the entire task library.
+    func scheduleRefresh(changed: Set<URL>? = nil) {
+        guard folderURL != nil else { return }
+        if let changed { changedURLs.formUnion(changed.map(\.standardizedFileURL)) }
+        else { needsDirectoryScan = true }
+        guard refreshWork == nil else { return }
+        let generation = refreshGeneration
+        refreshWork = Task { [weak self] in
+            guard let self else { return }
+            while self.refreshGeneration == generation {
+                do { try await Task.sleep(for: .milliseconds(300)) }
+                catch is CancellationError { return } // The selected folder was detached.
+                catch {
+                    if self.refreshGeneration == generation {
+                        self.errorMessage = error.localizedDescription; self.refreshWork = nil
+                    }
+                    return
+                }
+                guard self.refreshGeneration == generation else { return }
+                let urls = self.needsDirectoryScan ? nil : self.changedURLs
+                self.changedURLs = []; self.needsDirectoryScan = false
+                await self.refreshFiles(changed: urls)
+                guard !self.changedURLs.isEmpty || self.needsDirectoryScan else { break }
+            }
+            if self.refreshGeneration == generation { self.refreshWork = nil }
+        }
+    }
+
+    private func refreshFiles(changed: Set<URL>?) async {
+        guard let folder = folderURL, let documents = library.sharedDocuments else { return }
+        let generation = refreshGeneration
+        var discovered = Set<URL>()
+        if changed == nil, let query {
+            query.disableUpdates()
+            for index in 0..<query.resultCount {
+                if let item = query.result(at: index) as? NSMetadataItem,
+                   let url = item.value(forAttribute: NSMetadataItemURLKey) as? URL,
+                   url.standardizedFileURL.path.hasPrefix(folder.standardizedFileURL.path + "/") {
+                    discovered.insert(url.standardizedFileURL)
                 }
             }
-            if let query {
-                query.disableUpdates()
-                defer { query.enableUpdates() }
-                var discovered: [URL] = []
-                for index in 0..<query.resultCount {
-                    guard let item = query.result(at: index) as? NSMetadataItem,
-                          let url = item.value(forAttribute: NSMetadataItemURLKey) as? URL,
-                          url.standardizedFileURL.path.hasPrefix(folderURL.standardizedFileURL.path + "/") else { continue }
-                    if library.sharedDocuments?.contains(url) == true {
-                        states[url.standardizedFileURL] = try state(of: url); discovered.append(url)
-                    } else if url.deletingLastPathComponent().standardizedFileURL == mediaDirectory.standardizedFileURL, !url.lastPathComponent.contains(".partial.") {
-                        states[url.standardizedFileURL] = try state(of: url)
+            query.enableUpdates()
+        }
+        if changed == nil { documents.discoveredURLs = discovered.filter { documents.contains($0) }.sorted { $0.path < $1.path } }
+        let known = Set(systemFileStates.keys)
+        let pending = Set(documents.pendingURLs)
+        let metadataURLs = discovered
+        do {
+            let (urls, states, revisions) = try await Task.detached(priority: .utility) {
+                let access = folder.startAccessingSecurityScopedResource()
+                defer { if access { folder.stopAccessingSecurityScopedResource() } }
+                let tasks = folder.appendingPathComponent("Tasks", isDirectory: true).standardizedFileURL
+                let media = folder.appendingPathComponent("Media", isDirectory: true).standardizedFileURL
+                var urls = changed ?? known.union(metadataURLs).union(pending)
+                if changed == nil {
+                    urls.formUnion(try FileManager.default.contentsOfDirectory(at: tasks, includingPropertiesForKeys: nil))
+                    if FileManager.default.fileExists(atPath: media.path) {
+                        urls.formUnion(try FileManager.default.contentsOfDirectory(at: media, includingPropertiesForKeys: nil))
                     }
                 }
-                library.sharedDocuments?.discoveredURLs = discovered
-            }
-            systemFileStates = states
-            library.refresh()
+                urls = Set(urls.map(\.standardizedFileURL).filter { url in
+                    (url.deletingLastPathComponent() == tasks && url.pathExtension == "voxline") ||
+                    (url.deletingLastPathComponent() == media && !url.lastPathComponent.contains(".partial."))
+                })
+                var states: [URL: FileState] = [:]
+                var revisions: [URL: DocumentRevision] = [:]
+                for url in urls {
+                    do {
+                        var freshURL = url
+                        freshURL.removeAllCachedResourceValues()
+                        let state = try Self.state(of: freshURL)
+                        states[url] = state
+                        if url.pathExtension == "voxline" {
+                            let values = try freshURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                            revisions[url] = DocumentRevision(modifiedAt: values.contentModificationDate, byteCount: values.fileSize,
+                                isDownloaded: state != .notDownloaded && state != .downloading, hasConflict: state == .conflict)
+                        }
+                    }
+                    catch let error as CocoaError where error.code == .fileReadNoSuchFile { continue }
+                    catch { states[url] = .failed(error.localizedDescription) }
+                }
+                return (urls, states, revisions)
+            }.value
+            guard refreshGeneration == generation, library.sharedDocuments === documents else { return }
+            var updated = systemFileStates
+            for url in urls { updated[url] = states[url] }
+            if updated != systemFileStates { systemFileStates = updated }
+            let existing = Set(library.entries.compactMap { $0.url?.standardizedFileURL })
+            let unreadable = Set(library.entries.filter { $0.error != nil }.compactMap { $0.url?.standardizedFileURL })
+            let taskChanges = Set(urls.filter { url in
+                documents.contains(url) && (changed != nil || revisions[url] != documentRevisions[url] ||
+                    unreadable.contains(url) || !existing.contains(url))
+            })
+            await library.reloadSharedDocuments(at: taskChanges)
+            guard refreshGeneration == generation else { return }
+            for url in urls where documents.contains(url) { documentRevisions[url] = revisions[url] }
             errorMessage = nil
-        } catch { errorMessage = error.localizedDescription }
+        } catch {
+            if refreshGeneration == generation { errorMessage = error.localizedDescription }
+        }
     }
 
     private func activate(_ folder: URL, originals: Bool) throws {
@@ -247,8 +331,8 @@ public final class TaskSyncSettings {
             scopedURL = access ? folder : nil
             folderURL = folder; isEnabled = true; syncOriginalMedia = originals
             try library.connectSharedDocuments(documents)
-            let presenter = SharedFolderPresenter(directory: folder) { [weak self] in
-                Task { @MainActor in self?.refresh() }
+            let presenter = SharedFolderPresenter(directory: folder) { [weak self] urls in
+                Task { @MainActor in self?.scheduleRefresh(changed: urls) }
             }
             self.presenter = presenter
             NSFileCoordinator.addFilePresenter(presenter)
@@ -257,8 +341,11 @@ public final class TaskSyncSettings {
             query.predicate = NSPredicate(format: "%K BEGINSWITH %@", NSMetadataItemPathKey, folder.path + "/")
             self.query = query
             for name in [NSNotification.Name.NSMetadataQueryDidFinishGathering, NSNotification.Name.NSMetadataQueryDidUpdate] {
-                observations.append(NotificationCenter.default.addObserver(forName: name, object: query, queue: .main) { [weak self] _ in
-                    Task { @MainActor in self?.refresh() }
+                observations.append(NotificationCenter.default.addObserver(forName: name, object: query, queue: .main) { [weak self] notification in
+                    let keys = [NSMetadataQueryUpdateAddedItemsKey, NSMetadataQueryUpdateChangedItemsKey, NSMetadataQueryUpdateRemovedItemsKey]
+                    let items = keys.flatMap { notification.userInfo?[$0] as? [NSMetadataItem] ?? [] }
+                    let urls = Set(items.compactMap { $0.value(forAttribute: NSMetadataItemURLKey) as? URL })
+                    Task { @MainActor in self?.scheduleRefresh(changed: urls.isEmpty ? nil : urls) }
                 })
             }
             guard query.start() else { throw SharedDocumentError.missingFolder }
@@ -274,6 +361,9 @@ public final class TaskSyncSettings {
     }
 
     private func stopObserving() {
+        refreshGeneration = UUID()
+        refreshWork?.cancel(); refreshWork = nil
+        changedURLs = []; needsDirectoryScan = false; documentRevisions = [:]
         if let presenter { NSFileCoordinator.removeFilePresenter(presenter) }
         presenter = nil
         query?.stop(); query = nil
@@ -402,7 +492,7 @@ public final class TaskSyncSettings {
             .appendingPathExtension((identity.fileName as NSString).pathExtension.lowercased())
     }
 
-    private func state(of url: URL) throws -> FileState {
+    nonisolated private static func state(of url: URL) throws -> FileState {
         let values = try url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemHasUnresolvedConflictsKey,
             .ubiquitousItemIsDownloadingKey, .ubiquitousItemDownloadingStatusKey, .ubiquitousItemIsUploadingKey,
             .ubiquitousItemIsUploadedKey, .ubiquitousItemDownloadingErrorKey, .ubiquitousItemUploadingErrorKey])

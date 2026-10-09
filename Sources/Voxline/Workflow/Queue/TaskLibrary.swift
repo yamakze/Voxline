@@ -18,7 +18,7 @@ public final class TaskLibrary {
     }
     public private(set) var openTasks: [UUID: Entry] = [:]
 
-    public struct Entry: Identifiable, Sendable {
+    public struct Entry: Identifiable, Equatable, Sendable {
         public let id: String
         public let taskID: UUID
         public let url: URL?
@@ -292,6 +292,45 @@ public final class TaskLibrary {
         scheduleSharedPublication()
     }
 
+    /// Only native-notified shared files are reloaded. Local tasks and recent documents stay untouched.
+    func reloadSharedDocuments(at urls: Set<URL>) async {
+        guard let documents = sharedDocuments else { return }
+        var results: [(url: URL, previous: Entry?, result: Result<ProcessingTask, any Error>)] = []
+        for url in urls.sorted(by: { $0.path < $1.path }) where documents.contains(url) {
+            let previous = entries.first { $0.url?.standardizedFileURL == url.standardizedFileURL }
+            if previous?.taskID == protectedTaskID, protectedTaskID != nil { continue }
+            let result: Result<ProcessingTask, any Error>
+            do { result = .success(try await documents.loadTask(url)) }
+            catch { result = .failure(error) }
+            guard sharedDocuments === documents else { return }
+            results.append((url, previous, result))
+        }
+        var updated = entries
+        for loaded in results {
+            let current = entries.first { $0.url?.standardizedFileURL == loaded.url.standardizedFileURL }
+            // A local edit or worker commit during I/O takes precedence over this earlier read.
+            guard current == loaded.previous,
+                  current?.taskID != protectedTaskID || protectedTaskID == nil else { continue }
+            let entry: Entry
+            switch loaded.result {
+            case .success(let task):
+                entry = Entry(id: task.id.uuidString, taskID: task.id, url: loaded.url, task: task, error: nil)
+            case .failure(let error as CocoaError) where error.code == .fileReadNoSuchFile:
+                if let current { openTasks[current.taskID] = nil }
+                updated.removeAll { $0.url?.standardizedFileURL == loaded.url.standardizedFileURL }
+                continue
+            case .failure(let error):
+                entry = Entry(id: current?.id ?? loaded.url.absoluteString, taskID: current?.taskID ?? UUID(),
+                              url: loaded.url, task: current?.task, error: error.localizedDescription)
+            }
+            guard entry != current else { continue }
+            if let current { openTasks[current.taskID] = nil }
+            updated.removeAll { $0.url?.standardizedFileURL == loaded.url.standardizedFileURL || $0.taskID == entry.taskID }
+            updated.append(entry)
+        }
+        if updated != entries { entries = sortedEntries(updated) }
+    }
+
     public func refresh() {
         libraryError = nil
         do {
@@ -383,8 +422,12 @@ public final class TaskLibrary {
             }
         }
 
+        entries = sortedEntries(foundEntries)
+    }
+
+    private func sortedEntries(_ candidates: [Entry]) -> [Entry] {
         let positions = Dictionary(orderedEntryIDs.enumerated().map { ($0.element, $0.offset) }, uniquingKeysWith: { first, _ in first })
-        entries = foundEntries.sorted {
+        return candidates.sorted {
             let left = positions[$0.id]
             let right = positions[$1.id]
             if left != right { return (left ?? -1) < (right ?? -1) }

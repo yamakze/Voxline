@@ -70,10 +70,27 @@ public final class SharedTaskDocuments {
 
     public func read(_ url: URL, recordSnapshot: Bool = true) throws -> Data {
         if let checkpoint = pending[url.standardizedFileURL] { return checkpoint.data }
-        let data = try coordinatedRead(url)
+        let data = try Self.coordinatedRead(url)
         _ = try TaskDocumentCodec.decode(data)
         if recordSnapshot { snapshots[url.standardizedFileURL] = data }
         return data
+    }
+
+    /// Native notifications read and decode off the main actor; an intervening local save wins.
+    func loadTask(_ url: URL) async throws -> ProcessingTask {
+        let key = url.standardizedFileURL
+        let localData = pending[key]?.data
+        let baseline = snapshots[key]
+        let (data, task) = try await Task.detached(priority: .utility) {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            let data = try localData ?? Self.coordinatedRead(url)
+            var task = try TaskDocumentCodec.decode(data)
+            task.interruptRunningItems()
+            return (data, task)
+        }.value
+        if localData == nil, pending[key] == nil, snapshots[key] == baseline { snapshots[key] = data }
+        return task
     }
 
     public func write(_ data: Data, to url: URL) throws {
@@ -102,7 +119,7 @@ public final class SharedTaskDocuments {
         guard let checkpoint = pending[key], let recoveryDirectory else { return }
         do {
             try coordinateWrite(url, options: []) { destination in
-                try self.requireDownloaded(destination, allowingMissing: true)
+                try Self.requireDownloaded(destination, allowingMissing: true)
                 guard NSFileVersion.unresolvedConflictVersionsOfItem(at: destination)?.isEmpty != false else {
                     throw SharedDocumentError.conflict
                 }
@@ -137,7 +154,7 @@ public final class SharedTaskDocuments {
     }
 
     public func checkCurrentVersion(at url: URL, expected: Data?) throws {
-        try requireDownloaded(url, allowingMissing: true)
+        try Self.requireDownloaded(url, allowingMissing: true)
         guard NSFileVersion.unresolvedConflictVersionsOfItem(at: url)?.isEmpty != false else { throw SharedDocumentError.conflict }
         let current: Data?
         do { current = try Data(contentsOf: url) }
@@ -163,7 +180,7 @@ public final class SharedTaskDocuments {
         versionReadErrors = []
         var versions: [Version] = []
         let current: Data?
-        do { current = try coordinatedRead(url, allowingConflict: true) }
+        do { current = try Self.coordinatedRead(url, allowingConflict: true) }
         catch let error as CocoaError where error.code == .fileReadNoSuchFile { current = nil }
         presentedCloudData = current
         presentedLocalData = pending[url.standardizedFileURL]?.data
@@ -247,8 +264,8 @@ public final class SharedTaskDocuments {
         }
     }
 
-    private func coordinatedRead(_ url: URL, allowingConflict: Bool = false) throws -> Data {
-        try requireDownloaded(url, allowingMissing: false)
+    nonisolated private static func coordinatedRead(_ url: URL, allowingConflict: Bool = false) throws -> Data {
+        try Self.requireDownloaded(url, allowingMissing: false)
         if !allowingConflict, NSFileVersion.unresolvedConflictVersionsOfItem(at: url)?.isEmpty == false { throw SharedDocumentError.conflict }
         var result: Result<Data, any Error>?
         var error: NSError?
@@ -260,7 +277,7 @@ public final class SharedTaskDocuments {
         return try result.get()
     }
 
-    private func requireDownloaded(_ url: URL, allowingMissing: Bool) throws {
+    nonisolated private static func requireDownloaded(_ url: URL, allowingMissing: Bool) throws {
         let values: URLResourceValues
         do { values = try url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]) }
         catch let error as CocoaError where error.code == .fileReadNoSuchFile && allowingMissing { return }

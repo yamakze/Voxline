@@ -4,19 +4,19 @@ import Foundation
 final class SharedFolderPresenter: NSObject, NSFilePresenter, Sendable {
     let presentedItemURL: URL?
     let presentedItemOperationQueue = OperationQueue.main
-    private let onChange: @Sendable () -> Void
+    private let onChange: @Sendable (Set<URL>?) -> Void
 
-    init(directory: URL, onChange: @escaping @Sendable () -> Void) {
+    init(directory: URL, onChange: @escaping @Sendable (Set<URL>?) -> Void) {
         presentedItemURL = directory
         self.onChange = onChange
     }
-    func presentedItemDidChange() { onChange() }
-    func presentedItemDidMove(to newURL: URL) { onChange() }
-    func presentedSubitemDidAppear(at url: URL) { onChange() }
-    func presentedSubitemDidChange(at url: URL) { onChange() }
-    func presentedSubitem(at oldURL: URL, didMoveTo newURL: URL) { onChange() }
+    func presentedItemDidChange() { onChange(nil) }
+    func presentedItemDidMove(to newURL: URL) { onChange(nil) }
+    func presentedSubitemDidAppear(at url: URL) { onChange([url]) }
+    func presentedSubitemDidChange(at url: URL) { onChange([url]) }
+    func presentedSubitem(at oldURL: URL, didMoveTo newURL: URL) { onChange([oldURL, newURL]) }
     func accommodatePresentedSubitemDeletion(at url: URL, completionHandler: @escaping @Sendable ((any Error)?) -> Void) {
-        onChange()
+        onChange([url])
         completionHandler(nil)
     }
 }

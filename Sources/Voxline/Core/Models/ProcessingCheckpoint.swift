@@ -65,6 +65,38 @@ public struct TranslationBatchCheckpoint: Codable, Equatable, Identifiable, Send
     public var isCompleted: Bool { if case .completed = state { true } else { false } }
 }
 
+/// An execution-local index; current IDs and inputs are still checked before applying results.
+public struct TranslationCheckpointIndex: Sendable {
+    private let cuePositions: [UUID: Int]
+    private let batchPositions: [UUID: Int]
+
+    public init(item: TaskMediaItem) throws {
+        guard let checkpoint = item.checkpoint else { throw CheckpointError.missingCheckpoint }
+        var positions: [UUID: Int] = [:]
+        positions.reserveCapacity(item.cues.count)
+        for (position, cue) in item.cues.enumerated() {
+            guard positions.updateValue(position, forKey: cue.id) == nil else { throw ProjectValidationError.duplicateCue(cue.id) }
+        }
+        cuePositions = positions
+        positions = [:]
+        for (position, batch) in checkpoint.translationBatches.enumerated() {
+            guard positions.updateValue(position, forKey: batch.id) == nil else { throw CheckpointError.invalidRecord }
+        }
+        batchPositions = positions
+    }
+
+    func cuePosition(_ id: UUID, in cues: [SubtitleCue]) -> Int? {
+        if let position = cuePositions[id], cues.indices.contains(position), cues[position].id == id { return position }
+        // Structural edits can move or remove a cue while an external request is in flight.
+        return cues.firstIndex { $0.id == id }
+    }
+
+    func batchPosition(_ id: UUID, in batches: [TranslationBatchCheckpoint]) -> Int? {
+        if let position = batchPositions[id], batches.indices.contains(position), batches[position].id == id { return position }
+        return batches.firstIndex { $0.id == id }
+    }
+}
+
 public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
     public let media: MediaIdentity
     public internal(set) var parameters: TaskParameters
@@ -205,10 +237,11 @@ public extension TaskMediaItem {
         self = updated
     }
 
-    mutating func beginTranscriptionChunk(_ chunkID: UUID) throws -> UUID {
+    mutating func beginTranscriptionChunk(_ chunkID: UUID, at position: Int? = nil) throws -> UUID {
         var record = try requiredCheckpoint()
         guard let media, record.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
-        guard let index = record.chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
+        guard let index = position ?? record.chunks.firstIndex(where: { $0.id == chunkID }),
+              record.chunks.indices.contains(index), record.chunks[index].id == chunkID else { throw CheckpointError.unknownWork }
         guard !record.chunks[index].isCompleted else { throw CheckpointError.alreadyCommitted }
         guard !record.chunks.contains(where: { if case .running = $0.state { true } else { false } }) else { throw CheckpointError.workRunning }
         let sourceID = UUID()
@@ -218,10 +251,11 @@ public extension TaskMediaItem {
         return sourceID
     }
 
-    mutating func commitTranscriptionChunk(_ chunkID: UUID, result: SubtitleSegmentationResult) throws {
+    mutating func commitTranscriptionChunk(_ chunkID: UUID, result: SubtitleSegmentationResult, at position: Int? = nil) throws {
         var record = try requiredCheckpoint()
         guard let media, record.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
-        guard let index = record.chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
+        guard let index = position ?? record.chunks.firstIndex(where: { $0.id == chunkID }),
+              record.chunks.indices.contains(index), record.chunks[index].id == chunkID else { throw CheckpointError.unknownWork }
         if case .completed(let committed) = record.chunks[index].state {
             guard committed == result.checkpointSnapshot else { throw CheckpointError.alreadyCommitted }
             return
@@ -252,10 +286,11 @@ public extension TaskMediaItem {
     }
 
     mutating func recordTranscriptionFailure(_ chunkID: UUID, sourceID: UUID, reason: String,
-                                            evidence: TranscriptionEvidence?) throws {
+                                            evidence: TranscriptionEvidence?, at position: Int? = nil) throws {
         var record = try requiredCheckpoint()
         guard let media, record.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
-        guard let index = record.chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
+        guard let index = position ?? record.chunks.firstIndex(where: { $0.id == chunkID }),
+              record.chunks.indices.contains(index), record.chunks[index].id == chunkID else { throw CheckpointError.unknownWork }
         guard record.chunks[index].state == .running(sourceID: sourceID) else { throw CheckpointError.staleResult }
         var updated = self
         record.chunks[index].state = .failed(reason: reason, evidence: evidence)
@@ -266,10 +301,11 @@ public extension TaskMediaItem {
     }
 
     mutating func recordTranscriptionCancellation(_ chunkID: UUID, sourceID: UUID,
-                                                 evidence: TranscriptionEvidence? = nil) throws {
+                                                 evidence: TranscriptionEvidence? = nil, at position: Int? = nil) throws {
         var record = try requiredCheckpoint()
         guard let media, record.media.matchesContent(of: media) else { throw CheckpointError.incompatibleContext }
-        guard let index = record.chunks.firstIndex(where: { $0.id == chunkID }) else { throw CheckpointError.unknownWork }
+        guard let index = position ?? record.chunks.firstIndex(where: { $0.id == chunkID }),
+              record.chunks.indices.contains(index), record.chunks[index].id == chunkID else { throw CheckpointError.unknownWork }
         guard record.chunks[index].state == .running(sourceID: sourceID) else { throw CheckpointError.staleResult }
         var updated = self
         record.chunks[index].state = .cancelled(evidence: evidence)
@@ -313,23 +349,27 @@ public extension TaskMediaItem {
         return added.map(\.id)
     }
 
-    mutating func beginTranslationBatch(_ batchID: UUID) throws {
+    @discardableResult
+    mutating func beginTranslationBatch(_ batchID: UUID, using workIndex: TranslationCheckpointIndex? = nil) throws -> TranslationBatchCheckpoint {
         var record = try requiredCheckpoint()
-        guard let index = record.translationBatches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
+        let workIndex = try workIndex ?? TranslationCheckpointIndex(item: self)
+        guard let index = workIndex.batchPosition(batchID, in: record.translationBatches) else { throw CheckpointError.unknownWork }
         guard !record.translationBatches[index].isCompleted else { throw CheckpointError.alreadyCommitted }
         guard !record.translationBatches.contains(where: { $0.state == .running }) else { throw CheckpointError.workRunning }
-        let positions = try cuePositions()
-        guard record.translationBatches[index].inputs.allSatisfy({ input in positions[input.cueID].map { input.matches(cues[$0]) } == true }) else {
-            throw CheckpointError.editedCue
-        }
+        guard record.translationBatches[index].inputs.allSatisfy({ input in
+            workIndex.cuePosition(input.cueID, in: cues).map { input.matches(cues[$0]) } == true
+        }) else { throw CheckpointError.editedCue }
         record.translationBatches[index].state = .running
         checkpoint = record
         status = .running(stage: .translation)
+        return record.translationBatches[index]
     }
 
-    mutating func commitTranslationBatch(_ batchID: UUID, outputs: [TranslationBatchOutput]) throws {
+    mutating func commitTranslationBatch(_ batchID: UUID, outputs: [TranslationBatchOutput],
+                                        using workIndex: TranslationCheckpointIndex? = nil) throws {
         var record = try requiredCheckpoint()
-        guard let index = record.translationBatches.firstIndex(where: { $0.id == batchID }) else { throw CheckpointError.unknownWork }
+        let workIndex = try workIndex ?? TranslationCheckpointIndex(item: self)
+        guard let index = workIndex.batchPosition(batchID, in: record.translationBatches) else { throw CheckpointError.unknownWork }
         let batch = record.translationBatches[index]
         if case .completed(let committed) = batch.state {
             guard committed == outputs else { throw CheckpointError.alreadyCommitted }
@@ -337,27 +377,46 @@ public extension TaskMediaItem {
         }
         guard batch.state == .running else { throw CheckpointError.staleResult }
         try record.validateOutputs(outputs, inputs: batch.inputs)
-        let positions = try cuePositions()
-        guard batch.inputs.allSatisfy({ input in positions[input.cueID].map { input.matches(cues[$0]) } == true }) else { throw CheckpointError.editedCue }
+        guard batch.inputs.allSatisfy({ input in
+            workIndex.cuePosition(input.cueID, in: cues).map { input.matches(cues[$0]) } == true
+        }) else { throw CheckpointError.editedCue }
         var updated = self
         for output in outputs {
-            guard let cueIndex = positions[output.cueID] else { throw CheckpointError.unknownWork }
+            guard let cueIndex = workIndex.cuePosition(output.cueID, in: cues) else { throw CheckpointError.unknownWork }
             updated.cues[cueIndex].translation = .succeeded(text: output.text, sourceRevision: updated.cues[cueIndex].sourceRevision)
         }
         record.translationBatches[index].state = .completed(outputs)
         updated.checkpoint = record
-        let unfinished = record.translationBatches.filter { batch in
-            !batch.isCompleted && batch.inputs.allSatisfy { input in positions[input.cueID].map { input.matches(updated.cues[$0]) } == true }
-        }
         if updated.cues.allSatisfy(\.hasTranslation) { updated.status = .completed }
-        else if let reason = unfinished.compactMap({ batch -> String? in
-            if case .failed(let reason) = batch.state { return reason }
-            return nil
-        }).first { updated.status = .failed(reason: reason) }
-        else if unfinished.contains(where: { $0.state == .cancelled }) { updated.status = .cancelled }
-        else if unfinished.contains(where: { $0.state == .interrupted }) { updated.status = .interrupted(stage: .translation) }
-        else { updated.status = unfinished.isEmpty ? .needsTranslation : .running(stage: .translation) }
-        try updated.validate()
+        else {
+            var failure: String?
+            var cancelled = false
+            var interrupted = false
+            var pending = false
+            for other in record.translationBatches where !other.isCompleted {
+                switch other.state {
+                case .pending, .running:
+                    // Pending inputs are checked when they begin, not after every other commit.
+                    pending = true
+                case .failed, .cancelled, .interrupted:
+                    guard other.inputs.allSatisfy({ input in
+                        workIndex.cuePosition(input.cueID, in: updated.cues).map { input.matches(updated.cues[$0]) } == true
+                    }) else { continue }
+                    switch other.state {
+                    case .failed(let reason): if failure == nil { failure = reason }
+                    case .cancelled: cancelled = true
+                    case .interrupted: interrupted = true
+                    default: break
+                    }
+                case .completed: break
+                }
+            }
+            if let failure { updated.status = .failed(reason: failure) }
+            else if cancelled { updated.status = .cancelled }
+            else if interrupted { updated.status = .interrupted(stage: .translation) }
+            else { updated.status = pending ? .running(stage: .translation) : .needsTranslation }
+        }
+        // Only text and this batch changed; full document validation belongs to persistence.
         self = updated
     }
 

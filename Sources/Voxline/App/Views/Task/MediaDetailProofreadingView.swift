@@ -14,7 +14,7 @@ public struct MediaDetailProofreadingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var session: ProofreadingSession
     @State private var playbackController = MediaPlaybackController()
-    @State private var hoveredCueID: UUID?
+    @State private var isScrollingTranscript = false
     @State private var queue = TaskProcessingQueue.shared
 
     // Sheets
@@ -396,7 +396,6 @@ public struct MediaDetailProofreadingView: View {
                             ForEach(session.transcriptRows) { row in
                                 let cue = row.cue
                                 let isActive = cue.id == activeCueID
-                                let isHovered = cue.id == hoveredCueID
                                 let isPast = cue.endMilliseconds <= playbackController.completedSubtitleEndMilliseconds
 
                                 ProofreadingCueRow(
@@ -404,7 +403,6 @@ public struct MediaDetailProofreadingView: View {
                                     nextCue: row.nextCue,
                                     session: session,
                                     isActive: isActive,
-                                    isHovered: isHovered,
                                     isPast: isPast,
                                     canRetranslate: true,
                                     isTaskRunning: queue.taskID != nil,
@@ -423,17 +421,17 @@ public struct MediaDetailProofreadingView: View {
                                     onDelete: { targetCue in deleteCue(targetCue) }
                                 )
                                 .id(cue.id)
-                                .onHover { hovering in
-                                    hoveredCueID = hovering ? cue.id : nil
-                                }
                             }
                         }
                         .padding(.vertical, 40)
                         .padding(.horizontal, 24)
                     }
+                    .onScrollPhaseChange { _, phase in
+                        isScrollingTranscript = phase == .tracking || phase == .interacting || phase == .decelerating
+                    }
                     .onChange(of: activeCueID) { _, newActiveID in
-                        if let newActiveID {
-                            withAnimation(.easeInOut(duration: 0.3)) {
+                        if let newActiveID, !isScrollingTranscript {
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                                 proxy.scrollTo(newActiveID, anchor: .center)
                             }
                         }

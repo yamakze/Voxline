@@ -5,6 +5,43 @@ import VoxlineCore
 
 @Suite("Local save and shared recovery", .serialized) @MainActor
 struct TaskSyncRecoveryTests {
+    @Test func sharedFileChangesReloadOnlyAffectedDocumentsAndPreserveLocalWork() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"))
+        let first = ProcessingTask(title: "First")
+        let unrelated = ProcessingTask(title: "Unrelated")
+        let documents = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"),
+            recoveryDirectory: library.tasksDirectory.appendingPathComponent("SyncRecovery"))
+        let firstURL = documents.directory.appendingPathComponent(first.id.uuidString).appendingPathExtension("voxline")
+        let unrelatedURL = documents.directory.appendingPathComponent(unrelated.id.uuidString).appendingPathExtension("voxline")
+        try documents.write(TaskDocumentCodec.encode(first), to: firstURL)
+        try documents.write(TaskDocumentCodec.encode(unrelated), to: unrelatedURL)
+        try library.connectSharedDocuments(documents)
+        var remote = first; remote.title = "Remote edit"
+        try TaskDocumentCodec.encode(remote).write(to: firstURL, options: .atomic)
+        try Data("invalid unrelated file".utf8).write(to: unrelatedURL, options: .atomic)
+        await library.reloadSharedDocuments(at: [firstURL])
+        #expect(library.task(for: first.id) == remote)
+        #expect(library.entries.first { $0.taskID == unrelated.id }?.error == nil)
+        // A pending local checkpoint survives a missing cloud file and a native reload.
+        try library.commitCheckpoint(taskID: first.id) { $0.title = "Pending local edit" }
+        try FileManager.default.removeItem(at: firstURL)
+        await library.reloadSharedDocuments(at: [firstURL])
+        #expect(library.task(for: first.id)?.title == "Pending local edit")
+        let added = ProcessingTask(title: "New remote task")
+        let addedURL = firstURL.deletingLastPathComponent().appendingPathComponent(added.id.uuidString).appendingPathExtension("voxline")
+        try TaskDocumentCodec.encode(added).write(to: addedURL, options: .atomic)
+        await library.reloadSharedDocuments(at: [addedURL])
+        #expect(library.task(for: added.id) == added)
+        try FileManager.default.removeItem(at: addedURL)
+        await library.reloadSharedDocuments(at: [addedURL])
+        #expect(library.task(for: added.id) == nil)
+        await library.reloadSharedDocuments(at: [unrelatedURL])
+        #expect(library.entries.first { $0.taskID == unrelated.id }?.error != nil)
+        #expect(library.task(for: unrelated.id) == unrelated)
+    }
+
     @Test func savedDraftAdvancesLocallyAndVersionSelectionPreservesBothEdits() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

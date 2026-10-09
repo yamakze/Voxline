@@ -11,7 +11,7 @@ struct ProofreadingCueRow: View {
     let nextCue: SubtitleCue?
     @Bindable var session: ProofreadingSession
     let isActive: Bool
-    var isHovered = false
+    @State private var isHovered = false
     var isPast = false
     let canRetranslate: Bool
     let isTaskRunning: Bool
@@ -71,6 +71,9 @@ struct ProofreadingCueRow: View {
         .opacity(isActive ? 1.0 : (isHovered ? 0.95 : (isPast ? 0.40 : 0.70)))
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isActive)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovered)
+        #if os(macOS)
+        .onHover { isHovered = $0 }
+        #endif
         .contextMenu {
             actionMenuItems
         }

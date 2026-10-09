@@ -268,13 +268,20 @@ public final class TaskProcessingQueue {
         for (index, range) in ranges.enumerated() {
             guard audioByRange.updateValue(audio[index], forKey: range) == nil else { throw CheckpointError.invalidRecord }
         }
+        guard let plannedChunks = library.task(for: taskID)?.items.first(where: { $0.id == mediaID })?.checkpoint?.chunks else {
+            throw CheckpointError.missingCheckpoint
+        }
+        var chunkPositions: [UUID: Int] = [:]
+        for (position, chunk) in plannedChunks.enumerated() {
+            guard chunkPositions.updateValue(position, forKey: chunk.id) == nil else { throw CheckpointError.invalidRecord }
+        }
         for chunkID in chunkIDs {
             if Task.isCancelled {
                 try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .cancelled }
                 return
             }
             guard let chunks = library.task(for: taskID)?.items.first(where: { $0.id == mediaID })?.checkpoint?.chunks,
-                  let index = chunks.firstIndex(where: { $0.id == chunkID }),
+                  let index = chunkPositions[chunkID], chunks.indices.contains(index), chunks[index].id == chunkID,
                   let input = audioByRange[chunks[index].range] else { throw CheckpointError.unknownWork }
             let savedRecognition: TranscriptionEvidence?
             switch chunks[index].state {
@@ -285,7 +292,7 @@ public final class TaskProcessingQueue {
                 } else { savedRecognition = nil }
             default: savedRecognition = nil
             }
-            let sourceID = try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.beginTranscriptionChunk(chunkID) }
+            let sourceID = try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.beginTranscriptionChunk(chunkID, at: index) }
             let decodingID = UUID()
             progressID = decodingID
             progressText = String(localized: "正在转写 \(Int(Double(index) / Double(chunks.count) * 100))%", bundle: voxlineLocalizationBundle)
@@ -346,19 +353,19 @@ public final class TaskProcessingQueue {
             do { result = try SubtitleSegmenter.segment(evidence, sourceID: sourceID, mediaDurationMilliseconds: media.durationMilliseconds) }
             catch {
                 try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
-                    try $0.recordTranscriptionFailure(chunkID, sourceID: sourceID, reason: error.localizedDescription, evidence: evidence)
+                    try $0.recordTranscriptionFailure(chunkID, sourceID: sourceID, reason: error.localizedDescription, evidence: evidence, at: index)
                 }
                 continue
             }
             // Saving is outside the Provider catch: I/O failure must stop the queue rather than be
             // mistaken for a failed inference and allow later work to overwrite unsaved results.
             do {
-                try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.commitTranscriptionChunk(chunkID, result: result) }
+                try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.commitTranscriptionChunk(chunkID, result: result, at: index) }
             } catch let error as ProjectValidationError {
                 // A newly submitted range can conflict with manual timing. Keep the edit and the
                 // raw inference, fail this range, and let the other media continue.
                 try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
-                    try $0.recordTranscriptionFailure(chunkID, sourceID: sourceID, reason: error.localizedDescription, evidence: evidence)
+                    try $0.recordTranscriptionFailure(chunkID, sourceID: sourceID, reason: error.localizedDescription, evidence: evidence, at: index)
                 }
             }
         }
@@ -401,6 +408,8 @@ public final class TaskProcessingQueue {
 
     private func translateBatches(taskID: UUID, mediaID: UUID, settings: TranslationSettings, batchIDs: [UUID]) async throws {
         defer { translationRetryWait = nil }
+        guard let initial = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }) else { throw CheckpointError.taskUnavailable }
+        let workIndex = try TranslationCheckpointIndex(item: initial)
         for batchID in batchIDs {
             if Task.isCancelled {
                 try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .cancelled }
@@ -409,10 +418,7 @@ public final class TaskProcessingQueue {
             let request: SubtitleTranslationRequest
             do {
                 request = try updateMedia(taskID: taskID, mediaID: mediaID) { item in
-                    try item.beginTranslationBatch(batchID)
-                    guard let batch = item.checkpoint?.translationBatches.first(where: { $0.id == batchID }) else {
-                        throw CheckpointError.unknownWork
-                    }
+                    let batch = try item.beginTranslationBatch(batchID, using: workIndex)
                     return try SubtitleTranslationRequest(inputs: batch.inputs, cues: item.cues)
                 }
             } catch let error as CheckpointError {
@@ -465,7 +471,7 @@ public final class TaskProcessingQueue {
             }
             guard let outputs else { throw CheckpointError.staleResult }
             do {
-                try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.commitTranslationBatch(batchID, outputs: outputs) }
+                try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.commitTranslationBatch(batchID, outputs: outputs, using: workIndex) }
             } catch let error as CheckpointError {
                 try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { try $0.recordTranslationFailure(batchID, reason: error.localizedDescription) }
                 return
