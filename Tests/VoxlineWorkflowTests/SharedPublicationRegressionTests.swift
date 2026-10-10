@@ -111,21 +111,31 @@ struct SharedPublicationRegressionTests {
     @Test func explicitRetryPublishesAfterTransientFailure() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"), sharedPublicationInterval: .milliseconds(20))
+        let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"))
         let settings = TaskSyncCoordinator(library: library, storageURL: root.appendingPathComponent("settings.json"))
         let task = ProcessingTask(title: "Before")
         try library.save(task)
         try await settings.enable(folder: root.appendingPathComponent("cloud"), originals: false)
         defer { try? settings.disable() }
         let url = try #require(library.url(for: task.id))
-        try library.commitCheckpoint(taskID: task.id) { $0.title = "Pending local edit" }
-        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
-        try await Task.sleep(for: .milliseconds(150))
+        let key = url.standardizedFileURL
         let documents = try #require(library.sharedDocuments)
-        #expect(documents.publicationErrors[url.standardizedFileURL] != nil)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        try library.commitCheckpoint(taskID: task.id) { $0.title = "Pending local edit" }
+        // Cloud publication succeeds but recovery cleanup fails, regardless of runner permissions.
+        let recovery = library.tasksDirectory.appendingPathComponent("SyncRecovery", isDirectory: true)
+        let backup = root.appendingPathComponent("recovery-backup", isDirectory: true)
+        try FileManager.default.moveItem(at: recovery, to: backup)
+        #expect(throws: (any Error).self) { try library.publishSharedCheckpoints() }
+        guard case .failed = try #require(documents.publicationErrors[key]) else {
+            Issue.record("Recovery cleanup failure must remain visible as a publication error")
+            return
+        }
+        #expect(documents.pendingURLs == [key])
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)).title == "Pending local edit")
+        try FileManager.default.moveItem(at: backup, to: recovery)
         try settings.retryPublication()
         #expect(documents.pendingURLs.isEmpty)
+        #expect(documents.publicationErrors[key] == nil)
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)).title == "Pending local edit")
     }
 

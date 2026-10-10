@@ -47,14 +47,24 @@ jobs:
             echo 'Tag and Version.xcconfig do not match' >&2
             exit 1
           fi
-          echo "build-version=$(python3 Scripts/lib/build-metadata.py version)" >> "$GITHUB_OUTPUT"
-      - name: Generate complete changelog
+      - name: Extract release notes from CHANGELOG.md
+        id: notes_extractor
+        run: |
+          if [[ -f CHANGELOG.md ]] && Scripts/release-notes.sh "$tag_version" > RELEASE_NOTES.md 2>/dev/null; then
+            echo "Extracted release notes for $tag_version from CHANGELOG.md"
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_notes=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Generate complete changelog via git-cliff
+        if: steps.notes_extractor.outputs.has_notes != 'true'
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
         with:
           version: v2.14.2
           config: cliff.toml
           args: --use-branch-tags --output CHANGELOG.md
-      - name: Generate this version's notes
+      - name: Generate this version's notes via git-cliff
+        if: steps.notes_extractor.outputs.has_notes != 'true'
         run: |
           "$RUNNER_TEMP/git-cliff/bin/git-cliff" --config cliff.toml \
             --use-branch-tags --current --strip header --output RELEASE_NOTES.md
