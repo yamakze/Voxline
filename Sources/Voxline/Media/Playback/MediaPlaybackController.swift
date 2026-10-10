@@ -65,7 +65,7 @@ public final class MediaPlaybackController {
         }
         isLoading = true
         do {
-            guard let bookmark = try await mediaStore.resolve(projectID: item.id, identity: identity) else {
+            guard let bookmark = try await mediaStore.resolve(mediaID: item.id, identity: identity) else {
                 guard generation == loadID else { return }
                 isLoading = false
                 isMediaUnavailable = true
@@ -78,9 +78,9 @@ public final class MediaPlaybackController {
             defer { if accessStarted && !retainsAccess { bookmark.url.stopAccessingSecurityScopedResource() } }
             let inspection = try await inspector.inspect(bookmark.url)
             let current = try inspection.identity(audioTrackID: identity.audioTrackID)
-            guard identity.matchesContent(of: current) else { throw ProjectValidationError.differentMedia }
+            guard identity.matchesContent(of: current) else { throw DomainValidationError.differentMedia }
             if bookmark.isStale {
-                try await mediaStore.save(projectID: item.id, identity: identity, url: bookmark.url)
+                try await mediaStore.save(mediaID: item.id, identity: identity, url: bookmark.url)
             }
             let asset = AVURLAsset(url: bookmark.url)
             let audioTracks = try await asset.loadTracks(withMediaType: .audio)

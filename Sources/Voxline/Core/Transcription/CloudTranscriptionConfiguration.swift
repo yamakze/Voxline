@@ -26,15 +26,6 @@ public struct CloudTranscriptionConfiguration: Codable, Equatable, Sendable {
         self.protocolKind = protocolKind
     }
 
-    private enum CodingKeys: String, CodingKey { case serviceID, baseURL, protocolKind }
-    public init(from decoder: any Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        serviceID = try values.decode(UUID.self, forKey: .serviceID)
-        baseURL = try values.decode(URL.self, forKey: .baseURL)
-        // Existing documents predate multi-protocol support and use Audio Transcriptions.
-        protocolKind = try values.decodeIfPresent(CloudTranscriptionProtocol.self, forKey: .protocolKind) ?? .audioTranscriptions
-    }
-
     public func validate() throws {
         guard ["http", "https"].contains(baseURL.scheme?.lowercased()),
               baseURL.host?.isEmpty == false, baseURL.user == nil, baseURL.password == nil,

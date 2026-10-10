@@ -4,7 +4,7 @@ import VoxlineCore
 import VoxlineMedia
 
 @Observable @MainActor
-public final class TaskSyncSettings {
+public final class TaskSyncCoordinator {
     public private(set) var isEnabled = false
     public private(set) var folderURL: URL?
     public private(set) var syncOriginalMedia = false
@@ -199,7 +199,7 @@ public final class TaskSyncSettings {
         if values.isUbiquitousItem == true, values.ubiquitousItemDownloadingStatus != .current { throw SharedDocumentError.downloadRequired }
         let actual = try await inspector.inspect(url).identity(audioTrackID: identity.audioTrackID)
         guard identity.matchesContent(of: actual) else { throw MediaAccessError.fileChanged }
-        try await mediaStore.save(projectID: item.id, identity: identity, url: url)
+        try await mediaStore.save(mediaID: item.id, identity: identity, url: url)
     }
 
     /// The user retry publishes pending documents, then rereads actual system state.
@@ -428,7 +428,7 @@ public final class TaskSyncSettings {
                 guard identity.matchesContent(of: actual) else { throw MediaAccessError.fileChanged }
                 continue
             }
-            guard let source = try await mediaStore.resolve(projectID: item.id, identity: identity) else { throw MediaAccessError.invalidBookmark }
+            guard let source = try await mediaStore.resolve(mediaID: item.id, identity: identity) else { throw MediaAccessError.invalidBookmark }
             let access = source.url.startAccessingSecurityScopedResource()
             defer { if access { source.url.stopAccessingSecurityScopedResource() } }
             let actual = try await inspector.inspect(source.url).identity(audioTrackID: identity.audioTrackID)

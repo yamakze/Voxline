@@ -283,6 +283,35 @@ struct CloudTranscriptionTests {
         #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)) == task)
     }
 
+    @Test @MainActor func missingOrInvalidProtocolFailsLoadingAndPreservesConfiguration() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("services.json")
+        let vault = TestCredentialVault()
+        let store = CloudTranscriptionServiceStore(storageURL: url, vault: vault, autoLoad: false)
+        let service = CloudTranscriptionServiceConfig(name: "ASR", baseURL: URL(string: "https://asr.example/v1")!)
+        try await store.addOrUpdate(service, apiKey: "test-only-key")
+        let frozen = try service.settings()
+        let valid = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(service)) as? [String: Any])
+        let invalidProtocols: [Any?] = [nil, NSNull(), "unsupported-protocol", 7]
+        for value in invalidProtocols {
+            var object = valid
+            object["protocolKind"] = value
+            let broken = try JSONSerialization.data(withJSONObject: [object])
+            try broken.write(to: url)
+            await store.load()
+            #expect(store.errorMessage != nil)
+            #expect(store.services == [service])
+            #expect(try Data(contentsOf: url) == broken)
+            #expect(await vault.read(serviceID: service.id) == "test-only-key")
+            await #expect(throws: TranslationServiceError.configurationUnavailable) { try await store.apiKey(for: frozen) }
+            let reopened = CloudTranscriptionServiceStore(storageURL: url, vault: vault, autoLoad: false)
+            await reopened.load()
+            #expect(reopened.errorMessage != nil)
+            #expect(reopened.services.isEmpty)
+        }
+    }
+
     @Test @MainActor func metadataHasNoKeyAndEndpointChangesRequireExplicitRebinding() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -305,21 +334,8 @@ struct CloudTranscriptionTests {
         service.baseURL = URL(string: "https://other.example/v1")!
         try await store.addOrUpdate(service, apiKey: "new-key")
         await #expect(throws: CloudTranscriptionError.changedEndpoint) { try await store.apiKey(for: frozen) }
-        var old = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(frozen)) as? [String: Any])
-        var oldCloud = try #require(old["cloud"] as? [String: Any])
-        oldCloud["protocolKind"] = nil
-        old["cloud"] = oldCloud
-        let oldBytes = try JSONSerialization.data(withJSONObject: old)
-        #expect(try JSONDecoder().decode(TranscriptionSettings.self, from: oldBytes) == frozen)
-        oldCloud["protocolKind"] = "unsupported-protocol"
-        old["cloud"] = oldCloud
-        let invalidBytes = try JSONSerialization.data(withJSONObject: old)
-        #expect(throws: (any Error).self) { try JSONDecoder().decode(TranscriptionSettings.self, from: invalidBytes) }
-        let historical = try JSONEncoder().encode(TranscriptionSettings.whisperKitBaseline)
-        #expect(try JSONDecoder().decode(TranscriptionSettings.self, from: historical).cloud == nil)
         let task = ProcessingTask(parameters: .init(transcription: frozen, translation: nil))
         #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)).parameters.transcription == frozen)
-
     }
 }
 

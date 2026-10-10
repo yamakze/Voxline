@@ -19,7 +19,7 @@ struct SubtitleTimeOffsetTests {
         #expect(throws: SubtitleTimeOffsetError.negativeTime) {
             try SubtitleTimeOffset.shifted(original, by: -201, withinDuration: 1000)
         }
-        #expect(throws: ProjectValidationError.cueOutsideMedia(last.id)) {
+        #expect(throws: DomainValidationError.cueOutsideMedia(last.id)) {
             try SubtitleTimeOffset.shifted(original, by: 101, withinDuration: 1000)
         }
         #expect(original == [first, last])

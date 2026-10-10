@@ -33,7 +33,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .formatVersion)
         guard version == Self.currentFormatVersion else {
-            throw ProjectValidationError.unsupportedVersion(version)
+            throw DomainValidationError.unsupportedVersion(version)
         }
         formatVersion = Self.currentFormatVersion
         id = try values.decode(UUID.self, forKey: .id)

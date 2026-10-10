@@ -7,10 +7,10 @@ import AppKit
 #endif
 
 public struct TaskSyncSettingsView: View {
-    @State private var settings = TaskSyncSettings.shared
+    @State private var settings = TaskSyncCoordinator.shared
     @State private var isSelectingFolder = false
     @State private var pendingFolderURL: URL?
-    @State private var pendingSummary: TaskSyncSettings.MigrationSummary?
+    @State private var pendingSummary: TaskSyncCoordinator.MigrationSummary?
     @State private var showMigrationSheet = false
     @State private var showDisableConfirmation = false
     @State private var syncOriginalsInMigration = false
@@ -361,7 +361,7 @@ public struct TaskSyncSettingsView: View {
         }
     }
 
-    private func migrationConfirmationSheet(folder: URL, summary: TaskSyncSettings.MigrationSummary) -> some View {
+    private func migrationConfirmationSheet(folder: URL, summary: TaskSyncCoordinator.MigrationSummary) -> some View {
         VStack(spacing: 0) {
             HStack {
                 Text(String(localized: "启用 iCloud 文件夹同步", bundle: appLocalizationBundle))

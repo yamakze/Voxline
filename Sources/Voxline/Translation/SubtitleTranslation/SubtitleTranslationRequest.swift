@@ -51,7 +51,7 @@ public enum SubtitleTranslationBatchPlanner {
 
     /// Bounded UTF-8 input, including two neighboring cues on either side. This is not a token estimate.
     public static func batches(cues: [SubtitleCue], pendingIDs: [UUID], targetLanguage: String, batchSize: Int = TranslationSettings.defaultBatchSize) throws -> [[UUID]] {
-        guard batchSize > 0 else { throw ProjectValidationError.invalidTranslationBatchSize }
+        guard batchSize > 0 else { throw DomainValidationError.invalidTranslationBatchSize }
         let cueIDs = Set(cues.map(\.id))
         let pending = Set(pendingIDs)
         guard cueIDs.count == cues.count, pending.count == pendingIDs.count,

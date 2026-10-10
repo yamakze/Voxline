@@ -20,7 +20,7 @@ public enum SubtitleTimeOffset {
             guard start >= 0 else { throw SubtitleTimeOffsetError.negativeTime }
             shifted[index].startMilliseconds = start
             shifted[index].endMilliseconds = end
-            if let duration, end > duration { throw ProjectValidationError.cueOutsideMedia(shifted[index].id) }
+            if let duration, end > duration { throw DomainValidationError.cueOutsideMedia(shifted[index].id) }
         }
         try SubtitleCue.validateTimeline(shifted, within: nil)
         return shifted

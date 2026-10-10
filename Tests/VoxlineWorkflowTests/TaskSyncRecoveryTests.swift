@@ -50,7 +50,7 @@ struct TaskSyncRecoveryTests {
         let item = TaskMediaItem(title: "Media", kind: .audio, source: .unassociated, cues: [cue])
         let task = ProcessingTask(title: "Initial", items: [item])
         try library.save(task)
-        let settings = TaskSyncSettings(library: library, storageURL: root.appendingPathComponent("settings.json"))
+        let settings = TaskSyncCoordinator(library: library, storageURL: root.appendingPathComponent("settings.json"))
         try await settings.enable(folder: root.appendingPathComponent("cloud"), originals: false)
         defer { try? settings.disable() }
         let url = try #require(library.url(for: task.id))
@@ -90,7 +90,7 @@ struct TaskSyncRecoveryTests {
         let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"))
         let task = ProcessingTask(title: "Before migration")
         try library.save(task)
-        let settings = TaskSyncSettings(library: library, storageURL: root.appendingPathComponent("settings.json"))
+        let settings = TaskSyncCoordinator(library: library, storageURL: root.appendingPathComponent("settings.json"))
         try await settings.enable(folder: root.appendingPathComponent("cloud"), originals: false)
         defer { try? settings.disable() }
         let url = try #require(library.url(for: task.id))
@@ -129,7 +129,7 @@ struct TaskSyncRecoveryTests {
             forgetRecentDocument: { url in recent.removeAll { $0 == url } })
         let task = ProcessingTask(title: "Renamed document")
         try library.save(task, at: renamed)
-        let settings = TaskSyncSettings(library: library, storageURL: root.appendingPathComponent("settings.json"))
+        let settings = TaskSyncCoordinator(library: library, storageURL: root.appendingPathComponent("settings.json"))
         try await settings.enable(folder: root.appendingPathComponent("cloud"), originals: false)
         defer { try? settings.disable() }
         #expect(!FileManager.default.fileExists(atPath: renamed.path))

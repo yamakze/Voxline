@@ -27,7 +27,7 @@ public enum SubtitleEmbeddingExporter {
                               progress: @escaping @MainActor @Sendable (Double) -> Void = { _ in }) async throws {
         guard item.kind == .video else { throw SubtitleEmbeddingError.videoRequired }
         guard let identity = item.media,
-              let bookmark = try await mediaStore.resolve(projectID: item.id, identity: identity) else { throw SubtitleEmbeddingError.missingMedia }
+              let bookmark = try await mediaStore.resolve(mediaID: item.id, identity: identity) else { throw SubtitleEmbeddingError.missingMedia }
         let access = bookmark.url.startAccessingSecurityScopedResource()
         defer { if access { bookmark.url.stopAccessingSecurityScopedResource() } }
         let inspection = try await inspector.inspect(bookmark.url)

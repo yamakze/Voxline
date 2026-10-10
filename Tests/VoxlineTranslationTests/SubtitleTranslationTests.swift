@@ -102,7 +102,7 @@ struct SubtitleTranslationTests {
             #expect(batches.map(\.count) == counts)
             #expect(batches.flatMap { $0 } == cues.map(\.id))
         }
-        #expect(throws: ProjectValidationError.invalidTranslationBatchSize) {
+        #expect(throws: DomainValidationError.invalidTranslationBatchSize) {
             try SubtitleTranslationBatchPlanner.batches(cues: cues, pendingIDs: cues.map(\.id), targetLanguage: "zh", batchSize: 0)
         }
         let long = try self.cues(count: 8, text: String(repeating: "中", count: 550))

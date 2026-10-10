@@ -66,7 +66,7 @@ struct SubtitleBurnInTests {
         cue.translation = .succeeded(text: "你好\n字幕", sourceRevision: cue.sourceRevision)
         let item = TaskMediaItem(title: "Burn-in test", kind: .video, source: .localFile(fileName: identity.fileName),
                                  media: identity, status: .completed, cues: [cue])
-        try await store.save(projectID: item.id, identity: identity, url: url)
+        try await store.save(mediaID: item.id, identity: identity, url: url)
         return item
     }
 
@@ -269,7 +269,7 @@ struct SubtitleBurnInTests {
         let item = TaskMediaItem(title: "S001 已校对短视频", kind: .video, source: .localFile(fileName: source.lastPathComponent),
                                  media: identity, status: .completed, cues: cues)
         let store = LocalMediaStore(directory: directory.appendingPathComponent("access"))
-        try await store.save(projectID: item.id, identity: identity, url: source)
+        try await store.save(mediaID: item.id, identity: identity, url: source)
         var results: [[String: String]] = []
         for kind in [SRTOutputKind.source, .translation, .bilingual] {
             var options = BurnInOptions()

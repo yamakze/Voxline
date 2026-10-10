@@ -40,7 +40,7 @@ public extension TaskMediaItem {
             throw CheckpointError.editedCue
         }
         guard atMilliseconds > original.startMilliseconds, atMilliseconds < original.endMilliseconds else {
-            throw ProjectValidationError.invalidCue(original.id)
+            throw DomainValidationError.invalidCue(original.id)
         }
         var first = try SubtitleCue(id: UUID(), startMilliseconds: original.startMilliseconds,
             endMilliseconds: atMilliseconds, sourceText: firstSourceText)

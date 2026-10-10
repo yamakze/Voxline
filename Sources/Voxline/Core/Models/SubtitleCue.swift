@@ -20,11 +20,11 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
 
     public mutating func replaceSourceText(with text: String) throws {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ProjectValidationError.invalidCue(id)
+            throw DomainValidationError.invalidCue(id)
         }
         guard text != sourceText else { return }
         let (revision, overflow) = sourceRevision.addingReportingOverflow(1)
-        guard !overflow else { throw ProjectValidationError.sourceRevisionOverflow(id) }
+        guard !overflow else { throw DomainValidationError.sourceRevisionOverflow(id) }
         sourceText = text
         sourceRevision = revision
     }
@@ -39,7 +39,7 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
     public func validate() throws {
         guard startMilliseconds >= 0, endMilliseconds > startMilliseconds, sourceRevision > 0,
               !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ProjectValidationError.invalidCue(id)
+            throw DomainValidationError.invalidCue(id)
         }
         try translation.validate(cueID: id, sourceRevision: sourceRevision)
     }
@@ -49,12 +49,12 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
         var previousEnd: Int64 = 0
         for cue in cues {
             try cue.validate()
-            guard identities.insert(cue.id).inserted else { throw ProjectValidationError.duplicateCue(cue.id) }
+            guard identities.insert(cue.id).inserted else { throw DomainValidationError.duplicateCue(cue.id) }
             guard cue.startMilliseconds >= previousEnd else {
-                throw ProjectValidationError.overlappingOrUnorderedCue(cue.id)
+                throw DomainValidationError.overlappingOrUnorderedCue(cue.id)
             }
             if let media, cue.endMilliseconds > media.durationMilliseconds {
-                throw ProjectValidationError.cueOutsideMedia(cue.id)
+                throw DomainValidationError.cueOutsideMedia(cue.id)
             }
             previousEnd = cue.endMilliseconds
         }
@@ -91,11 +91,11 @@ public enum CueTranslation: Codable, Equatable, Sendable {
         case .succeeded(let text, let revision):
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   revision > 0, revision <= sourceRevision else {
-                throw ProjectValidationError.invalidTranslation(cueID)
+                throw DomainValidationError.invalidTranslation(cueID)
             }
         case .failed(let reason):
             guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw ProjectValidationError.invalidTranslation(cueID)
+                throw DomainValidationError.invalidTranslation(cueID)
             }
         }
     }

@@ -806,8 +806,8 @@ struct TaskProcessingQueueTests {
             .init(title: "Native video", kind: .video, source: .localFile(fileName: videoIdentity.fileName), media: videoIdentity),
             .init(title: "Native audio", kind: .audio, source: .localFile(fileName: audioIdentity.fileName), media: audioIdentity)
         ], parameters: parameters)
-        try await bookmarks.save(projectID: task.items[1].id, identity: videoIdentity, url: video)
-        try await bookmarks.save(projectID: task.items[2].id, identity: audioIdentity, url: audio)
+        try await bookmarks.save(mediaID: task.items[1].id, identity: videoIdentity, url: video)
+        try await bookmarks.save(mediaID: task.items[2].id, identity: audioIdentity, url: audio)
         try library.save(task)
         let pipeline = ConfiguredMediaTranscriptionPipeline(mediaStore: bookmarks,
             extractor: AudioExtractor(directory: directory.appendingPathComponent("audio")),
@@ -839,7 +839,7 @@ struct TaskProcessingQueueTests {
         let preserved = Array(reopened.items.dropFirst())
         let freshLibrary = TaskLibrary(tasksDirectory: library.tasksDirectory)
         #expect(freshLibrary.task(for: task.id) == reopened)
-        try await bookmarks.save(projectID: task.items[0].id, identity: videoIdentity, url: video)
+        try await bookmarks.save(mediaID: task.items[0].id, identity: videoIdentity, url: video)
         let retryQueue = TaskProcessingQueue(library: freshLibrary, pipeline: pipeline, translationPipeline: TranslationNotExpected())
         try retryQueue.start(taskID: task.id, mediaID: task.items[0].id)
         await retryQueue.waitUntilIdle()

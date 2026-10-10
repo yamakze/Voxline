@@ -34,7 +34,7 @@ struct ProcessingCheckpointTests {
         }
         #expect(processing.items[0] == original)
         processing.items[0].cues.append(original.cues[0])
-        #expect(throws: ProjectValidationError.duplicateCue(id)) {
+        #expect(throws: DomainValidationError.duplicateCue(id)) {
             try processing.items[0].prepareTranslationBatch(cueIDs: [id])
         }
     }
@@ -48,7 +48,7 @@ struct ProcessingCheckpointTests {
         let alternate = try MediaIdentity(fileName: "HD.mov", byteCount: 321, fingerprint: String(repeating: "b", count: 64),
                                           durationMilliseconds: 5000, audioTrackID: 7)
         try original.items[0].associateMedia(alternate)
-        var reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(original))
+        let reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(original))
         #expect(reopened.items[0].media == alternate)
         #expect(reopened.items[0].cues == cues)
         #expect(reopened.items[0].checkpoint == record)
@@ -211,7 +211,7 @@ struct ProcessingCheckpointTests {
         _ = try complete(&value, index: 1)
         let original = value.items[0].cues[0]
         let before = value
-        #expect(throws: ProjectValidationError.overlappingOrUnorderedCue(value.items[0].cues[1].id)) {
+        #expect(throws: DomainValidationError.overlappingOrUnorderedCue(value.items[0].cues[1].id)) {
             try value.items[0].setSubtitleTiming(comparedTo: original, startMilliseconds: 0, endMilliseconds: 4000)
         }
         #expect(value == before)
@@ -678,7 +678,7 @@ struct ProcessingCheckpointTests {
         task.items[0].cues[0].endMilliseconds += 2000
         let candidate = try SubtitleSegmenter.segment(evidence(range: next.range), sourceID: sourceID, mediaDurationMilliseconds: 5000)
         let edited = task
-        #expect(throws: ProjectValidationError.overlappingOrUnorderedCue(candidate.cues[0].id)) {
+        #expect(throws: DomainValidationError.overlappingOrUnorderedCue(candidate.cues[0].id)) {
             try task.items[0].commitTranscriptionChunk(next.id, result: candidate)
         }
         #expect(task == edited)

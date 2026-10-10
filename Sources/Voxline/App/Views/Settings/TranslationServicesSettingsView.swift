@@ -401,7 +401,7 @@ private struct ServiceEditorModal: View {
             throw TranslationServiceError.invalidBaseURL
         }
         guard let batchSize = Int(batchSizeText.trimmingCharacters(in: .whitespacesAndNewlines)), batchSize > 0 else {
-            throw ProjectValidationError.invalidTranslationBatchSize
+            throw DomainValidationError.invalidTranslationBatchSize
         }
         let config = TranslationServiceConfig(
             id: original?.id ?? UUID(),

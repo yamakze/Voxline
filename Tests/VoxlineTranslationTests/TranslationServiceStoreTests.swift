@@ -35,35 +35,40 @@ struct TranslationServiceStoreTests {
         let data = try Data(contentsOf: url)
         #expect(!String(decoding: data, as: UTF8.self).contains("test-only-secret"))
         configured.batchSize = 0
-        await #expect(throws: ProjectValidationError.invalidTranslationBatchSize) {
+        await #expect(throws: DomainValidationError.invalidTranslationBatchSize) {
             try await reopened.addOrUpdate(configured, apiKey: "replacement-test-key")
         }
         #expect(try Data(contentsOf: url) == data)
         #expect(await vault.read(serviceID: configured.id) == "test-only-secret")
     }
 
-    @Test func legacyServiceUsesDeclaredDefaultsAndMalformedNewValuesFailLoading() async throws {
+    @Test func missingOrInvalidParametersFailLoadingAndPreserveConfiguration() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("services.json")
         let configured = service()
-        var object = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(configured)) as? [String: Any])
-        object.removeValue(forKey: "batchSize")
-        object.removeValue(forKey: "systemPrompt")
-        let legacy = try JSONSerialization.data(withJSONObject: [object])
-        try legacy.write(to: url)
-        let store = TranslationServiceStore(storageURL: url, vault: TestCredentialVault(), autoLoad: false)
-        await store.load()
-        #expect(store.services == [configured])
-        #expect(try Data(contentsOf: url) == legacy)
-        for invalid in [NSNull(), 0, "seven"] as [Any] {
-            object["batchSize"] = invalid
-            try JSONSerialization.data(withJSONObject: [object]).write(to: url)
-            let broken = TranslationServiceStore(storageURL: url, vault: TestCredentialVault(), autoLoad: false)
-            await broken.load()
-            #expect(broken.errorMessage != nil)
-            #expect(broken.services.isEmpty)
+        let vault = TestCredentialVault()
+        let store = TranslationServiceStore(storageURL: url, vault: vault, autoLoad: false)
+        try await store.addOrUpdate(configured, apiKey: "test-only-key")
+        let valid = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(configured)) as? [String: Any])
+        let invalidParameters: [(String, Any?)] = [
+            ("batchSize", nil), ("systemPrompt", nil), ("batchSize", NSNull()),
+            ("batchSize", 0), ("batchSize", "seven"), ("systemPrompt", NSNull()), ("systemPrompt", 7)
+        ]
+        for (field, value) in invalidParameters {
+            var object = valid
+            object[field] = value
+            let broken = try JSONSerialization.data(withJSONObject: [object])
+            try broken.write(to: url)
+            await store.load()
+            #expect(store.errorMessage != nil)
+            #expect(store.services == [configured])
+            #expect(try Data(contentsOf: url) == broken)
+            #expect(await vault.read(serviceID: configured.id) == "test-only-key")
+            let reopened = TranslationServiceStore(storageURL: url, vault: vault, autoLoad: false)
+            await reopened.load()
+            #expect(reopened.errorMessage != nil)
+            #expect(reopened.services.isEmpty)
         }
     }
 
@@ -81,40 +86,6 @@ struct TranslationServiceStoreTests {
         #expect(try await store.apiKey(for: frozen) == "test-only-key")
         #expect(store.services == [configured])
         #expect(!store.isLoading)
-    }
-
-    @Test func plaintextMigrationIsRemovedOnlyAfterAllKeychainWritesSucceed() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let url = directory.appendingPathComponent("services.json")
-        let first = service(), second = service()
-        let legacy = try JSONSerialization.data(withJSONObject: [first, second].enumerated().map { index, service in
-            ["id": service.id.uuidString, "name": service.name, "baseURL": service.baseURL.absoluteString,
-             "modelID": service.modelID, "apiKey": "test-only-secret-\(index)"]
-        })
-        try legacy.write(to: url)
-        let vault = TestCredentialVault()
-        await vault.failWrites(for: second.id)
-        let store = TranslationServiceStore(storageURL: url, vault: vault, autoLoad: false)
-        await store.load()
-        #expect(store.errorMessage != nil)
-        #expect(store.services.isEmpty)
-        #expect(try Data(contentsOf: url) == legacy)
-        #expect(await vault.read(serviceID: first.id) == "test-only-secret-0")
-        await vault.failWrites(for: nil)
-        await store.load()
-        #expect(store.errorMessage == nil)
-        #expect(store.services == [first, second])
-        let clean = try String(contentsOf: url, encoding: .utf8)
-        #expect(!clean.contains("apiKey"))
-        #expect(!clean.contains("test-only-secret"))
-        let settings = try TranslationSettings(baseURL: second.baseURL, modelID: second.modelID, targetLanguage: "zh", serviceID: second.id)
-        #expect(try await store.apiKey(for: settings) == "test-only-secret-1")
-        let reopened = TranslationServiceStore(storageURL: url, vault: vault, autoLoad: false)
-        await reopened.load()
-        #expect(reopened.services == [first, second])
-        #expect(reopened.credentialPresence.values.allSatisfy { $0 })
     }
 
     @Test func saveAndDeleteFailuresRestoreCredentialsAndPreserveLastMetadata() async throws {
@@ -191,12 +162,9 @@ struct TranslationServiceStoreTests {
 
 actor TestCredentialVault: TranslationCredentialVault {
     private var values: [UUID: String] = [:]
-    private var failingID: UUID?
-    func failWrites(for id: UUID?) { failingID = id }
     func read(serviceID: UUID) -> String? { values[serviceID] }
     func contains(serviceID: UUID) -> Bool { values[serviceID] != nil }
     func write(_ key: String?, serviceID: UUID) throws {
-        if failingID == serviceID { throw TranslationCredentialError.invalidData }
         values[serviceID] = key
     }
 }

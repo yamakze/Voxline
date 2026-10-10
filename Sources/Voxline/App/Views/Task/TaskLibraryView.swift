@@ -5,7 +5,7 @@ import VoxlineCore
 
 public struct TaskLibraryView: View {
     @State private var library = TaskLibrary.shared
-    @State private var syncSettings = TaskSyncSettings.shared
+    @State private var syncSettings = TaskSyncCoordinator.shared
     @State private var deletingEntry: TaskLibrary.Entry?
     @State private var conflictResolutionTaskID: UUID?
     @State private var errorMessage: String?

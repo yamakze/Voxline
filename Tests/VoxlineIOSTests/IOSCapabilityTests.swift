@@ -135,7 +135,7 @@ struct IOSCapabilityTests {
         #expect(throws: QueueError.self) { try library.startTranslation(taskID: task.id, mediaID: task.items[0].id) }
         let invalid = directory.appendingPathComponent("invalid.voxline")
         try Data(#"{"formatVersion":999}"#.utf8).write(to: invalid)
-        #expect(throws: ProjectValidationError.self) { try library.readImportedTask(from: invalid) }
+        #expect(throws: DomainValidationError.self) { try library.readImportedTask(from: invalid) }
         #expect(library.task(task.id) == imported)
     }
 

@@ -9,7 +9,7 @@ public struct TaskDetailView: View {
     @Binding var selectedMediaID: UUID?
 
     @State private var queue = TaskProcessingQueue.shared
-    @State private var syncSettings = TaskSyncSettings.shared
+    @State private var syncSettings = TaskSyncCoordinator.shared
     @State private var showConflictSheet = false
     @State private var errorMessage: String?
     @State private var noticeMessage: String?
@@ -20,7 +20,7 @@ public struct TaskDetailView: View {
         _selectedMediaID = selectedMediaID
     }
 
-    private var fileState: TaskSyncSettings.FileState? {
+    private var fileState: TaskSyncCoordinator.FileState? {
         TaskLibrary.shared.url(for: task.id).flatMap { syncSettings.fileStates[$0.standardizedFileURL] }
     }
 

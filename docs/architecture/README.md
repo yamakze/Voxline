@@ -2,7 +2,7 @@
 
 Mac 采用 SwiftPM，iOS 采用 Xcode 工程。依赖提交由 Package.swift / Package.resolved 锁定，Mac 只链接 WhisperKit 产品。工具链、构建与产物统一见 [开发工作流](../development.md)。
 
-两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态、模型与翻译设置、参数编辑、原生材质组件在 Views 内共用。Apple 系统翻译接线在 Pipeline 内共用。iOS 通过原生导航进入模型管理、服务配置与语言准备，支持本地 Task 创建与媒体准备（复用 TaskConfigurationView 并适配原生触摸布局与安全作用域访问），通过同一原生流水线转写与顺序处理。导入成果的继续翻译、单句／全部／选中字幕重译和播放校对复用领域操作；SRT、任务和硬字幕视频通过原生分享交接。平台分支承担导航、触摸布局和原生文件 API。
+两平台使用 Sources/Voxline/App 和同一 VoxlineApp 入口。平台原生适配放在 Platform/macOS、Platform/iOS，使用条件编译；任务状态、模型与翻译设置、参数编辑、原生材质组件在 Views 内共用。Apple 系统翻译接线在 App/Translation 内共用。iOS 通过原生导航进入模型管理、服务配置与语言准备，支持本地 Task 创建与媒体准备（复用 TaskConfigurationView 并适配原生触摸布局与安全作用域访问），通过同一原生流水线转写与顺序处理。导入成果的继续翻译、单句／全部／选中字幕重译和播放校对复用领域操作；SRT、任务和硬字幕视频通过原生分享交接。平台分支承担导航、触摸布局和原生文件 API。
 
 iOS 的 Core、Media、WhisperKit、Translation 与 Workflow 框架直接编译同一份源码，WhisperKit 集成框架只链接固定版本的 WhisperKit 软件包产品。导入当前格式 .voxline / JSON 后验证并保存独立副本到本地 Documents。同任务 ID 再次导入须确认覆盖本地校对，原文件不写回，Mac 书签不传入 iOS。
 
@@ -38,9 +38,17 @@ graph TD
 
 底层模块不得反向引用应用。测试直接依赖被测模块；应用接线中的协议映射由应用测试覆盖，页面交互和系统视图会话须在目标平台验收。选择理由见 [ADR-0016](../ADR/0016-workflow-and-capability-ownership.md)。
 
+## 包内组织与任务准备
+
+Workflow/Library 管理任务文档与资源清理，Queue 管理单执行者，Pipelines 划定外部调用边界，Sync 管理同步协调。Translation/SubtitleTranslation 管理字幕请求与批次，CloudTranscription 管理云端转写，Services 管理设备配置与凭据。App/Composition 负责共享实例接线，App/Translation 负责实际翻译与 Apple 视图会话接线；不建立额外任务门面或只转发提交的存储协议。
+
+TaskConfigurationSession 保存原始快照、参数草稿、媒体候选、导入操作与前置检查，两平台视图绑定同一 Session，保留平台布局、弹窗、文件选择和必需的保存回调。提交按参数构造、媒体准备、最新快照核对和实际保存顺序执行；保存失败保留草稿。异步准备期间的其他编辑不能被旧草稿覆盖，取消等待真实操作返回后释放媒体访问。单个导入失败作为该候选的明确失败保留，其余输入继续；拖放系统错误回到现有错误展示入口。
+
+领域验证使用 DomainValidationError。设备媒体访问接口使用 mediaID；书签记录保留既有固定编码键，不为参数改名引入迁移路径。
+
 ## 界面本地化
 
-简体中文和英文资源按模块归属维护于各自 Resources/*.lproj，页面、菜单、辅助功能标签、应用错误和动态状态使用 Foundation 原生 String(localized:bundle:)。资源在 SwiftPM 模块包或 Xcode 框架中读取；Mac 签名包将模块资源放入 Contents/Resources，缺少资源明确失败，不回读开发目录。默认遵循系统和应用语言选择，不维护全局语言服务或持久语言映射。动态参数保留编译器确定的格式类型，字幕数量采用原生复数资源；数字与日期使用系统区域格式。
+简体中文和英文资源按模块归属维护于各自 Resources/*.lproj，页面、菜单、辅助功能标签、应用错误和动态状态使用 Foundation 原生 String(localized:bundle:)。资源在 SwiftPM 模块包或 Xcode 框架中读取；Mac 签名包将模块资源放入 Contents/Resources，缺少资源明确失败，不回读开发目录。默认遵循系统和应用语言选择，不维护全局语言服务或持久语言映射。保留 literal 原生本地化调用以支持编译器提取，不通过自定义包装隐藏键；能力错误说明在负责模块就地维护，页面和导航文案归 App。当前 SwiftPM 不编译 String Catalog，资源使用 strings 与 stringsdict，格式迁移必须覆盖两平台及直接 swift test 的资源构建。动态参数保留编译器确定的格式类型，字幕数量采用原生复数资源；数字与日期使用系统区域格式。
 
 枚举身份、任务数据、服务配置、字幕和系统提示词保持独立，语言只影响显示及新建默认名称。服务和系统返回的原始错误保持原内容。模型清单由 WhisperKit 集成模块提供，两平台共用；显示文案读取实际模块资源包。
 
@@ -80,7 +88,7 @@ TaskLibrary.commitCheckpoint 在主线程取得最新任务，修改副本、验
 
 ## 本地顺序执行
 
-TaskProcessingQueue 在应用进程中只有一个执行者，按 Task 的媒体顺序运行。开始或继续时保存冻结参数和待处理状态，已完成媒体、没有检查点的已有字幕保持原成果。LocalMediaTranscriptionPipeline 复用 LocalMediaStore、AudioExtractor 与 WhisperModelStore；提取器验证实际内容、所选音轨和缓存，队列以真实提取范围匹配恢复计划，再逐块调用 Provider、切分并提交。本次稳定范围计划建立一次块 ID／位置索引，开始、完成和失败提交复用位置并核对当前块 ID；成功块跳过，失败块保留证据，其他块和媒体继续。
+TaskProcessingQueue 在应用进程中只有一个执行者，按 Task 的媒体顺序运行。普通处理与重译在各自检查点提交成功后取得相同执行生命周期；顺序列表作为本次运行快照，待执行集合用于单项取消和页面占用判断，消费与退出时移除占用，不在遍历数组时反复扫描删除。开始或继续时保存冻结参数和待处理状态，已完成媒体、没有检查点的已有字幕保持原成果。LocalMediaTranscriptionPipeline 复用 LocalMediaStore、AudioExtractor 与 WhisperModelStore；提取器验证实际内容、所选音轨和缓存，队列以真实提取范围匹配恢复计划，再逐块调用 Provider、切分并提交。本次稳定范围计划建立一次块 ID／位置索引，开始、完成和失败提交复用位置并核对当前块 ID；成功块跳过，失败块保留证据，其他块和媒体继续。
 
 任务级取消先停止后续调度并取消当前实际操作，再保存等待项的取消状态；保存失败保留明确错误并继续停止执行，不假定取消状态已写入。单项取消可以跳过等待项，或取消当前实际操作后继续其他媒体。取消期间占用执行者，直到实际提取或推理返回才允许重试。返回但未提交的原始证据保存为取消记录。提取及转写回调只更新当前操作的显示进度，阶段与完成状态由实际操作和检查点提交驱动。执行结束清空当前执行状态后通知应用释放平台资源。
 
@@ -256,7 +264,7 @@ macOS 15／iOS 18 会话只在稳定根视图 AppleTranslationSessionHost 的 tr
 
 ## 用户所选 iCloud Drive 文件夹
 
-TaskSyncSettings 保存设备本地的可写文件夹书签和原媒体选项；启用后共享文件夹的 Tasks/<Task ID>.voxline 为成果文档，新任务使用此目录。首次迁移将对应本地文档移入 Tasks/Backups/<Task ID>/，各次备份独立保存；关闭同步枚举该任务备份，不同内容另存成功后消费备份，避免重复恢复。备份不进入活动列表或最近文档，删除共享任务后不自动恢复旧备份；遇到同 ID 不同内容拒绝覆盖；关闭同步先保留完整本地文档，原有不同版本另存新 Task ID 的副本。原媒体和共享文档不会因关闭同步被删除。应用入口恢复已有授权，目录选择、迁移确认和冲突选择由原生页面接线。
+TaskSyncCoordinator 保存设备本地的可写文件夹书签和原媒体选项；启用后共享文件夹的 Tasks/<Task ID>.voxline 为成果文档，新任务使用此目录。首次迁移将对应本地文档移入 Tasks/Backups/<Task ID>/，各次备份独立保存；关闭同步枚举该任务备份，不同内容另存成功后消费备份，避免重复恢复。备份不进入活动列表或最近文档，删除共享任务后不自动恢复旧备份；遇到同 ID 不同内容拒绝覆盖；关闭同步先保留完整本地文档，原有不同版本另存新 Task ID 的副本。原媒体和共享文档不会因关闭同步被删除。应用入口恢复已有授权，目录选择、迁移确认和冲突选择由原生页面接线。
 
 处理中检查点立即原子保存至本设备 Tasks/SyncRecovery 内，按所选共享目录隔离。每份恢复记录为 <任务文件名>.checkpoint 目录，metadata.json 记录基线是否存在，baseline.voxline 保留首次未发布前的原始云端字节，latest.voxline 保存最新完整任务。首次保存先写齐临时目录再整体移入，后续保存只原子替换 latest.voxline，不重复编码或写入基线；基线不以重新编码后的 Task 替代。旧设备恢复 JSON 的未发布成果在读取时一次性转存，成功后移除旧记录。TaskLibrary 从第一次未发布保存起计时，每 60 秒合并发布最新版本，不因持续更新重置计时；媒体处理结束、暂停、取消、失败及人工校对／参数保存立即发布。恢复记录在云端协调写入成功后删除，云端写入后崩溃可识别已发布内容；重启优先读取未发布本地成果，并保留原有云版本比较。本地保存成功即更新任务库并接受编辑，save 返回本地／已发布／待发布结果；发布失败通过独立可观察状态报告，不作为本地编辑保存失败，也不停止其余本地媒体处理。本地写入失败仍保留原草稿。另设备修改或删除不得覆盖。内部检查点写入接收已经编码验证的 Task，不在同次保存中再次解码；外部文档读写继续验证。批量发布逐文档尝试，单项失败不阻挡其余文档，最后报告失败；设置页重试实际发布后刷新。删除和关闭同步先发布待同步成果再执行原流程。
 
@@ -268,7 +276,7 @@ SharedTaskDocuments 使用 NSFileCoordinator 读写和 NSFileVersion 完整版�
 
 ## 云端转写
 
-Task 保存多协议、时间来源与独立识别成果，格式规则统一见 Task 持久化。TranscriptionSettings 的 openAICompatible 保存服务 ID、API 根地址、模型、原文语言及 CloudTranscriptionProtocol 预设。历史云配置缺少 protocolKind 时按原 Audio Transcriptions 协议读取；历史本地配置缺少 cloud 时保持 WhisperKit。密钥由本设备 Keychain 维护；设备服务改变地址或协议后拒绝发送旧任务。调整标题或翻译时保留当前转写配置，不从服务默认值重建；显式选择新转写服务才采用其配置。
+Task 保存多协议、时间来源与独立识别成果，格式规则统一见 Task 持久化。TranscriptionSettings 的 openAICompatible 保存服务 ID、API 根地址、模型、原文语言及 CloudTranscriptionProtocol 预设。云端配置明确保存所选协议；服务配置和任务按当前字段读取，缺失必需字段时报告读取错误。本地配置不携带云端参数。密钥由本设备 Keychain 维护；设备服务改变地址或协议后拒绝发送旧任务。调整标题或翻译时保留当前转写配置，不从服务默认值重建；显式选择新转写服务才采用其配置。
 
 ConfiguredMediaTranscriptionPipeline 共用所选音轨的最多 120 秒 PCM 提取。Audio Transcriptions 使用用户配置的模型 ID、WAV multipart、verbose_json 与 segment 时间戳；不通过模型名称猜测服务能力。兼容转写与聊天服务的 API 根地址允许查询参数，追加协议路径时保留原参数、端口及路径前缀。服务配置只校验模型非空，执行时按实际响应读取有效分段时间；不支持所需参数或缺少时间戳的服务明确失败。音频聊天先由 VoxlineWhisperKit 的 SpeechAudioChunker 复用固定 SDK EnergyVAD，20 毫秒检测、200 毫秒语音边界扩展、合并相交区间，连续语音拆为最多 8 秒的 PCM16 WAV，保留源时间偏移及分块检查点。检测无活动的块记录空结果且不请求服务。能量 VAD 是粗粒度检测，噪声、低音量和语音边界的质量需实际校对，不声明词级精度。
 

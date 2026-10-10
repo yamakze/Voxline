@@ -75,7 +75,7 @@ struct IOSMediaAssociationSheet: View {
                                 let identity = try await MediaInspector.shared.confirm(inspection, audioTrackID: trackID)
                                 var item = candidate.item
                                 try item.associateMedia(identity)
-                                try await LocalMediaStore.shared.save(projectID: item.id, identity: identity, url: selectedURL)
+                                try await LocalMediaStore.shared.save(mediaID: item.id, identity: identity, url: selectedURL)
                                 try onCommit(item)
                                 dismiss()
                             } catch { errorMessage = error.localizedDescription }

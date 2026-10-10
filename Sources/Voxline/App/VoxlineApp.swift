@@ -25,7 +25,7 @@ struct VoxlineApp: App {
         WindowGroup {
             MainWindowView()
                 .tint(Color.voxlineAccent)
-                .task { TaskSyncSettings.shared.restore() }
+                .task { TaskSyncCoordinator.shared.restore() }
         }
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1140, height: 740)
@@ -41,7 +41,7 @@ struct VoxlineApp: App {
         WindowGroup {
             IOSTaskLibraryView()
                 .background(AppleTranslationSessionHost())
-                .task { TaskSyncSettings.shared.restore() }
+                .task { TaskSyncCoordinator.shared.restore() }
         }
         #endif
     }

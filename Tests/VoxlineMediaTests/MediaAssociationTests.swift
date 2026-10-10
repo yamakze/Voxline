@@ -39,11 +39,11 @@ struct MediaAssociationTests {
         let id = UUID()
         let media = try MediaIdentity(fileName: "video.mp4", byteCount: 123, fingerprint: String(repeating: "a", count: 64),
                                       durationMilliseconds: 5000, audioTrackID: 1)
-        #expect(try await store.resolve(projectID: id, identity: media) == nil)
+        #expect(try await store.resolve(mediaID: id, identity: media) == nil)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         try Data("corrupt".utf8).write(to: directory.appendingPathComponent(id.uuidString).appendingPathExtension("json"))
-        await #expect(throws: DecodingError.self) { try await store.resolve(projectID: id, identity: media) }
+        await #expect(throws: DecodingError.self) { try await store.resolve(mediaID: id, identity: media) }
     }
 
     @Test func shorterPlaybackMediaKeepsExistingSubtitlesForEditing() throws {

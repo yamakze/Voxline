@@ -226,9 +226,9 @@ public struct MediaProcessingStepsView: View {
 
 // MARK: - Sync File Status Badge
 public struct SyncFileStatusBadge: View {
-    public let state: TaskSyncSettings.FileState
+    public let state: TaskSyncCoordinator.FileState
 
-    public init(state: TaskSyncSettings.FileState) {
+    public init(state: TaskSyncCoordinator.FileState) {
         self.state = state
     }
 

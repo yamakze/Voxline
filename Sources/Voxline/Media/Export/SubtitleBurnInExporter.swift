@@ -101,7 +101,7 @@ public enum SubtitleBurnInExporter {
                                    inspector: MediaInspector = .shared) async throws -> SubtitleBurnInPlan {
         guard item.kind == .video else { throw BurnInError.videoRequired }
         guard let identity = item.media,
-              let bookmark = try await mediaStore.resolve(projectID: item.id, identity: identity) else {
+              let bookmark = try await mediaStore.resolve(mediaID: item.id, identity: identity) else {
             throw BurnInError.missingMedia
         }
         let access = bookmark.url.startAccessingSecurityScopedResource()
@@ -109,7 +109,7 @@ public enum SubtitleBurnInExporter {
         defer { if access && !retained { bookmark.url.stopAccessingSecurityScopedResource() } }
         let inspection = try await inspector.inspect(bookmark.url)
         guard identity.matchesContent(of: try inspection.identity(audioTrackID: identity.audioTrackID)) else {
-            throw ProjectValidationError.differentMedia
+            throw DomainValidationError.differentMedia
         }
         // Share timeline and text projection with SRT, without constructing another full export.
         guard !item.cues.isEmpty else { throw SubtitleExportError.emptyCues }

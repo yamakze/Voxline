@@ -15,7 +15,7 @@ public final class TaskProcessingQueue {
     private let retryJitter: @Sendable () -> Double
     private var worker: Task<Void, Never>?
     private var mediaWork: Task<Void, any Error>?
-    private var queuedIDs: [UUID] = []
+    private var queuedIDs = Set<UUID>()
     private var cancelledIDs: Set<UUID> = []
     private var stopRequested = false
     private var progressID: UUID?
@@ -48,21 +48,15 @@ public final class TaskProcessingQueue {
         }
         guard !candidates.isEmpty else { throw QueueError.noWork }
         let ids = candidates.map(\.id)
+        let selectedIDs = Set(ids)
         try library.commitCheckpoint(taskID: taskID) { current in
-            for index in current.items.indices where ids.contains(current.items[index].id) {
+            for index in current.items.indices where selectedIDs.contains(current.items[index].id) {
                 if case .running = current.items[index].status { throw CheckpointError.workRunning }
                 current.items[index].status = .pending
             }
             if current.startedAt == nil { try current.recordStart() }
         }
-        self.taskID = taskID
-        library.protectedTaskID = taskID
-        queuedIDs = ids
-        cancelledIDs = []
-        stopRequested = false
-        isCancelling = false
-        errorMessage = nil
-        worker = Task { await self.consume(taskID: taskID, parameters: task.parameters) }
+        beginRun(taskID: taskID, parameters: task.parameters, mediaIDs: ids)
     }
 
     public func isScheduled(mediaID: UUID) -> Bool {
@@ -124,17 +118,22 @@ public final class TaskProcessingQueue {
         let batchIDs = try updateMedia(taskID: taskID, mediaID: mediaID) { current in
             try current.prepareTranslationBatches(cueIDBatches: batches)
         }
+        beginRun(taskID: taskID, parameters: task.parameters, mediaIDs: [mediaID], translationBatchIDs: batchIDs)
+    }
+
+    /// Both entry points acquire the same execution lifetime after their checkpoint is saved.
+    private func beginRun(taskID: UUID, parameters: TaskParameters, mediaIDs: [UUID], translationBatchIDs: [UUID]? = nil) {
         self.taskID = taskID
         library.protectedTaskID = taskID
-        queuedIDs = [mediaID]
+        queuedIDs = Set(mediaIDs)
         cancelledIDs = []
         stopRequested = false
         isCancelling = false
         errorMessage = nil
-        worker = Task { await self.consume(taskID: taskID, parameters: task.parameters, translationBatchIDs: batchIDs) }
+        worker = Task { await self.consume(taskID: taskID, parameters: parameters, mediaIDs: mediaIDs, translationBatchIDs: translationBatchIDs) }
     }
 
-    private func consume(taskID: UUID, parameters: TaskParameters, translationBatchIDs: [UUID]? = nil) async {
+    private func consume(taskID: UUID, parameters: TaskParameters, mediaIDs: [UUID], translationBatchIDs: [UUID]? = nil) async {
         defer {
             do { try library.publishSharedCheckpoints() }
             catch { errorMessage = library.errorMessage ?? error.localizedDescription }
@@ -146,11 +145,13 @@ public final class TaskProcessingQueue {
             self.taskID = nil
             library.protectedTaskID = nil
             worker = nil
+            queuedIDs = []
+            cancelledIDs = []
             isCancelling = false
             onFinish?()
         }
-        for id in queuedIDs {
-            queuedIDs.removeAll { $0 == id }
+        for id in mediaIDs {
+            queuedIDs.remove(id)
             if stopRequested { break }
             if cancelledIDs.contains(id) { continue }
             mediaID = id
@@ -361,7 +362,7 @@ public final class TaskProcessingQueue {
             // mistaken for a failed inference and allow later work to overwrite unsaved results.
             do {
                 try updateMedia(taskID: taskID, mediaID: mediaID) { try $0.commitTranscriptionChunk(chunkID, result: result, at: index) }
-            } catch let error as ProjectValidationError {
+            } catch let error as DomainValidationError {
                 // A newly submitted range can conflict with manual timing. Keep the edit and the
                 // raw inference, fail this range, and let the other media continue.
                 try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {

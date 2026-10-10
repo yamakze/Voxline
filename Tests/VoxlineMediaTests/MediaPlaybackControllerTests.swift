@@ -12,10 +12,10 @@ struct MediaPlaybackControllerTests {
             .appendingPathComponent("VoxlineMediaTests/Fixtures/multi-audio.mov")
     }
 
-    private func waitFor(_ condition: @MainActor () -> Bool) async throws {
+    private func waitFor(line: UInt = #line, _ condition: @MainActor () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(8))
         while !condition() {
-            guard ContinuousClock.now < deadline else { throw PlaybackTestError.timeout }
+            guard ContinuousClock.now < deadline else { throw PlaybackTestError.timeout(line: line) }
             try await Task.sleep(for: .milliseconds(20))
         }
     }
@@ -45,7 +45,7 @@ struct MediaPlaybackControllerTests {
         let store = LocalMediaStore(directory: directory)
         let inspector = MediaInspector()
         let item = try await fixture(at: videoURL, inspector: inspector)
-        try await store.save(projectID: item.id, identity: #require(item.media), url: videoURL)
+        try await store.save(mediaID: item.id, identity: #require(item.media), url: videoURL)
         let controller = MediaPlaybackController(mediaStore: store, inspector: inspector)
         defer { controller.releaseMedia() }
         await controller.loadMedia(for: item)
@@ -134,7 +134,7 @@ struct MediaPlaybackControllerTests {
         let output = try await extractor.extract(mediaURL: videoURL, mediaID: video.id, identity: #require(video.media))
         let audioURL = try #require(output.chunks.first).localURL
         let audio = try await fixture(at: audioURL, inspector: inspector)
-        try await store.save(projectID: audio.id, identity: #require(audio.media), url: audioURL)
+        try await store.save(mediaID: audio.id, identity: #require(audio.media), url: audioURL)
         let controller = MediaPlaybackController(mediaStore: store, inspector: inspector)
         defer { controller.releaseMedia() }
         await controller.loadMedia(for: audio)
@@ -163,4 +163,4 @@ struct MediaPlaybackControllerTests {
     }
 }
 
-private enum PlaybackTestError: Error { case timeout }
+private enum PlaybackTestError: Error { case timeout(line: UInt) }

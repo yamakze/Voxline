@@ -21,7 +21,7 @@ public struct MediaIdentity: Codable, Equatable, Sendable {
               !fileName.contains("/"), !fileName.contains("\\"), byteCount > 0, durationMilliseconds > 0,
               audioTrackID != 0, fingerprint.utf8.count == 64,
               fingerprint.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
-            throw ProjectValidationError.invalidMediaIdentity
+            throw DomainValidationError.invalidMediaIdentity
         }
     }
 
@@ -61,19 +61,19 @@ public struct TranscriptionSettings: Codable, Equatable, Sendable {
             try cloud.validate()
             if let languageCode {
                 guard (cloud.protocolKind == .qwenAudioChat ? (2...3).contains(languageCode.count) : languageCode.count == 2), languageCode.allSatisfy({ $0.isASCII && $0.isLetter }) else {
-                    throw ProjectValidationError.invalidSourceLanguage
+                    throw DomainValidationError.invalidSourceLanguage
                 }
             }
         }
         guard !modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ProjectValidationError.emptyModelID
+            throw DomainValidationError.emptyModelID
         }
         switch languageMode {
         case .automatic:
-            guard languageCode == nil else { throw ProjectValidationError.invalidSourceLanguage }
+            guard languageCode == nil else { throw DomainValidationError.invalidSourceLanguage }
         case .specified:
             guard let languageCode, !languageCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw ProjectValidationError.invalidSourceLanguage
+                throw DomainValidationError.invalidSourceLanguage
             }
         }
     }
@@ -121,30 +121,30 @@ public struct TranslationSettings: Codable, Equatable, Sendable {
     }
 
     public func validate() throws {
-        guard batchSize > 0 else { throw ProjectValidationError.invalidTranslationBatchSize }
+        guard batchSize > 0 else { throw DomainValidationError.invalidTranslationBatchSize }
         guard !targetLanguage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ProjectValidationError.invalidTranslationSettings
+            throw DomainValidationError.invalidTranslationSettings
         }
         switch engine {
         case .appleTranslation(let sourceLanguage):
             guard !sourceLanguage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw ProjectValidationError.invalidSourceLanguage
+                throw DomainValidationError.invalidSourceLanguage
             }
         case .openAICompatible(let api):
             guard !api.systemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw ProjectValidationError.emptyTranslationSystemPrompt
+                throw DomainValidationError.emptyTranslationSystemPrompt
             }
             guard let parts = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false),
                   parts.scheme == "https" || parts.scheme == "http", let host = parts.host, !host.isEmpty,
                   parts.user == nil, parts.password == nil, parts.fragment == nil,
                   !api.modelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw ProjectValidationError.invalidTranslationSettings
+                throw DomainValidationError.invalidTranslationSettings
             }
         }
     }
 }
 
-public enum ProjectValidationError: Error, LocalizedError, Equatable {
+public enum DomainValidationError: Error, LocalizedError, Equatable {
     case unsupportedVersion(Int)
     case invalidMediaIdentity
     case emptyModelID

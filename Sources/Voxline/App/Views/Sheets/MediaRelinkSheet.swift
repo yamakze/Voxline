@@ -150,7 +150,7 @@ public struct MediaRelinkSheet: View {
                 if case .failed = original.status, original.media == nil {
                     updated.status = .pending
                 }
-                try await LocalMediaStore.shared.save(projectID: original.id, identity: candidate, url: inspection.url)
+                try await LocalMediaStore.shared.save(mediaID: original.id, identity: candidate, url: inspection.url)
                 try onCommit(updated, original)
                 dismiss()
             } catch {

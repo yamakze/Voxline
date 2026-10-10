@@ -13,16 +13,6 @@ public struct CloudTranscriptionServiceConfig: Identifiable, Codable, Equatable,
         self.id = id; self.name = name; self.baseURL = baseURL; self.modelID = modelID; self.protocolKind = protocolKind
     }
 
-    private enum CodingKeys: String, CodingKey { case id, name, baseURL, modelID, protocolKind }
-    public init(from decoder: any Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        id = try values.decode(UUID.self, forKey: .id)
-        name = try values.decode(String.self, forKey: .name)
-        baseURL = try values.decode(URL.self, forKey: .baseURL)
-        modelID = try values.decode(String.self, forKey: .modelID)
-        protocolKind = try values.decodeIfPresent(CloudTranscriptionProtocol.self, forKey: .protocolKind) ?? .audioTranscriptions
-    }
-
     public func settings(languageCode: String? = nil) throws -> TranscriptionSettings {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw TranslationServiceError.emptyName }
         let settings = TranscriptionSettings(provider: .openAICompatible, modelID: modelID,

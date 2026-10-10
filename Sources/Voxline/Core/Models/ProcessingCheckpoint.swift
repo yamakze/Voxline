@@ -102,7 +102,7 @@ public struct TranslationCheckpointIndex: Sendable {
         var positions: [UUID: Int] = [:]
         positions.reserveCapacity(item.cues.count)
         for (position, cue) in item.cues.enumerated() {
-            guard positions.updateValue(position, forKey: cue.id) == nil else { throw ProjectValidationError.duplicateCue(cue.id) }
+            guard positions.updateValue(position, forKey: cue.id) == nil else { throw DomainValidationError.duplicateCue(cue.id) }
         }
         cuePositions = positions
         positions = [:]
@@ -501,7 +501,7 @@ public extension TaskMediaItem {
         var positions: [UUID: Int] = [:]
         positions.reserveCapacity(cues.count)
         for (index, cue) in cues.enumerated() {
-            guard positions.updateValue(index, forKey: cue.id) == nil else { throw ProjectValidationError.duplicateCue(cue.id) }
+            guard positions.updateValue(index, forKey: cue.id) == nil else { throw DomainValidationError.duplicateCue(cue.id) }
         }
         return positions
     }

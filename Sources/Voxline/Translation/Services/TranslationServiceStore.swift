@@ -23,8 +23,8 @@ public struct TranslationServiceConfig: Identifiable, Codable, Equatable, Sendab
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self.init(id: try values.decode(UUID.self, forKey: .id), name: try values.decode(String.self, forKey: .name),
                   baseURL: try values.decode(URL.self, forKey: .baseURL), modelID: try values.decode(String.self, forKey: .modelID),
-                  batchSize: try values.contains(.batchSize) ? values.decode(Int.self, forKey: .batchSize) : TranslationSettings.defaultBatchSize,
-                  systemPrompt: try values.contains(.systemPrompt) ? values.decode(String.self, forKey: .systemPrompt) : TranslationSettings.defaultSystemPrompt)
+                  batchSize: try values.decode(Int.self, forKey: .batchSize),
+                  systemPrompt: try values.decode(String.self, forKey: .systemPrompt))
         try validate()
     }
 
@@ -79,29 +79,14 @@ public final class TranslationServiceStore {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
-        struct StoredService: Decodable {
-            let config: TranslationServiceConfig
-            let apiKey: String? // Decode-only migration from former plaintext settings.
-            enum CodingKeys: String, CodingKey { case apiKey }
-            init(from decoder: any Decoder) throws {
-                config = try TranslationServiceConfig(from: decoder)
-                apiKey = try decoder.container(keyedBy: CodingKeys.self).decodeIfPresent(String.self, forKey: .apiKey)
-            }
-        }
         do {
             let data: Data
             do { data = try Data(contentsOf: storageURL) }
             catch let error as CocoaError where error.code == .fileReadNoSuchFile {
                 services = []; credentialPresence = [:]; return
             }
-            let records = try JSONDecoder().decode([StoredService].self, from: data)
-            let metadata = records.map(\.config)
+            let metadata = try JSONDecoder().decode([TranslationServiceConfig].self, from: data)
             guard Set(metadata.map(\.id)).count == metadata.count else { throw TranslationServiceError.duplicateService }
-            for record in records {
-                if let key = record.apiKey { try await vault.write(key.isEmpty ? nil : key, serviceID: record.config.id) }
-            }
-            // Remove plaintext only after all Keychain writes succeed. Retry remains idempotent.
-            if records.contains(where: { $0.apiKey != nil }) { try persist(metadata) }
             var presence: [UUID: Bool] = [:]
             for service in metadata { presence[service.id] = try await vault.contains(serviceID: service.id) }
             services = metadata
@@ -163,7 +148,7 @@ public final class TranslationServiceStore {
     }
 
     public func apiKey(for settings: TranslationSettings) async throws -> String {
-        guard let api = settings.api else { throw ProjectValidationError.invalidTranslationSettings }
+        guard let api = settings.api else { throw DomainValidationError.invalidTranslationSettings }
         await initialLoad?.value
         guard !isLoading, !isSaving else { throw TranslationServiceError.busy }
         guard errorMessage == nil else { throw TranslationServiceError.configurationUnavailable }

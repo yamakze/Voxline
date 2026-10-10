@@ -84,7 +84,7 @@ struct IOSProcessingTests {
             .init(title: "Missing access", kind: .audio, source: .localFile(fileName: identity.fileName), media: identity),
             .init(title: "Native extraction", kind: .audio, source: .localFile(fileName: identity.fileName), media: identity)
         ], parameters: parameters)
-        try await bookmarks.save(projectID: task.items[1].id, identity: identity, url: url)
+        try await bookmarks.save(mediaID: task.items[1].id, identity: identity, url: url)
         let library = IOSTaskLibrary(directory: root.appendingPathComponent("tasks"), pipeline: pipeline,
             resourceCleanup: .init(applicationSupport: support, caches: caches))
         try library.save(task)
@@ -124,7 +124,7 @@ struct IOSProcessingTests {
         try reopened.storage.delete(taskID: task.id)
         #expect(!FileManager.default.fileExists(atPath: files[0].path))
         #expect(!FileManager.default.fileExists(atPath: extracted.chunks[0].localURL.path))
-        #expect(try await bookmarks.resolve(projectID: task.items[1].id, identity: identity) == nil)
+        #expect(try await bookmarks.resolve(mediaID: task.items[1].id, identity: identity) == nil)
         #expect(FileManager.default.fileExists(atPath: url.path))
         #expect(IOSTaskLibrary(directory: library.storage.tasksDirectory).tasks.isEmpty)
     }
@@ -158,8 +158,8 @@ struct IOSRealSampleTests {
             .init(title: "S001 audio", kind: .audio, source: .localFile(fileName: audioIdentity.fileName), media: audioIdentity)
         ], parameters: .init(transcription: .init(modelID: TranscriptionSettings.whisperKitBaseline.modelID,
             languageMode: .specified, languageCode: "en")))
-        try await bookmarks.save(projectID: task.items[1].id, identity: videoIdentity, url: video)
-        try await bookmarks.save(projectID: task.items[2].id, identity: audioIdentity, url: audio)
+        try await bookmarks.save(mediaID: task.items[1].id, identity: videoIdentity, url: video)
+        try await bookmarks.save(mediaID: task.items[2].id, identity: audioIdentity, url: audio)
         try library.save(task)
         try library.queue.start(taskID: task.id)
         while library.queue.taskID != nil { try await Task.sleep(for: .milliseconds(50)) }
@@ -183,7 +183,7 @@ struct IOSRealSampleTests {
         let reopened = IOSTaskLibrary(directory: library.storage.tasksDirectory, pipeline: pipeline)
         #expect(reopened.task(task.id)?.items[1] == corrected)
         #expect(reopened.queue.taskID == nil)
-        try await bookmarks.save(projectID: task.items[0].id, identity: videoIdentity, url: video)
+        try await bookmarks.save(mediaID: task.items[0].id, identity: videoIdentity, url: video)
         try reopened.queue.start(taskID: task.id, mediaID: task.items[0].id)
         while reopened.queue.taskID != nil { try await Task.sleep(for: .milliseconds(50)) }
         let saved = try TaskDocumentCodec.decode(Data(contentsOf: reopened.storage.defaultURL(for: task.id)))

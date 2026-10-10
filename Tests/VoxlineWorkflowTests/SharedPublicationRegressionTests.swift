@@ -68,7 +68,7 @@ struct SharedPublicationRegressionTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"))
-        let settings = TaskSyncSettings(library: library, storageURL: root.appendingPathComponent("settings.json"))
+        let settings = TaskSyncCoordinator(library: library, storageURL: root.appendingPathComponent("settings.json"))
         let folder = root.appendingPathComponent("cloud")
         let task = ProcessingTask(title: "Baseline")
         try library.save(task)
@@ -93,7 +93,7 @@ struct SharedPublicationRegressionTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let local = root.appendingPathComponent("local")
         let library = TaskLibrary(tasksDirectory: local)
-        let settings = TaskSyncSettings(library: library, storageURL: root.appendingPathComponent("settings.json"))
+        let settings = TaskSyncCoordinator(library: library, storageURL: root.appendingPathComponent("settings.json"))
         let a = ProcessingTask(title: "A"), z = ProcessingTask(title: "Z")
         try library.save(a); try library.save(z)
         let requested = [z.id.uuidString, a.id.uuidString]
@@ -112,7 +112,7 @@ struct SharedPublicationRegressionTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"), sharedPublicationInterval: .milliseconds(20))
-        let settings = TaskSyncSettings(library: library, storageURL: root.appendingPathComponent("settings.json"))
+        let settings = TaskSyncCoordinator(library: library, storageURL: root.appendingPathComponent("settings.json"))
         let task = ProcessingTask(title: "Before")
         try library.save(task)
         try await settings.enable(folder: root.appendingPathComponent("cloud"), originals: false)

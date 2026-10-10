@@ -6,7 +6,7 @@ import VoxlineWorkflow
 
 struct IOSTaskLibraryView: View {
     @State private var library = IOSTaskLibrary.shared
-    @State private var syncSettings = TaskSyncSettings.shared
+    @State private var syncSettings = TaskSyncCoordinator.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var importing = false
     @State private var deletingTask: ProcessingTask?
@@ -259,7 +259,7 @@ struct IOSTaskLibraryView: View {
         .listStyle(.insetGrouped)
     }
 
-    private func placeholderEntryRow(entry: TaskLibrary.Entry, fileState: TaskSyncSettings.FileState?) -> some View {
+    private func placeholderEntryRow(entry: TaskLibrary.Entry, fileState: TaskSyncCoordinator.FileState?) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: "icloud.and.arrow.down")
                 .font(.title3)
@@ -319,7 +319,7 @@ struct IOSTaskLibraryView: View {
         }
     }
 
-    private func taskCard(_ task: ProcessingTask, entry: TaskLibrary.Entry, fileState: TaskSyncSettings.FileState?) -> some View {
+    private func taskCard(_ task: ProcessingTask, entry: TaskLibrary.Entry, fileState: TaskSyncCoordinator.FileState?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(task.title)
@@ -421,7 +421,7 @@ struct IOSTaskLibraryView: View {
 private struct IOSTaskDetailView: View {
     let library: IOSTaskLibrary
     let taskID: UUID
-    @State private var syncSettings = TaskSyncSettings.shared
+    @State private var syncSettings = TaskSyncCoordinator.shared
     @State private var configuringTask = false
     @State private var showConflictSheet = false
     @State private var errorMessage: String?
@@ -429,7 +429,7 @@ private struct IOSTaskDetailView: View {
     @State private var sharingURL: URL?
     @State private var changingCloudService = false
 
-    private var fileState: TaskSyncSettings.FileState? {
+    private var fileState: TaskSyncCoordinator.FileState? {
         library.storage.url(for: taskID).flatMap { syncSettings.fileStates[$0.standardizedFileURL] }
     }
 

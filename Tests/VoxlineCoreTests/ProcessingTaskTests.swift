@@ -81,7 +81,7 @@ struct ProcessingTaskTests {
     }
 
     @Test func corruptedUnknownAndMalformedTasksAreExplicitErrors() throws {
-        #expect(throws: ProjectValidationError.unsupportedVersion(99)) {
+        #expect(throws: DomainValidationError.unsupportedVersion(99)) {
             try TaskDocumentCodec.decode(Data(#"{"formatVersion":99,"unknown":true}"#.utf8))
         }
         #expect(throws: DecodingError.self) {
@@ -98,9 +98,9 @@ struct ProcessingTaskTests {
         var task = ProcessingTask()
         var parameters = task.parameters
         parameters.transcription = .init(modelID: "")
-        #expect(throws: ProjectValidationError.emptyModelID) { try task.updateParameters(parameters) }
+        #expect(throws: DomainValidationError.emptyModelID) { try task.updateParameters(parameters) }
         #expect(task.parameters == .baseline)
-        #expect(throws: ProjectValidationError.invalidSourceLanguage) {
+        #expect(throws: DomainValidationError.invalidSourceLanguage) {
             try TranscriptionSettings(modelID: "model", languageMode: .specified).validate()
         }
     }

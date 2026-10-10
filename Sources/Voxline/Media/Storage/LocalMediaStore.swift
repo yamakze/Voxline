@@ -6,14 +6,14 @@ public struct ResolvedMediaBookmark: Sendable {
     public let isStale: Bool
 }
 
-/// Device-local access records are independent of task documents. Migrated media keeps the former project ID.
+/// Device-local access records associate media with files on this device.
 public actor LocalMediaStore {
     public static let shared = LocalMediaStore()
     private let directory: URL?
 
     public init(directory: URL? = nil) { self.directory = directory }
 
-    public func save(projectID: UUID, identity: MediaIdentity, url: URL) throws {
+    public func save(mediaID: UUID, identity: MediaIdentity, url: URL) throws {
         try identity.validate()
         let accessStarted = url.startAccessingSecurityScopedResource()
         defer { if accessStarted { url.stopAccessingSecurityScopedResource() } }
@@ -24,20 +24,20 @@ public actor LocalMediaStore {
         #endif
         let bookmark = try url.bookmarkData(options: options,
                                             includingResourceValuesForKeys: nil, relativeTo: nil)
-        let record = MediaBookmarkRecord(formatVersion: 1, projectID: projectID, identity: identity, bookmark: bookmark)
-        let target = try recordURL(projectID: projectID)
+        let record = MediaBookmarkRecord(formatVersion: 1, mediaID: mediaID, identity: identity, bookmark: bookmark)
+        let target = try recordURL(mediaID: mediaID)
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode(record).write(to: target, options: .atomic)
     }
 
-    public func resolve(projectID: UUID, identity: MediaIdentity) throws -> ResolvedMediaBookmark? {
-        let target = try recordURL(projectID: projectID)
+    public func resolve(mediaID: UUID, identity: MediaIdentity) throws -> ResolvedMediaBookmark? {
+        let target = try recordURL(mediaID: mediaID)
         let data: Data
         do { data = try Data(contentsOf: target) }
         catch let error as CocoaError where error.code == .fileReadNoSuchFile { return nil }
         let record = try JSONDecoder().decode(MediaBookmarkRecord.self, from: data)
         try record.identity.validate()
-        guard record.formatVersion == 1, record.projectID == projectID,
+        guard record.formatVersion == 1, record.mediaID == mediaID,
               record.identity.matchesContent(of: identity), !record.bookmark.isEmpty else {
             throw MediaAccessError.invalidBookmark
         }
@@ -57,7 +57,7 @@ public actor LocalMediaStore {
         return ResolvedMediaBookmark(url: url, isStale: stale)
     }
 
-    private func recordURL(projectID: UUID) throws -> URL {
+    private func recordURL(mediaID: UUID) throws -> URL {
         let base: URL
         if let directory { base = directory }
         else {
@@ -65,13 +65,20 @@ public actor LocalMediaStore {
                                                 appropriateFor: nil, create: true)
                 .appendingPathComponent("Voxline/MediaAssociations", isDirectory: true)
         }
-        return base.appendingPathComponent(projectID.uuidString).appendingPathExtension("json")
+        return base.appendingPathComponent(mediaID.uuidString).appendingPathExtension("json")
     }
 }
 
 private struct MediaBookmarkRecord: Codable {
     let formatVersion: Int
-    let projectID: UUID
+    let mediaID: UUID
     let identity: MediaIdentity
     let bookmark: Data
+
+    private enum CodingKeys: String, CodingKey {
+        case formatVersion
+        case mediaID = "projectID"
+        case identity
+        case bookmark
+    }
 }

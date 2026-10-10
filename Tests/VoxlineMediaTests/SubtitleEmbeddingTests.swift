@@ -20,7 +20,7 @@ struct SubtitleEmbeddingTests {
         let output = existingOutput.map { URL(fileURLWithPath: $0) } ?? directory.appendingPathComponent("reviewed-bilingual.mp4")
         if existingOutput == nil {
             let store = LocalMediaStore(directory: directory.appendingPathComponent("bookmarks"))
-            try await store.save(projectID: item.id, identity: #require(item.media), url: source)
+            try await store.save(mediaID: item.id, identity: #require(item.media), url: source)
             try await SubtitleEmbeddingExporter.export(item: item, kind: .bilingual,
                 to: output, languageTag: "zh-Hans", allowOverwrite: true, mediaStore: store)
         }
@@ -92,7 +92,7 @@ struct SubtitleEmbeddingTests {
         cue.translation = .succeeded(text: "你好\n字幕", sourceRevision: cue.sourceRevision)
         let item = TaskMediaItem(title: "Embedded test", kind: .video, source: .localFile(fileName: identity.fileName),
             media: identity, status: .completed, cues: [cue])
-        try await store.save(projectID: item.id, identity: identity, url: source)
+        try await store.save(mediaID: item.id, identity: identity, url: source)
         return (item, store, source)
     }
 
