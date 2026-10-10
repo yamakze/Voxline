@@ -47,6 +47,7 @@ jobs:
             echo 'Tag and Version.xcconfig do not match' >&2
             exit 1
           fi
+          echo "build-version=$(python3 Scripts/lib/build-metadata.py version)" >> "$GITHUB_OUTPUT"
       - name: Extract release notes from CHANGELOG.md
         id: notes_extractor
         run: |
