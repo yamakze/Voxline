@@ -671,3 +671,5 @@
 "全部就绪" = "All Ready";
 "提取音频 · %@ · 字幕翻译已就绪" = "Audio extraction · %@ · Subtitle translation ready";
 "提取音频 · %@已就绪" = "Audio extraction · %@ ready";
+"工具" = "Tools";
+"校对与媒体工具" = "Proofreading and media tools";

@@ -25,8 +25,10 @@ struct ProofreadingPlayerControls: View {
                 playback.togglePlayPause()
             } label: {
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 18, weight: .bold))
-                    .frame(width: 32, height: 32)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.voxlineAccent)
+                    .frame(width: 30, height: 30)
+                    .background(Color.voxlineAccent.opacity(0.15), in: .circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(playback.isPlaying ? String(localized: "暂停", bundle: appLocalizationBundle) : String(localized: "播放", bundle: appLocalizationBundle))
@@ -63,6 +65,7 @@ struct ProofreadingPlayerControls: View {
                 in: 0...max(playback.durationSeconds, 1.0)
             )
             .controlSize(.mini)
+            .tint(Color.voxlineAccent)
             .accessibilityLabel(String(localized: "播放进度", bundle: appLocalizationBundle))
             .frame(minWidth: 100)
 

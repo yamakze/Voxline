@@ -68,6 +68,16 @@ struct ProofreadingCueRow: View {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(isActive ? Color.voxlineActiveCueBorder : Color.clear, lineWidth: 1)
         )
+        .overlay(alignment: .leading) {
+            if isActive {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.voxlineAccent)
+                    .frame(width: 3)
+                    .padding(.vertical, 6)
+                    .padding(.leading, 3)
+                    .transition(reduceMotion ? .identity : .opacity)
+            }
+        }
         .opacity(isActive ? 1.0 : (isHovered ? 0.95 : (isPast ? 0.40 : 0.70)))
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isActive)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovered)
@@ -164,7 +174,7 @@ struct ProofreadingCueRow: View {
                     case .succeeded(let trans, _):
                         Text(trans)
                             .font(.system(size: isActive ? 16 : 14, weight: isActive ? .semibold : .regular))
-                            .foregroundStyle(session.previewKind == .bilingual ? .yellow : .primary)
+                            .foregroundStyle(session.previewKind == .bilingual ? Color.orange : .primary)
                             .lineSpacing(2)
                             .contentShape(Rectangle())
                             .onTapGesture { onSeek(cue.startMilliseconds) }

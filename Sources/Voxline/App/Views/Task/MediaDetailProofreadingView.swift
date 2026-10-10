@@ -74,20 +74,7 @@ public struct MediaDetailProofreadingView: View {
                         catch { session.errorMessage = error.localizedDescription }
                     }
                     .disabled(queue.isCancelling)
-                } else {
-                    Button(String(localized: "重译字幕…", bundle: appLocalizationBundle), systemImage: "character.bubble") { session.retranslatingCues = item.cues }
-                        .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil || queue.taskID != nil)
                 }
-
-                Button(String(localized: "重新关联…", bundle: appLocalizationBundle), systemImage: "link.badge.plus") {
-                    showRelinkSheet = true
-                }
-                .disabled(queue.taskID != nil)
-
-                Button(String(localized: "整体时间偏移…", bundle: appLocalizationBundle), systemImage: "clock") {
-                    showTimeOffsetSheet = true
-                }
-                .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil)
 
                 Button(String(localized: "添加字幕…", bundle: appLocalizationBundle), systemImage: "plus") {
                     structureState.insert(at: playbackController.currentTimeSeconds)
@@ -105,6 +92,28 @@ public struct MediaDetailProofreadingView: View {
                 .disabled(!session.canUndo(in: item) || queue.taskID != nil)
                 .keyboardShortcut("z", modifiers: [.command])
                 .help(String(localized: "撤销最近一次编辑 (⌘Z)", bundle: appLocalizationBundle))
+
+                Menu {
+                    Button(String(localized: "整体时间偏移…", bundle: appLocalizationBundle), systemImage: "clock") {
+                        showTimeOffsetSheet = true
+                    }
+                    .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil)
+
+                    Button(String(localized: "重译全部字幕…", bundle: appLocalizationBundle), systemImage: "character.bubble") {
+                        session.retranslatingCues = item.cues
+                    }
+                    .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil || queue.taskID != nil)
+
+                    Divider()
+
+                    Button(String(localized: "重新关联媒体…", bundle: appLocalizationBundle), systemImage: "link.badge.plus") {
+                        showRelinkSheet = true
+                    }
+                    .disabled(queue.taskID != nil)
+                } label: {
+                    Label(String(localized: "工具", bundle: appLocalizationBundle), systemImage: "ellipsis.circle")
+                }
+                .help(String(localized: "校对与媒体工具", bundle: appLocalizationBundle))
 
                 Menu {
                     Section(String(localized: "字幕文件", bundle: appLocalizationBundle)) {
@@ -280,7 +289,7 @@ public struct MediaDetailProofreadingView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(.ultraThinMaterial, in: .capsule)
+                .liquidGlassCapsule()
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -311,7 +320,7 @@ public struct MediaDetailProofreadingView: View {
                         if case .succeeded(let trans, _) = activeCue.translation {
                             Text(trans)
                                 .font(.system(size: 17, weight: .bold, design: .rounded))
-                                .foregroundStyle(.yellow)
+                                .foregroundStyle(Color(red: 1.0, green: 0.82, blue: 0.35))
                         } else {
                             Text(translationStatus(for: activeCue))
                                 .font(.caption).foregroundStyle(.orange)
