@@ -92,7 +92,7 @@ public struct TaskLibraryView: View {
                 .keyboardShortcut("n", modifiers: [.command])
             }
         }
-        .onAppear { library.refresh() }
+        .task { await library.refresh() }
         .confirmationDialog(String(localized: "删除任务？", bundle: appLocalizationBundle), isPresented: Binding(
             get: { deletingEntry != nil }, set: { if !$0 { deletingEntry = nil } }), titleVisibility: .visible) {
             Button(String(localized: "删除任务文件", bundle: appLocalizationBundle), role: .destructive) {
@@ -117,7 +117,6 @@ public struct TaskLibraryView: View {
         )) {
             if let taskID = conflictResolutionTaskID {
                 TaskConflictResolutionSheet(taskID: taskID) {
-                    library.refresh()
                     syncSettings.refresh()
                 }
             }

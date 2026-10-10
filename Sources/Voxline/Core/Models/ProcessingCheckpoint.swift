@@ -16,10 +16,15 @@ public struct TranscriptionChunkRange: Codable, Hashable, Sendable {
     }
 }
 
+/// Completed work is durable through its range, source and the item's editable cues.
+public struct TranscriptionCompletion: Codable, Equatable, Sendable {
+    public let sourceID: UUID
+}
+
 public struct TranscriptionChunkCheckpoint: Codable, Equatable, Identifiable, Sendable {
     public enum State: Codable, Equatable, Sendable {
         case pending, running(sourceID: UUID), interrupted
-        case completed(SubtitleSegmentationResult)
+        case completed(TranscriptionCompletion)
         case failed(reason: String, evidence: TranscriptionEvidence?)
         case cancelled(evidence: TranscriptionEvidence?)
     }
@@ -57,12 +62,34 @@ public struct TranslationBatchOutput: Codable, Equatable, Sendable {
 public struct TranslationBatchCheckpoint: Codable, Equatable, Identifiable, Sendable {
     public enum State: Codable, Equatable, Sendable {
         case pending, running, interrupted, failed(reason: String), cancelled
-        case completed([TranslationBatchOutput])
+        case completed
     }
     public let id: UUID
-    public let inputs: [TranslationBatchInput]
+    public internal(set) var inputs: [TranslationBatchInput]
     public internal(set) var state: State
     public var isCompleted: Bool { if case .completed = state { true } else { false } }
+
+    init(id: UUID, inputs: [TranslationBatchInput], state: State) {
+        self.id = id
+        self.inputs = inputs
+        self.state = state
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, inputs, state }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        state = try values.decode(State.self, forKey: .state)
+        inputs = state == .completed ? [] : try values.decode([TranslationBatchInput].self, forKey: .inputs)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(state, forKey: .state)
+        if !isCompleted { try values.encode(inputs, forKey: .inputs) }
+    }
 }
 
 /// An execution-local index; current IDs and inputs are still checked before applying results.
@@ -110,7 +137,6 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
         guard !chunks.isEmpty else { throw CheckpointError.invalidRecord }
         var chunkIDs = Set<UUID>()
         var sourceIDs = Set<UUID>()
-        var generatedIDs = Set<UUID>()
         var previousEnd: Int64 = 0
         var runningCount = 0
         for chunk in chunks {
@@ -127,12 +153,7 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
                     throw CheckpointError.invalidRecord
                 }
             case .completed(let result):
-                try validateEvidence(result.evidence, range: chunk.range)
                 guard sourceIDs.insert(result.sourceID).inserted else { throw CheckpointError.invalidRecord }
-                try SubtitleCue.validateTimeline(result.cues, within: media)
-                for cue in result.cues {
-                    guard generatedIDs.insert(cue.id).inserted else { throw CheckpointError.invalidRecord }
-                }
             case .failed(let reason, let evidence):
                 guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CheckpointError.invalidRecord }
                 if let evidence { try validateEvidence(evidence, range: chunk.range) }
@@ -148,7 +169,8 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
         var activeIDs = Set<UUID>()
         for batch in translationBatches {
             guard parameters.translation != nil, chunks.allSatisfy(\.isCompleted), batchIDs.insert(batch.id).inserted,
-                  !batch.inputs.isEmpty, Set(batch.inputs.map(\.cueID)).count == batch.inputs.count else { throw CheckpointError.invalidRecord }
+                  batch.isCompleted || !batch.inputs.isEmpty,
+                  Set(batch.inputs.map(\.cueID)).count == batch.inputs.count else { throw CheckpointError.invalidRecord }
             for input in batch.inputs {
                 guard input.sourceRevision > 0,
                       !input.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CheckpointError.invalidRecord }
@@ -166,7 +188,7 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
             case .failed(let reason):
                 guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CheckpointError.invalidRecord }
             case .cancelled: break
-            case .completed(let outputs): try validateOutputs(outputs, inputs: batch.inputs)
+            case .completed: break
             }
         }
         guard runningCount <= 1 else { throw CheckpointError.invalidRecord }
@@ -257,7 +279,7 @@ public extension TaskMediaItem {
         guard let index = position ?? record.chunks.firstIndex(where: { $0.id == chunkID }),
               record.chunks.indices.contains(index), record.chunks[index].id == chunkID else { throw CheckpointError.unknownWork }
         if case .completed(let committed) = record.chunks[index].state {
-            guard committed == result.checkpointSnapshot else { throw CheckpointError.alreadyCommitted }
+            guard committed.sourceID == result.sourceID else { throw CheckpointError.alreadyCommitted }
             return
         }
         guard case .running(let sourceID) = record.chunks[index].state, sourceID == result.sourceID else {
@@ -272,7 +294,7 @@ public extension TaskMediaItem {
         var updated = self
         updated.cues.append(contentsOf: result.cues)
         updated.cues.sort { $0.startMilliseconds < $1.startMilliseconds }
-        record.chunks[index].state = .completed(result.checkpointSnapshot)
+        record.chunks[index].state = .completed(.init(sourceID: result.sourceID))
         updated.checkpoint = record
         if let reason = record.chunks.compactMap({ chunk -> String? in
             if case .failed(let reason, _) = chunk.state { return reason }
@@ -371,10 +393,8 @@ public extension TaskMediaItem {
         let workIndex = try workIndex ?? TranslationCheckpointIndex(item: self)
         guard let index = workIndex.batchPosition(batchID, in: record.translationBatches) else { throw CheckpointError.unknownWork }
         let batch = record.translationBatches[index]
-        if case .completed(let committed) = batch.state {
-            guard committed == outputs else { throw CheckpointError.alreadyCommitted }
-            return
-        }
+        // An already committed request cannot apply again or replace subsequent manual edits.
+        if batch.isCompleted { return }
         guard batch.state == .running else { throw CheckpointError.staleResult }
         try record.validateOutputs(outputs, inputs: batch.inputs)
         guard batch.inputs.allSatisfy({ input in
@@ -385,7 +405,8 @@ public extension TaskMediaItem {
             guard let cueIndex = workIndex.cuePosition(output.cueID, in: cues) else { throw CheckpointError.unknownWork }
             updated.cues[cueIndex].translation = .succeeded(text: output.text, sourceRevision: updated.cues[cueIndex].sourceRevision)
         }
-        record.translationBatches[index].state = .completed(outputs)
+        record.translationBatches[index].state = .completed
+        record.translationBatches[index].inputs = []
         updated.checkpoint = record
         if updated.cues.allSatisfy(\.hasTranslation) { updated.status = .completed }
         else {

@@ -68,9 +68,6 @@ public struct MainWindowView: View {
         )) {
             Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
-        .onAppear {
-            library.refresh()
-        }
     }
 
     // MARK: - Sidebar

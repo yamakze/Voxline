@@ -6,7 +6,7 @@ import VoxlineCore
 @Suite("Task document persistence", .serialized)
 @MainActor
 struct TaskLibraryTests {
-    @Test func deletionRetainsSameIDCopiesAndMigratedMediaUntilLastKnownReference() throws {
+    @Test func deletionRetainsSameIDCopiesAndMigratedMediaUntilLastKnownReference() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let local = root.appendingPathComponent("tasks")
@@ -37,7 +37,7 @@ struct TaskLibraryTests {
         #expect(FileManager.default.fileExists(atPath: copy.path))
         let order = try JSONDecoder().decode([URL].self, from: Data(contentsOf: local.appendingPathComponent("task-order.json")))
         #expect(!order.contains(library.defaultURL(for: task.id)))
-        library.refresh()
+        await library.refresh()
         #expect(library.task(for: task.id) == task) // The separate copy still exists.
         try library.delete(taskID: task.id)
         #expect(recent.isEmpty)
@@ -74,7 +74,7 @@ struct TaskLibraryTests {
 
     }
 
-    @Test func corruptHistoricalCacheAndUnreadableOtherTaskDoNotBlockDeletion() throws {
+    @Test func corruptHistoricalCacheAndUnreadableOtherTaskDoNotBlockDeletion() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let caches = root.appendingPathComponent("caches")
@@ -97,7 +97,7 @@ struct TaskLibraryTests {
         try library.save(another)
         let brokenTask = library.tasksDirectory.appendingPathComponent("broken.voxline")
         try Data("unknown task references".utf8).write(to: brokenTask)
-        library.refresh()
+        await library.refresh()
         let retainedCache = transcription.appendingPathComponent(another.items[0].id.uuidString)
         try FileManager.default.createDirectory(at: retainedCache, withIntermediateDirectories: true)
         try library.delete(taskID: another.id)
@@ -106,7 +106,7 @@ struct TaskLibraryTests {
         #expect(library.errorMessage?.contains(brokenTask.path) == true)
     }
 
-    @Test func listOrderSurvivesWorkerSavesAndRestartAndDeletionDoesNotTouchMedia() throws {
+    @Test func listOrderSurvivesWorkerSavesAndRestartAndDeletionDoesNotTouchMedia() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -125,7 +125,7 @@ struct TaskLibraryTests {
         let reopened = TaskLibrary(tasksDirectory: directory, recentDocumentURLs: { [recent] })
         #expect(reopened.entries.map(\.taskID) == [first.id, second.id])
         try reopened.delete(taskID: second.id)
-        reopened.refresh()
+        await reopened.refresh()
         #expect(reopened.entries.map(\.taskID) == [first.id])
         #expect(try Data(contentsOf: media) == Data("Source stays".utf8))
         try FileManager.default.removeItem(at: directory.appendingPathComponent("task-order.json"))
@@ -300,8 +300,8 @@ struct TaskLibraryTests {
         #expect(reopened.items[0].cues[0].sourceText == "Saved manual correction")
         #expect(reopened.items[0].cues[0].sourceRevision == 2)
         if case .completed(let original) = reopened.items[0].checkpoint?.chunks[0].state {
-            #expect(original == first)
-        } else { Issue.record("Raw result was lost") }
+            #expect(original.sourceID == first.sourceID)
+        } else { Issue.record("Committed source was lost") }
         #expect(TaskLibrary(tasksDirectory: directory).task(for: task.id)?.items[0] == reopened.items[0])
         #expect(throws: CheckpointError.taskUnavailable) {
             try library.commitCheckpoint(taskID: UUID()) { $0.title = "Cannot apply" }

@@ -67,7 +67,6 @@ struct IOSTaskLibraryView: View {
                     ),
                     onCommit: { prepared in
                         try library.save(prepared)
-                        library.load()
                         let newID = prepared.id
                         newTaskDraft = nil
                         navigationPath.append(newID)
@@ -83,7 +82,6 @@ struct IOSTaskLibraryView: View {
             )) {
                 if let taskID = conflictResolutionTaskID {
                     TaskConflictResolutionSheet(taskID: taskID) {
-                        library.load()
                         syncSettings.refresh()
                     }
                 }
@@ -106,7 +104,7 @@ struct IOSTaskLibraryView: View {
             } message: {
                 Text(noticeMessage ?? "")
             }
-            .task { library.load() }
+            .task { await library.load() }
             .onChange(of: scenePhase) { _, phase in
                 library.handleScenePhaseChange(to: phase)
             }
@@ -313,7 +311,7 @@ struct IOSTaskLibraryView: View {
     private func downloadPlaceholder(url: URL) {
         do {
             try syncSettings.requestDownload(url)
-            library.load()
+            Task { await library.load() }
             syncSettings.refresh()
             noticeMessage = String(localized: "已请求系统下载云端任务，请稍候。", bundle: appLocalizationBundle)
         } catch {
@@ -552,7 +550,6 @@ private struct IOSTaskDetailView: View {
             .sheet(isPresented: $changingCloudService) {
                 ChangeCloudTranscriptionServiceSheet(task: task) { updated in
                     try library.save(updated)
-                    library.load()
                 }
             }
             .sheet(isPresented: $configuringTask) {
@@ -563,13 +560,11 @@ private struct IOSTaskDetailView: View {
                     ),
                     onCommit: { updated in
                         try library.save(updated)
-                        library.load()
                     }
                 )
             }
             .sheet(isPresented: $showConflictSheet) {
                 TaskConflictResolutionSheet(taskID: taskID, draftTask: task) {
-                    library.load()
                     syncSettings.refresh()
                 }
             }

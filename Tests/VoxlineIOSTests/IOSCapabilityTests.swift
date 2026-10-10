@@ -9,7 +9,7 @@ import VoxlineWorkflow
 
 @Suite("iOS local capability integration") @MainActor
 struct IOSCapabilityTests {
-    @Test func nativeListMoveIncludesPlaceholderOffsetsAndPreservesResultsAcrossRestartAndWriteFailure() throws {
+    @Test func nativeListMoveIncludesPlaceholderOffsetsAndPreservesResultsAcrossRestartAndWriteFailure() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let library = IOSTaskLibrary(directory: directory)
@@ -18,7 +18,7 @@ struct IOSCapabilityTests {
         let invalidURL = directory.appendingPathComponent("invalid.voxline")
         let invalidBytes = Data("Invalid document".utf8)
         try invalidBytes.write(to: invalidURL)
-        library.load()
+        await library.load()
         let invalid = try #require(library.storage.entries.first { $0.url == invalidURL })
         let ids = tasks.map { $0.id.uuidString }
         try library.storage.reorder(entryIDs: [ids[0], invalid.id, ids[1], ids[2]])

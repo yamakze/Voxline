@@ -226,11 +226,7 @@ struct TaskProcessingQueueTests {
         let edited = task.items[0].cues[0]
         try library.save(task)
         let savedBeforeRecovery = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
-        if case .completed(let snapshot) = savedBeforeRecovery.items[0].checkpoint?.chunks[0].state {
-            #expect(snapshot.evidence.windows.isEmpty && snapshot.evidence.cloudResult == nil)
-            #expect(try SubtitleSegmenter.segment(snapshot.evidence, sourceID: snapshot.sourceID,
-                mediaDurationMilliseconds: 4000, policy: snapshot.policy) == snapshot)
-        } else { Issue.record("Missing compact completed recognition") }
+        #expect(savedBeforeRecovery.items[0].checkpoint?.chunks[0] == task.items[0].checkpoint?.chunks[0])
         if case .failed(_, let evidence) = savedBeforeRecovery.items[0].checkpoint?.chunks[1].state {
             #expect(evidence?.windows.count == 1)
             #expect(evidence?.windows.first?.decodedTokens == [1])

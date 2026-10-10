@@ -26,8 +26,8 @@ final class IOSTaskLibrary {
         queue.onFinish = { [weak self] in self?.endBackgroundTask() }
     }
 
-    func load() {
-        storage.refresh()
+    func load() async {
+        await storage.refresh()
         let failures = storage.entries.compactMap { entry in entry.error.map { "\(entry.title)：\($0)" } }
         errorMessage = ([storage.errorMessage].compactMap { $0 } + failures).joined(separator: "\n")
         if errorMessage?.isEmpty == true { errorMessage = nil }

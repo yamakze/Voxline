@@ -17,7 +17,7 @@ public struct SubtitleSegmentationPolicy: Codable, Equatable, Sendable {
     public static let readable = Self()
 }
 
-/// A derived artifact keeps the original evidence so changing the policy requires no new inference.
+/// An inference result is validated at commit; only its source and editable cues enter the document.
 public struct SubtitleSegmentationResult: Codable, Equatable, Sendable {
     public let sourceID: UUID
     public let evidence: TranscriptionEvidence
@@ -25,16 +25,6 @@ public struct SubtitleSegmentationResult: Codable, Equatable, Sendable {
     public let entries: [SegmentedSubtitle]
     public let excludedEmptySegmentIndices: [Int]
     public var cues: [SubtitleCue] { entries.map(\.cue) }
-
-    /// Completed recognition retains original segments and provenance for resegmentation.
-    /// Decoder windows and duplicate cloud responses belong to device diagnostics.
-    var checkpointSnapshot: Self {
-        var evidence = evidence
-        evidence.windows = []
-        evidence.cloudResult = nil
-        return .init(sourceID: sourceID, evidence: evidence, policy: policy,
-            entries: entries, excludedEmptySegmentIndices: excludedEmptySegmentIndices)
-    }
 }
 
 public struct SegmentedSubtitle: Codable, Equatable, Sendable {

@@ -41,6 +41,7 @@ public final class TaskLibrary {
     private let resourceCleanup: TaskResourceCleanup
     private let sharedPublicationInterval: Duration
     @ObservationIgnored private var publicationWork: Task<Void, Never>?
+    @ObservationIgnored private var refreshGeneration = UUID()
 
     public init(tasksDirectory: URL, recentDocumentURLs: @escaping @MainActor () -> [URL] = { [] },
                 noteRecentDocument: @escaping @MainActor (URL) -> Void = { _ in },
@@ -52,7 +53,7 @@ public final class TaskLibrary {
         self.forgetRecentDocument = forgetRecentDocument
         self.resourceCleanup = resourceCleanup
         self.sharedPublicationInterval = sharedPublicationInterval
-        refresh()
+        refreshImmediately()
     }
 
     public func task(for id: UUID) -> ProcessingTask? {
@@ -256,7 +257,7 @@ public final class TaskLibrary {
         guard let documents = sharedDocuments, let url = url(for: taskID), documents.contains(url) else { throw SharedDocumentError.missingFolder }
         let task = try documents.keepVersion(versionID, at: url)
         register(task, at: url)
-        refresh()
+        refreshImmediately()
     }
 
     public func connectSharedDocuments(_ documents: SharedTaskDocuments?) throws {
@@ -288,7 +289,7 @@ public final class TaskLibrary {
             openTasks = openTasks.filter { $0.value.url.map { !previous.contains($0) } ?? true }
         }
         sharedDocuments = documents
-        refresh()
+        refreshImmediately()
         scheduleSharedPublication()
     }
 
@@ -331,12 +332,105 @@ public final class TaskLibrary {
         if updated != entries { entries = sortedEntries(updated) }
     }
 
-    public func refresh() {
+    /// Explicit page refreshes read local documents in the background and reuse native shared reloads.
+    public func refresh() async {
+        let generation = UUID()
+        refreshGeneration = generation
+        let documents = sharedDocuments
+        let previousEntries = entries
+        let previousOrder = orderedEntryIDs
         libraryError = nil
+        if let documents {
+            let directory = documents.directory
+            do {
+                let files = try await Task.detached(priority: .utility) {
+                    try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                }.value
+                guard refreshGeneration == generation, sharedDocuments === documents else { return }
+                let existing = entries.compactMap(\.url).filter { documents.contains($0) }
+                let urls = Set(files + existing + documents.discoveredURLs + documents.pendingURLs)
+                    .filter { documents.contains($0) }
+                await reloadSharedDocuments(at: urls)
+            } catch {
+                guard refreshGeneration == generation, sharedDocuments === documents else { return }
+                libraryError = error.localizedDescription
+            }
+        }
+        guard refreshGeneration == generation, sharedDocuments === documents else { return }
+        let tasksDirectory = tasksDirectory
+        let recentURLs = recentDocumentURLs().filter { documents?.contains($0) != true }
+        let retainedEntries = entries.filter { entry in
+            openTasks[entry.taskID] != nil || entry.taskID == protectedTaskID ||
+                entry.url.map { documents?.contains($0) == true } == true
+        }
+        let retained = Set(retainedEntries.map(\.taskID))
+        let retainedURLs = Set(retainedEntries.compactMap { $0.url?.standardizedFileURL })
+        let local = await Task.detached(priority: .utility) {
+            Self.localDocuments(tasksDirectory: tasksDirectory, recentURLs: recentURLs,
+                skipping: retained, skippingURLs: retainedURLs)
+        }.value
+        guard !Task.isCancelled, refreshGeneration == generation, sharedDocuments === documents else { return }
+        var found = entries.filter { entry in
+            openTasks[entry.taskID] != nil || entry.taskID == protectedTaskID || entry.url.map { documents?.contains($0) == true } == true ||
+                !previousEntries.contains(entry)
+        }
+        var seenIDs = Set(found.map(\.taskID))
+        for entry in local.entries {
+            let previous = previousEntries.first { $0.taskID == entry.taskID || $0.url == entry.url }
+            let current = entries.first { $0.taskID == entry.taskID || $0.url == entry.url }
+            // An edit, deletion or worker commit after this refresh began wins over disk results.
+            guard previous == current, entry.taskID != protectedTaskID,
+                  seenIDs.insert(entry.taskID).inserted else { continue }
+            found.append(entry)
+        }
+        if orderedEntryIDs == previousOrder, let order = local.order { orderedEntryIDs = order }
+        if let error = local.error { libraryError = error }
+        entries = sortedEntries(found)
+    }
+
+    private struct LocalDocuments: Sendable {
+        var entries: [Entry] = []
+        var order: [String]?
+        var error: String?
+    }
+
+    nonisolated private static func localDocuments(tasksDirectory: URL, recentURLs: [URL], skipping: Set<UUID>,
+                                                   skippingURLs: Set<URL>) -> LocalDocuments {
+        var result = LocalDocuments()
+        let orderURL = tasksDirectory.appendingPathComponent("task-order.json")
         do {
-            orderedEntryIDs = FileManager.default.fileExists(atPath: orderURL.path)
+            result.order = FileManager.default.fileExists(atPath: orderURL.path)
                 ? try JSONDecoder().decode([String].self, from: Data(contentsOf: orderURL)) : []
-        } catch { libraryError = String(localized: "任务顺序读取失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle) }
+        } catch { result.error = String(localized: "任务顺序读取失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle) }
+        var localURLs: [URL] = []
+        do {
+            try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
+            localURLs = try FileManager.default.contentsOfDirectory(at: tasksDirectory, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "voxline" }
+        } catch { result.error = error.localizedDescription }
+        var seenIDs = skipping
+        var seenURLs = skippingURLs
+        for url in localURLs + recentURLs {
+            guard seenURLs.insert(url.standardizedFileURL).inserted else { continue }
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            do {
+                var task = try TaskDocumentCodec.decode(Data(contentsOf: url))
+                task.interruptRunningItems()
+                guard seenIDs.insert(task.id).inserted else { continue }
+                result.entries.append(Entry(id: task.id.uuidString, taskID: task.id, url: url, task: task, error: nil))
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile && !localURLs.contains(url) {
+                continue // Deleted documents can remain in the system recent list.
+            } catch {
+                result.entries.append(Entry(id: url.absoluteString, taskID: UUID(), url: url, task: nil, error: error.localizedDescription))
+            }
+        }
+        return result
+    }
+
+    private func refreshImmediately() {
+        refreshGeneration = UUID()
+        libraryError = nil
         var foundEntries: [Entry] = []
         var seenIDs = Set<UUID>()
 
@@ -376,51 +470,11 @@ public final class TaskLibrary {
             foundEntries.append(entry)
         }
 
-        // 2. Saved tasks in Application Support
-        do {
-            try FileManager.default.createDirectory(at: tasksDirectory, withIntermediateDirectories: true)
-            let taskFiles = try FileManager.default.contentsOfDirectory(at: tasksDirectory, includingPropertiesForKeys: nil)
-            for fileURL in taskFiles where fileURL.pathExtension == "voxline" {
-                let access = fileURL.startAccessingSecurityScopedResource()
-                defer { if access { fileURL.stopAccessingSecurityScopedResource() } }
-
-                do {
-                    var task = try TaskDocumentCodec.decode(Data(contentsOf: fileURL))
-                    task.interruptRunningItems()
-                    if !seenIDs.contains(task.id) {
-                        seenIDs.insert(task.id)
-                        foundEntries.append(Entry(id: task.id.uuidString, taskID: task.id, url: fileURL, task: task, error: nil))
-                    }
-                } catch {
-                    foundEntries.append(Entry(id: fileURL.absoluteString, taskID: UUID(), url: fileURL,
-                                              task: nil, error: error.localizedDescription))
-                }
-            }
-        } catch {
-            libraryError = error.localizedDescription
-        }
-
-        // 3. System recent documents
-        for url in recentDocumentURLs() {
-            let access = url.startAccessingSecurityScopedResource()
-            defer { if access { url.stopAccessingSecurityScopedResource() } }
-
-            do {
-                var task = try TaskDocumentCodec.decode(Data(contentsOf: url))
-                task.interruptRunningItems()
-                if !seenIDs.contains(task.id) {
-                    seenIDs.insert(task.id)
-                    foundEntries.append(Entry(id: task.id.uuidString, taskID: task.id, url: url, task: task, error: nil))
-                }
-            } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-                // Deleted documents can remain in the system's recent-document list.
-                continue
-            } catch {
-                if !foundEntries.contains(where: { $0.url == url }) {
-                    foundEntries.append(Entry(id: url.absoluteString, taskID: UUID(), url: url, task: nil, error: error.localizedDescription))
-                }
-            }
-        }
+        let local = Self.localDocuments(tasksDirectory: tasksDirectory, recentURLs: recentDocumentURLs(),
+            skipping: seenIDs, skippingURLs: Set(foundEntries.compactMap { $0.url?.standardizedFileURL }))
+        foundEntries.append(contentsOf: local.entries)
+        if let order = local.order { orderedEntryIDs = order }
+        if let error = local.error { libraryError = error }
 
         entries = sortedEntries(foundEntries)
     }

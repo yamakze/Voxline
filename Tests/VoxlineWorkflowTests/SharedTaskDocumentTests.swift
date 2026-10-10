@@ -6,7 +6,7 @@ import VoxlineMedia
 
 @Suite("Shared Task documents", .serialized) @MainActor
 struct SharedTaskDocumentTests {
-    @Test func localCheckpointsSurviveRestartAndRemoteChangesStayProtected() throws {
+    @Test func localCheckpointsSurviveRestartAndRemoteChangesStayProtected() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let local = root.appendingPathComponent("local")
@@ -19,9 +19,18 @@ struct SharedTaskDocumentTests {
         try library.save(initial)
         let url = try #require(library.url(for: initial.id))
         try library.commitCheckpoint(taskID: initial.id) { $0.title = "First checkpoint" }
+        let recoveryFolder = try #require(FileManager.default.contentsOfDirectory(at: recovery, includingPropertiesForKeys: nil).first)
+            .appendingPathComponent(url.lastPathComponent).appendingPathExtension("checkpoint")
+        let baselineURL = recoveryFolder.appendingPathComponent("baseline.voxline")
+        let baseline = try Data(contentsOf: baselineURL)
+        let baselineID = try baselineURL.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier as? NSObject
         try library.commitCheckpoint(taskID: initial.id) { $0.title = "Latest checkpoint" }
+        #expect(try TaskDocumentCodec.decode(baseline) == initial)
+        #expect(try Data(contentsOf: baselineURL) == baseline)
+        #expect((try baselineURL.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier as? NSObject) == baselineID)
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: recoveryFolder.appendingPathComponent("latest.voxline"))).title == "Latest checkpoint")
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == initial)
-        library.refresh()
+        await library.refresh()
         #expect(library.task(for: initial.id)?.title == "Latest checkpoint")
         let restarted = TaskLibrary(tasksDirectory: local)
         let restored = try SharedTaskDocuments(directory: cloud, recoveryDirectory: recovery)
@@ -42,6 +51,31 @@ struct SharedTaskDocumentTests {
         #expect(restarted.task(for: initial.id) == remote)
         #expect(restarted.entries.contains { $0.task?.title == "Latest checkpoint" + String(localized: " 副本", bundle: VoxlineCore.voxlineLocalizationBundle) })
         #expect(restored.pendingURLs.isEmpty)
+    }
+
+    @Test func failedRecoveryReplacementRetainsLastSavedVersionAndBaseline() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let recovery = root.appendingPathComponent("recovery")
+        let documents = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"), recoveryDirectory: recovery)
+        let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"))
+        try library.connectSharedDocuments(documents)
+        let task = ProcessingTask(title: "Published")
+        try library.save(task)
+        try library.commitCheckpoint(taskID: task.id) { $0.title = "Saved locally" }
+        let folder = try #require(FileManager.default.contentsOfDirectory(at: recovery, includingPropertiesForKeys: nil).first)
+            .appendingPathComponent(task.id.uuidString + ".voxline.checkpoint")
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path) }
+        #expect(throws: (any Error).self) { try library.commitCheckpoint(taskID: task.id) { $0.title = "Not saved" } }
+        #expect(library.task(for: task.id)?.title == "Saved locally")
+        let restarted = try SharedTaskDocuments(directory: documents.directory, recoveryDirectory: recovery)
+        let url = library.defaultURL(for: task.id)
+        #expect(try TaskDocumentCodec.decode(restarted.read(url)).title == "Saved locally")
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)).title == "Published")
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+        try restarted.publishCheckpoint(at: url)
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)).title == "Saved locally")
     }
 
     @Test func processingUpdatesCoalesceUntilTimerAndManualSavePublishesImmediately() async throws {
@@ -86,7 +120,7 @@ struct SharedTaskDocumentTests {
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == initial)
     }
 
-    @Test func remoteChangeRejectsDraftAndKeepsBothVersionsRecoverable() throws {
+    @Test func remoteChangeRejectsDraftAndKeepsBothVersionsRecoverable() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let shared = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"))
@@ -106,7 +140,7 @@ struct SharedTaskDocumentTests {
         let copy = try library.saveRecoveryCopy(draft)
         #expect(copy.id != initial.id)
         #expect(copy.items == draft.items)
-        library.refresh()
+        await library.refresh()
         #expect(library.task(for: initial.id) == remote)
         #expect(library.task(for: copy.id)?.title == "Unsaved local edit" + String(localized: " 副本", bundle: VoxlineCore.voxlineLocalizationBundle))
         let reopened = TaskLibrary(tasksDirectory: root.appendingPathComponent("other-device"))
@@ -114,7 +148,7 @@ struct SharedTaskDocumentTests {
         #expect(Set(reopened.entries.map(\.taskID)) == [initial.id, copy.id])
     }
 
-    @Test func workerSnapshotSurvivesNotificationAndCannotOverwriteRemoteOrDeletedFile() throws {
+    @Test func workerSnapshotSurvivesNotificationAndCannotOverwriteRemoteOrDeletedFile() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let shared = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"))
@@ -127,7 +161,7 @@ struct SharedTaskDocumentTests {
         var remote = initial
         remote.title = "Changed elsewhere"
         try TaskDocumentCodec.encode(remote).write(to: url, options: .atomic)
-        library.refresh()
+        await library.refresh()
         #expect(library.task(for: initial.id) == initial)
         #expect(throws: SharedDocumentError.self) { try library.commitCheckpoint(taskID: initial.id) { $0.title = "Worker result" } }
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == remote)
@@ -135,11 +169,11 @@ struct SharedTaskDocumentTests {
         #expect(throws: SharedDocumentError.self) { try library.save(initial) }
         #expect(!FileManager.default.fileExists(atPath: url.path))
         library.protectedTaskID = nil
-        library.refresh()
+        await library.refresh()
         #expect(library.task(for: initial.id) == nil)
     }
 
-    @Test func invalidRemoteVersionKeepsLastPublishedTaskAndBlocksSave() throws {
+    @Test func invalidRemoteVersionKeepsLastPublishedTaskAndBlocksSave() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let shared = try SharedTaskDocuments(directory: root.appendingPathComponent("cloud"))
@@ -149,7 +183,7 @@ struct SharedTaskDocumentTests {
         try library.save(initial)
         let url = try #require(library.url(for: initial.id))
         try Data("broken JSON".utf8).write(to: url)
-        library.refresh()
+        await library.refresh()
         #expect(library.task(for: initial.id) == initial)
         #expect(library.entries.first?.error != nil)
         #expect(throws: SharedDocumentError.self) { try library.save(initial) }

@@ -457,7 +457,7 @@ struct ProcessingCheckpointTests {
         #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(reopened)) == reopened)
     }
 
-    @Test func restartSkipsCommittedChunksAndKeepsEditedCuesAndRawEvidence() throws {
+    @Test func restartSkipsCommittedChunksAndKeepsEditedCuesAndSource() throws {
         var original = try task()
         let result = try complete(&original, index: 0)
         try original.items[0].cues[0].replaceSourceText(with: "Corrected")
@@ -473,8 +473,8 @@ struct ProcessingCheckpointTests {
         let plan = try reopened.items[0].recoveryPlan(media: record.media, parameters: reopened.parameters, ranges: ranges)
         #expect(plan.transcriptionChunkIDs == [unfinished])
         #expect(reopened.items[0].cues == original.items[0].cues)
-        if case .completed(let saved) = record.chunks[0].state { #expect(saved == result) }
-        else { Issue.record("Committed evidence missing") }
+        if case .completed(let saved) = record.chunks[0].state { #expect(saved.sourceID == result.sourceID) }
+        else { Issue.record("Committed source missing") }
         try reopened.items[0].commitTranscriptionChunk(record.chunks[0].id, result: result)
         #expect(reopened.items[0].cues == original.items[0].cues)
         _ = try complete(&reopened, index: 1)
@@ -568,18 +568,23 @@ struct ProcessingCheckpointTests {
         var reopened = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task))
         reopened.interruptRunningItems()
         let record = try #require(reopened.items[0].checkpoint)
+        #expect(record.translationBatches[0].inputs.isEmpty)
+        #expect(record.translationBatches[1].inputs.count == 1)
         let plan = try reopened.items[0].recoveryPlan(media: record.media, parameters: reopened.parameters, ranges: ranges)
         #expect(plan.transcriptionChunkIDs.isEmpty)
         #expect(plan.translationBatchIDs == [second])
         #expect(plan.untranslatedCueIDs.isEmpty)
+        let firstCue = reopened.items[0].cues[0]
+        try reopened.items[0].editSubtitle(comparedTo: firstCue, sourceText: firstCue.sourceText, translationText: "人工校对")
         try reopened.items[0].commitTranslationBatch(first, outputs: output)
+        #expect(reopened.items[0].cues[0].translation == .succeeded(text: "人工校对", sourceRevision: 1))
         try reopened.items[0].beginTranslationBatch(second)
         try reopened.items[0].commitTranslationBatch(second, outputs: [.init(cueID: ids[1], text: "继续")])
         #expect(reopened.items[0].status == .completed)
         #expect(reopened.items[0].cues.allSatisfy { $0.hasTranslation })
         try reopened.items[0].cues[0].replaceSourceText(with: "Edited again")
         let edited = try TaskDocumentCodec.decode(TaskDocumentCodec.encode(reopened))
-        #expect(edited.items[0].cues[0].translation == .succeeded(text: "保留", sourceRevision: 1))
+        #expect(edited.items[0].cues[0].translation == .succeeded(text: "人工校对", sourceRevision: 1))
         #expect(edited.items[0].cues[0].hasTranslation)
         #expect(try edited.items[0].recoveryPlan(media: record.media, parameters: edited.parameters, ranges: ranges).untranslatedCueIDs.isEmpty)
     }

@@ -22,11 +22,12 @@ public final class SharedTaskDocuments {
     public let directory: URL
     public var discoveredURLs: [URL] = []
     private var snapshots: [URL: Data] = [:]
-    private struct LocalCheckpoint: Codable {
+    private struct LocalCheckpoint: Decodable {
         let url: URL
         let expectedCloudData: Data?
         let data: Data
     }
+    private struct RecoveryMetadata: Codable { let hasBaseline: Bool }
     private let recoveryDirectory: URL?
     private var pending: [URL: LocalCheckpoint] = [:]
     public enum PublicationFailure: Equatable, Sendable {
@@ -53,12 +54,30 @@ public final class SharedTaskDocuments {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if let local = self.recoveryDirectory {
             try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
-            for file in try FileManager.default.contentsOfDirectory(at: local, includingPropertiesForKeys: nil) where file.pathExtension == "json" {
+            let files = try FileManager.default.contentsOfDirectory(at: local, includingPropertiesForKeys: nil)
+            for folder in files where folder.pathExtension == "checkpoint" {
+                let url = directory.appendingPathComponent(folder.deletingPathExtension().lastPathComponent).standardizedFileURL
+                guard contains(url) else { throw SharedDocumentError.changed }
+                let metadata = try JSONDecoder().decode(RecoveryMetadata.self,
+                    from: Data(contentsOf: folder.appendingPathComponent("metadata.json")))
+                let data = try Data(contentsOf: folder.appendingPathComponent("latest.voxline"))
+                let baseline = metadata.hasBaseline ? try Data(contentsOf: folder.appendingPathComponent("baseline.voxline")) : nil
+                _ = try TaskDocumentCodec.decode(data)
+                pending[url] = LocalCheckpoint(url: url, expectedCloudData: baseline, data: data)
+                snapshots[url] = baseline
+            }
+            // Adopt any unpublished record left by the previous on-device format once.
+            for file in files where file.pathExtension == "json" {
                 let checkpoint = try JSONDecoder().decode(LocalCheckpoint.self, from: Data(contentsOf: file))
                 guard contains(checkpoint.url) else { throw SharedDocumentError.changed }
-                _ = try TaskDocumentCodec.decode(checkpoint.data)
-                pending[checkpoint.url.standardizedFileURL] = checkpoint
-                snapshots[checkpoint.url.standardizedFileURL] = checkpoint.expectedCloudData
+                let key = checkpoint.url.standardizedFileURL
+                if pending[key] == nil {
+                    _ = try TaskDocumentCodec.decode(checkpoint.data)
+                    try storeCheckpoint(checkpoint, creating: true)
+                    pending[key] = checkpoint
+                    snapshots[key] = checkpoint.expectedCloudData
+                }
+                try FileManager.default.removeItem(at: file)
             }
         }
     }
@@ -104,14 +123,33 @@ public final class SharedTaskDocuments {
 
     /// Durable local recovery precedes cloud publication. The first cloud version remains the baseline.
     func saveCheckpoint(_ data: Data, to url: URL) throws {
-        guard let recoveryDirectory else { throw SharedDocumentError.missingFolder }
         let key = url.standardizedFileURL
         let expected: Data?
         if let previous = pending[key] { expected = previous.expectedCloudData }
         else { expected = snapshots[key] }
         let checkpoint = LocalCheckpoint(url: key, expectedCloudData: expected, data: data)
-        try JSONEncoder().encode(checkpoint).write(to: recoveryDirectory.appendingPathComponent(url.lastPathComponent).appendingPathExtension("json"), options: .atomic)
+        try storeCheckpoint(checkpoint, creating: pending[key] == nil)
         pending[key] = checkpoint
+    }
+
+    /// Initial publication creates the baseline and latest bytes together; later saves replace only latest.
+    private func storeCheckpoint(_ checkpoint: LocalCheckpoint, creating: Bool) throws {
+        guard let recoveryDirectory else { throw SharedDocumentError.missingFolder }
+        let folder = recoveryDirectory.appendingPathComponent(checkpoint.url.lastPathComponent).appendingPathExtension("checkpoint")
+        if !creating {
+            try checkpoint.data.write(to: folder.appendingPathComponent("latest.voxline"), options: .atomic)
+            return
+        }
+        let staging = recoveryDirectory.appendingPathComponent(".\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        if let baseline = checkpoint.expectedCloudData {
+            try baseline.write(to: staging.appendingPathComponent("baseline.voxline"))
+        }
+        try JSONEncoder().encode(RecoveryMetadata(hasBaseline: checkpoint.expectedCloudData != nil))
+            .write(to: staging.appendingPathComponent("metadata.json"))
+        try checkpoint.data.write(to: staging.appendingPathComponent("latest.voxline"))
+        try FileManager.default.moveItem(at: staging, to: folder)
     }
 
     public func publishCheckpoint(at url: URL) throws {
@@ -133,7 +171,7 @@ public final class SharedTaskDocuments {
                 }
             }
             snapshots[key] = checkpoint.data
-            try FileManager.default.removeItem(at: recoveryDirectory.appendingPathComponent(url.lastPathComponent).appendingPathExtension("json"))
+            try FileManager.default.removeItem(at: recoveryDirectory.appendingPathComponent(url.lastPathComponent).appendingPathExtension("checkpoint"))
             pending[key] = nil
             publicationErrors[key] = nil
         } catch {
@@ -248,7 +286,7 @@ public final class SharedTaskDocuments {
         }
         snapshots[url.standardizedFileURL] = data
         if pending[url.standardizedFileURL] != nil, let recoveryDirectory {
-            try FileManager.default.removeItem(at: recoveryDirectory.appendingPathComponent(url.lastPathComponent).appendingPathExtension("json"))
+            try FileManager.default.removeItem(at: recoveryDirectory.appendingPathComponent(url.lastPathComponent).appendingPathExtension("checkpoint"))
             pending[url.standardizedFileURL] = nil
             publicationErrors[url.standardizedFileURL] = nil
         }

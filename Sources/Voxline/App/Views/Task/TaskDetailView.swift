@@ -47,7 +47,6 @@ public struct TaskDetailView: View {
         }
         .sheet(isPresented: $showConflictSheet) {
             TaskConflictResolutionSheet(taskID: task.id, draftTask: task) {
-                TaskLibrary.shared.refresh()
                 syncSettings.refresh()
             }
         }
