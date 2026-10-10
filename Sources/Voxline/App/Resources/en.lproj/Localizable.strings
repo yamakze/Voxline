@@ -642,6 +642,18 @@
 "拖入音视频文件" = "Drop audio or video files here";
 "支持 MP4, MOV, M4V, M4A, MP3, WAV 等格式" = "Supports MP4, MOV, M4V, M4A, MP3, WAV, and more";
 "选择文件…" = "Choose Files…";
+"下载模型" = "Download Model";
+"取消下载" = "Cancel Download";
+"右键查看操作选项" = "Right-click for options";
+"正在删除…" = "Deleting…";
+"正在下载 %@…" = "Downloading %@…";
+"正在校验模型文件完整性…" = "Verifying model file integrity…";
+"确定要删除 %@ 吗？将释放约 %.0f MB 磁盘空间，后续使用需重新下载。" = "Are you sure you want to delete %@? This will free up approximately %.0f MB of disk space; you can redownload it later.";
+"已有其他任务正在处理中" = "Another task is currently in progress";
+"右键查看操作选项（在访达中显示、删除模型）" = "Right-click for options (Show in Finder, delete model)";
+"右键点击可下载模型" = "Right-click to download model";
+"右键点击可取消下载" = "Right-click to cancel download";
+"右键点击可重新下载或删除" = "Right-click to redownload or delete";
 
 
 

@@ -8,6 +8,8 @@ import VoxlineCore
 public struct ModelManagementView: View {
     @State private var modelManager = ModelManager.shared
 
+    @State private var modelPendingDeletion: WhisperModelDescriptor?
+
     public init() {}
 
     private var storageSegments: [StorageSegment] {
@@ -74,7 +76,24 @@ public struct ModelManagementView: View {
 
                     VStack(spacing: 10) {
                         ForEach(ModelManager.availableModels) { model in
-                            modelCard(model: model)
+                            ModelCardRow(
+                                model: model,
+                                status: modelManager.status(for: model.id),
+                                usage: modelManager.diskUsage[model.id] ?? 0,
+                                directory: modelManager.modelDirectories[model.id],
+                                isDeleting: modelManager.deletingModels.contains(model.id),
+                                isOperating: modelManager.isOperating,
+                                deletionError: modelManager.deletionErrors[model.id],
+                                onDownload: {
+                                    modelManager.download(modelID: model.id)
+                                },
+                                onCancel: {
+                                    modelManager.cancelDownload(modelID: model.id)
+                                },
+                                onRequestDelete: {
+                                    modelPendingDeletion = model
+                                }
+                            )
                         }
                     }
                 }
@@ -84,30 +103,65 @@ public struct ModelManagementView: View {
         #if os(iOS)
         .navigationTitle(String(localized: "模型管理", bundle: appLocalizationBundle))
         #endif
+        .confirmationDialog(
+            String(localized: "删除模型文件", bundle: appLocalizationBundle),
+            isPresented: Binding(
+                get: { modelPendingDeletion != nil },
+                set: { if !$0 { modelPendingDeletion = nil } }
+            ),
+            presenting: modelPendingDeletion
+        ) { target in
+            Button(String(localized: "删除模型文件", bundle: appLocalizationBundle), role: .destructive) {
+                let id = target.id
+                Task { await modelManager.delete(modelID: id) }
+            }
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
+        } message: { target in
+            let usage = modelManager.diskUsage[target.id] ?? 0
+            let mb = Double(usage) / 1_000_000.0
+            Text(String(format: String(localized: "确定要删除 %@ 吗？将释放约 %.0f MB 磁盘空间，后续使用需重新下载。", bundle: appLocalizationBundle), locale: .current, target.name, mb))
+        }
         .task {
             await modelManager.refreshAll()
         }
     }
+}
 
-    @ViewBuilder
-    private func modelCard(model: WhisperModelDescriptor) -> some View {
-        let status = modelManager.status(for: model.id)
-        let usage = modelManager.diskUsage[model.id] ?? 0
-        let modelError: String? = switch status {
-        case .failed(let reason), .corrupted(let reason): reason
-        default: nil
+// MARK: - Model Card Row
+private struct ModelCardRow: View {
+    let model: WhisperModelDescriptor
+    let status: ModelStatus
+    let usage: Int64
+    let directory: URL?
+    let isDeleting: Bool
+    let isOperating: Bool
+    let deletionError: String?
+    let onDownload: () -> Void
+    let onCancel: () -> Void
+    let onRequestDelete: () -> Void
+
+    @State private var isHovered = false
+
+    private var modelError: String? {
+        switch status {
+        case .failed(let reason), .corrupted(let reason):
+            return reason
+        default:
+            return nil
         }
+    }
 
+    var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
                 // Model Icon
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(model.isBaseline ? Color.blue.opacity(0.12) : Color.secondary.opacity(0.1))
+                        .fill(model.isBaseline ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.1))
                         .frame(width: 40, height: 40)
                     Image(systemName: "cpu")
                         .font(.system(size: 18))
-                        .foregroundStyle(model.isBaseline ? .blue : .primary)
+                        .foregroundStyle(model.isBaseline ? Color.accentColor : .primary)
                 }
 
                 // Info
@@ -121,8 +175,8 @@ public struct ModelManagementView: View {
                                 .font(.caption2.bold())
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.12), in: .capsule)
-                                .foregroundStyle(.blue)
+                                .background(Color.accentColor.opacity(0.12), in: .capsule)
+                                .foregroundStyle(Color.accentColor)
                         }
                     }
 
@@ -149,101 +203,177 @@ public struct ModelManagementView: View {
                     }
                 }
 
-                Spacer()
+                Spacer(minLength: 16)
 
-                // Actions & Status
-                HStack(spacing: 10) {
-                    if modelManager.deletingModels.contains(model.id) {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        statusBadge(status: status)
-                    }
-
-                    switch status {
-                    case .notDownloaded, .cancelled:
-                        Button(String(localized: "下载", bundle: appLocalizationBundle)) {
-                            modelManager.download(modelID: model.id)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(modelManager.isOperating || modelManager.deletingModels.contains(model.id))
-
-                    case .downloading, .checking:
-                        Button(String(localized: "取消", bundle: appLocalizationBundle)) {
-                            modelManager.cancelDownload(modelID: model.id)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-
-                    case .ready:
-                        modelOptionsMenu(model: model, usage: usage)
-
-                    case .failed, .corrupted:
-                        if modelManager.deletionErrors[model.id] == nil {
-                            Button(String(localized: "重新下载", bundle: appLocalizationBundle)) {
-                                modelManager.download(modelID: model.id)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                            .disabled(modelManager.isOperating || modelManager.deletingModels.contains(model.id))
-                        }
-
-                        if usage > 0 {
-                            modelOptionsMenu(model: model, usage: usage)
-                        }
-
-                    case .cancelling:
-                        ProgressView().controlSize(.small)
-                    }
-                }
+                // Trailing Area: Actions & Status
+                trailingArea
             }
             .padding(14)
 
-            if let error = modelManager.deletionErrors[model.id] {
-                HStack(alignment: .top, spacing: 8) {
-                    Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
-                    Spacer()
-                    Button(String(localized: "重试删除", bundle: appLocalizationBundle), role: .destructive) {
-                        Task { await modelManager.delete(modelID: model.id) }
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(modelManager.isOperating || modelManager.deletingModels.contains(model.id))
-                }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
-            } else if let reason = modelError {
-                Text(reason).font(.caption).foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14).padding(.bottom, 12)
-            }
-
             // Progress bar if downloading
             if case .downloading(let component, let progress) = status {
-                VStack(spacing: 4) {
-                    ProgressView(value: progress, total: 1.0)
-                        .progressViewStyle(.linear)
+                VStack(alignment: .leading, spacing: 5) {
                     HStack {
-                        Text(component)
+                        Text(String(format: String(localized: "正在下载 %@…", bundle: appLocalizationBundle), component))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         Spacer()
                         Text(String(format: "%.0f%%", progress * 100))
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .font(.caption2.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
                     }
+                    ProgressView(value: progress, total: 1.0)
+                        .progressViewStyle(.linear)
+                        .tint(Color.accentColor)
                 }
-                .padding(.horizontal, 14)
+                .padding(.leading, 54)
+                .padding(.trailing, 14)
+                .padding(.bottom, 12)
+            } else if case .checking = status {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(String(localized: "正在校验模型文件完整性…", bundle: appLocalizationBundle))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.leading, 54)
+                .padding(.trailing, 14)
                 .padding(.bottom, 12)
             }
+
+            if let error = deletionError {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                    Spacer()
+                    Button(String(localized: "重试删除", bundle: appLocalizationBundle), role: .destructive) {
+                        onRequestDelete()
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isOperating || isDeleting)
+                }
+                .padding(.leading, 54)
+                .padding(.trailing, 14)
+                .padding(.bottom, 12)
+            } else if let reason = modelError {
+                Text(reason).font(.caption).foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 54)
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 12)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .liquidGlassSurface(cornerRadius: 12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(isHovered ? Color.primary.opacity(0.12) : Color.primary.opacity(0.04), lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .onHover { isHovered = $0 }
+        .contextMenu {
+            contextMenuItems
+        }
+        .help(helpText)
+    }
+
+    private var helpText: String {
+        switch status {
+        case .ready:
+            return String(localized: "右键查看操作选项（在访达中显示、删除模型）", bundle: appLocalizationBundle)
+        case .notDownloaded, .cancelled:
+            return String(localized: "右键点击可下载模型", bundle: appLocalizationBundle)
+        case .downloading, .checking:
+            return String(localized: "右键点击可取消下载", bundle: appLocalizationBundle)
+        case .failed, .corrupted:
+            return String(localized: "右键点击可重新下载或删除", bundle: appLocalizationBundle)
+        case .cancelling:
+            return ""
+        }
     }
 
     @ViewBuilder
-    private func modelOptionsMenu(model: WhisperModelDescriptor, usage: Int64) -> some View {
-        Menu {
+    private var trailingArea: some View {
+        if isDeleting {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(String(localized: "正在删除…", bundle: appLocalizationBundle))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            switch status {
+            case .ready, .cancelled:
+                // 「已就绪」放到item最右侧显示
+                statusBadge(status: status)
+
+            case .notDownloaded:
+                EmptyView()
+
+            case .downloading, .checking:
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                    onCancel()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+            case .failed, .corrupted:
+                statusBadge(status: status)
+
+            case .cancelling:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(String(localized: "正在取消…", bundle: appLocalizationBundle))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func statusBadge(status: ModelStatus) -> some View {
+        HStack(spacing: 5) {
+            switch status {
+            case .ready:
+                Circle().fill(Color.green).frame(width: 7, height: 7)
+                Text(String(localized: "已就绪", bundle: appLocalizationBundle))
+                    .foregroundStyle(.green)
+            case .downloading, .checking:
+                ProgressView().controlSize(.mini)
+                Text(String(localized: "下载中", bundle: appLocalizationBundle))
+                    .foregroundStyle(Color.accentColor)
+            case .notDownloaded:
+                EmptyView()
+            case .cancelling:
+                ProgressView().controlSize(.mini)
+                Text(String(localized: "正在取消", bundle: appLocalizationBundle))
+                    .foregroundStyle(.secondary)
+            case .cancelled:
+                Circle().fill(Color.orange).frame(width: 7, height: 7)
+                Text(String(localized: "已取消", bundle: appLocalizationBundle))
+                    .foregroundStyle(.orange)
+            case .failed, .corrupted:
+                Circle().fill(Color.red).frame(width: 7, height: 7)
+                Text(String(localized: "异常", bundle: appLocalizationBundle))
+                    .foregroundStyle(.red)
+            }
+        }
+        .font(.caption2.weight(.medium))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Color.secondary.opacity(0.08),
+            in: .capsule
+        )
+    }
+
+    @ViewBuilder
+    private var contextMenuItems: some View {
+        switch status {
+        case .ready:
             #if os(macOS)
-            if let directory = modelManager.modelDirectories[model.id], usage > 0 {
+            if let directory, usage > 0 {
                 Button {
                     NSWorkspace.shared.open(directory)
                 } label: {
@@ -257,56 +387,58 @@ public struct ModelManagementView: View {
                 Divider()
                 #endif
                 Button(role: .destructive) {
-                    Task { await modelManager.delete(modelID: model.id) }
+                    onRequestDelete()
                 } label: {
                     Label(String(localized: "删除模型文件", bundle: appLocalizationBundle), systemImage: "trash")
                 }
-                .disabled(modelManager.isOperating || modelManager.deletingModels.contains(model.id))
+                .disabled(isOperating || isDeleting)
             }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-        }
-        #if os(macOS)
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        #endif
-        .buttonStyle(.plain)
-    }
 
-    @ViewBuilder
-    private func statusBadge(status: ModelStatus) -> some View {
-        HStack(spacing: 4) {
-            switch status {
-            case .ready:
-                Circle().fill(modelManager.isOperating ? Color.orange : Color.green).frame(width: 7, height: 7)
-                Text(String(localized: "已就绪", bundle: appLocalizationBundle))
-                    .foregroundStyle(modelManager.isOperating ? .orange : .green)
-            case .downloading, .checking:
-                ProgressView().controlSize(.mini)
-                Text(String(localized: "下载中", bundle: appLocalizationBundle)).foregroundStyle(.blue)
-            case .notDownloaded:
-                EmptyView()
-            case .cancelling:
-                ProgressView().controlSize(.mini)
-                Text(String(localized: "正在取消", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
-            case .cancelled:
-                Circle().fill(Color.orange).frame(width: 7, height: 7)
-                Text(String(localized: "已取消", bundle: appLocalizationBundle)).foregroundStyle(.orange)
-            case .failed, .corrupted:
-                Circle().fill(Color.red).frame(width: 7, height: 7)
-                Text(String(localized: "异常", bundle: appLocalizationBundle)).foregroundStyle(.red)
+        case .notDownloaded, .cancelled:
+            Button {
+                onDownload()
+            } label: {
+                Label(String(localized: "下载模型", bundle: appLocalizationBundle), systemImage: "arrow.down.circle")
             }
+            .disabled(isOperating || isDeleting)
+
+        case .downloading, .checking:
+            Button(role: .destructive) {
+                onCancel()
+            } label: {
+                Label(String(localized: "取消下载", bundle: appLocalizationBundle), systemImage: "xmark.circle")
+            }
+
+        case .failed, .corrupted:
+            Button {
+                onDownload()
+            } label: {
+                Label(String(localized: "重新下载", bundle: appLocalizationBundle), systemImage: "arrow.clockwise")
+            }
+            .disabled(isOperating || isDeleting)
+
+            #if os(macOS)
+            if let directory, usage > 0 {
+                Button {
+                    NSWorkspace.shared.open(directory)
+                } label: {
+                    Label(String(localized: "在访达中显示", bundle: appLocalizationBundle), systemImage: "folder")
+                }
+            }
+            #endif
+
+            if usage > 0 {
+                Divider()
+                Button(role: .destructive) {
+                    onRequestDelete()
+                } label: {
+                    Label(String(localized: "删除模型文件", bundle: appLocalizationBundle), systemImage: "trash")
+                }
+                .disabled(isOperating || isDeleting)
+            }
+
+        case .cancelling:
+            EmptyView()
         }
-        .font(.caption2.weight(.medium))
-        .padding(.horizontal, status == .notDownloaded ? 0 : 7)
-        .padding(.vertical, status == .notDownloaded ? 0 : 3)
-        .background(
-            status == .notDownloaded ? Color.clear : Color.secondary.opacity(0.08),
-            in: .capsule
-        )
     }
 }
