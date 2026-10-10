@@ -15,3 +15,14 @@ __pycache__/
 .codegraph/
 /tmp/
 /.local/
+/AGENTS.md
+
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.pem
+*.key
+*.mobileprovision
