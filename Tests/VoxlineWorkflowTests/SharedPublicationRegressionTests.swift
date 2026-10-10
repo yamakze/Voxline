@@ -108,7 +108,7 @@ struct SharedPublicationRegressionTests {
         #expect(TaskLibrary(tasksDirectory: local).entries.map(\.taskID) == [z.id, a.id])
     }
 
-    @Test func explicitRetryPublishesAfterTransientFailure() async throws {
+    @Test func retryCompletesPublicationAfterRecoveryCleanupFailure() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let library = TaskLibrary(tasksDirectory: root.appendingPathComponent("local"))
