@@ -584,41 +584,6 @@ private struct IOSTaskDetailView: View {
     // MARK: - 概览与控制卡片
     private func overviewCard(_ task: ProcessingTask) -> some View {
         VStack(spacing: 16) {
-            // 参数概览条：结构化胶囊标签
-            let transcription = task.parameters.transcription
-            HStack(spacing: 8) {
-                HStack(spacing: 4) {
-                    Image(systemName: transcription.provider == .openAICompatible ? "cloud" : "cpu")
-                    Text(transcription.provider == .openAICompatible
-                         ? String(localized: "云端 · \(displayModelName(transcription.modelID))", bundle: appLocalizationBundle)
-                         : String(localized: "本地 · \(displayModelName(transcription.modelID))", bundle: appLocalizationBundle))
-                }
-                .font(.caption2.weight(.medium))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.secondary.opacity(0.1), in: .capsule)
-
-                HStack(spacing: 4) {
-                    Text(transcription.languageMode == .specified ? (transcription.languageCode ?? String(localized: "指定", bundle: appLocalizationBundle)) : String(localized: "自动识别", bundle: appLocalizationBundle))
-                    if let translation = task.parameters.translation {
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 8, weight: .bold))
-                        Text(translation.targetLanguage)
-                    }
-                }
-                .font(.caption2.weight(.medium))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.secondary.opacity(0.1), in: .capsule)
-
-                Spacer()
-
-                if let fileState {
-                    SyncFileStatusBadge(state: fileState)
-                }
-            }
-            .foregroundStyle(.secondary)
-
             // 指标行：均分结构化展示
             HStack(spacing: 0) {
                 metricTile(
@@ -737,17 +702,6 @@ private struct IOSTaskDetailView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(minWidth: 56)
-    }
-
-    private func displayModelName(_ modelID: String) -> String {
-        var name = modelID
-        if name.hasPrefix("openai_") {
-            name = String(name.dropFirst(7))
-        }
-        if let dashRange = name.range(of: "-v20") {
-            name = String(name[..<dashRange.lowerBound])
-        }
-        return name
     }
 
     // MARK: - 媒体卡片
