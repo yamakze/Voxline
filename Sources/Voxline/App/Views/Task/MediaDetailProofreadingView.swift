@@ -269,7 +269,8 @@ public struct MediaDetailProofreadingView: View {
                 HStack(spacing: 8) {
                     Label(item.kind == .video ? String(localized: "视频", bundle: appLocalizationBundle) : String(localized: "音频", bundle: appLocalizationBundle), systemImage: item.kind == .video ? "film" : "waveform")
                     if let media = item.media {
-                        Text(String(format: "%.1fs", Double(media.durationMilliseconds) / 1000.0))
+                        Text(TimecodeFormatter.formatDuration(milliseconds: media.durationMilliseconds))
+                            .font(.caption2.monospacedDigit())
                         Text(String(localized: "轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
                     }
                     Text(String(localized: "\(item.cues.count) 句字幕", bundle: appLocalizationBundle))

@@ -423,7 +423,8 @@ public struct TaskConfigurationView: View {
                                 .padding(.horizontal, 4).padding(.vertical, 1)
                                 .background(Color.secondary.opacity(0.12), in: .capsule)
                             let sec = Double(inspection.durationMilliseconds) / 1000.0
-                            Text(String(format: "%.1fs", sec))
+                            Text(TimecodeFormatter.formatDuration(seconds: sec))
+                                .font(.caption2.monospacedDigit())
                             Text("•").foregroundStyle(.tertiary)
                             let mb = Double(inspection.byteCount) / 1_048_576.0
                             Text(String(format: "%.1f MB", mb))

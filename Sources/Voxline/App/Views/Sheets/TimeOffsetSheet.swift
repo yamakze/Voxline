@@ -32,19 +32,31 @@ public struct TimeOffsetSheet: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text(String(localized: "偏移时间（秒）：", bundle: appLocalizationBundle))
-                    TextField("0.0", text: $offsetText)
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) {
+                    Text(String(localized: "偏移量：", bundle: appLocalizationBundle))
+                        .font(.body)
+
+                    TextField("0.000", text: $offsetText)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 120)
+                        .font(.body.monospacedDigit())
+                        .frame(width: 90)
+
                     Text(String(localized: "秒", bundle: appLocalizationBundle))
-                    Spacer()
-                    Button("-1.0s") { adjustOffset(by: -1.0) }
-                    Button("-0.2s") { adjustOffset(by: -0.2) }
-                    Button("+0.2s") { adjustOffset(by: 0.2) }
-                    Button("+1.0s") { adjustOffset(by: 1.0) }
+                        .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 12)
+
+                    HStack(spacing: 6) {
+                        Button("-1.0s") { adjustOffset(by: -1.0) }
+                        Button("-0.2s") { adjustOffset(by: -0.2) }
+                        Button("+0.2s") { adjustOffset(by: 0.2) }
+                        Button("+1.0s") { adjustOffset(by: 1.0) }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
+
                 if let saveError {
                     Text(saveError).font(.callout).foregroundStyle(.red)
                 }
@@ -56,9 +68,10 @@ public struct TimeOffsetSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else if shiftedCues != cues {
                     if let first = cues.first, let shifted = shiftedCues.first {
-                        let newStart = Double(shifted.startMilliseconds) / 1000.0
-                        Text(String(format: String(localized: "首条字幕将从 %.3f 秒调整为 %.3f 秒", bundle: appLocalizationBundle), locale: .current, Double(first.startMilliseconds) / 1000.0, newStart))
-                            .font(.caption)
+                        let origStr = TimecodeFormatter.formatTimestamp(milliseconds: first.startMilliseconds)
+                        let newStr = TimecodeFormatter.formatTimestamp(milliseconds: shifted.startMilliseconds)
+                        Text(String(format: String(localized: "首条字幕将从 %@ 调整为 %@", bundle: appLocalizationBundle), locale: .current, origStr, newStr))
+                            .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }

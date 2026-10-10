@@ -94,3 +94,49 @@ public extension ProcessingTaskStatus {
         }
     }
 }
+
+// MARK: - Timecode Formatter
+public enum TimecodeFormatter {
+    /// Formats seconds to human-readable duration, e.g. "01:57:06" or "02:35"
+    public static func formatDuration(seconds: Double, alwaysIncludeHours: Bool = false) -> String {
+        guard seconds.isFinite && seconds >= 0 else { return "00:00" }
+        let totalSeconds = Int(seconds.rounded(.down))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let secs = totalSeconds % 60
+        if hours > 0 || alwaysIncludeHours {
+            return String(format: "%02d:%02d:%02d", hours, minutes, secs)
+        } else {
+            return String(format: "%02d:%02d", minutes, secs)
+        }
+    }
+
+    /// Formats milliseconds to human-readable duration, e.g. "01:57:06" or "02:35"
+    public static func formatDuration(milliseconds: Int64, alwaysIncludeHours: Bool = false) -> String {
+        formatDuration(seconds: Double(milliseconds) / 1000.0, alwaysIncludeHours: alwaysIncludeHours)
+    }
+
+    /// Formats milliseconds to subtitle timestamp, e.g. "00:38.260" or "01:19:44.260"
+    public static func formatTimestamp(milliseconds: Int64, includeMilliseconds: Bool = true) -> String {
+        guard milliseconds >= 0 else { return includeMilliseconds ? "00:00.000" : "00:00" }
+        let totalSeconds = milliseconds / 1000
+        let ms = milliseconds % 1000
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let secs = totalSeconds % 60
+        if hours > 0 {
+            if includeMilliseconds {
+                return String(format: "%02d:%02d:%02d.%03lld", hours, minutes, secs, ms)
+            } else {
+                return String(format: "%02d:%02d:%02d", hours, minutes, secs)
+            }
+        } else {
+            if includeMilliseconds {
+                return String(format: "%02d:%02d.%03lld", minutes, secs, ms)
+            } else {
+                return String(format: "%02d:%02d", minutes, secs)
+            }
+        }
+    }
+}
+

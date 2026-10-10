@@ -654,6 +654,11 @@
 "右键点击可下载模型" = "Right-click to download model";
 "右键点击可取消下载" = "Right-click to cancel download";
 "右键点击可重新下载或删除" = "Right-click to redownload or delete";
+"偏移量：" = "Offset:";
+"首条字幕将从 %@ 调整为 %@" = "First subtitle adjusted from %1$@ to %2$@";
+"原时间：%@ – %@" = "Original: %1$@ – %2$@";
+"时间轴" = "Timeline";
+"时间点" = "Timepoint";
 
 
 

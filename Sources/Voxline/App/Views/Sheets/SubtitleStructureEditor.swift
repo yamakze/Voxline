@@ -36,24 +36,26 @@ struct InsertSubtitleSheet: View {
             Divider()
 
             Form {
-                Section(String(localized: "时间轴（秒）", bundle: appLocalizationBundle)) {
+                Section(String(localized: "时间轴", bundle: appLocalizationBundle)) {
                     LabeledContent(String(localized: "开始时间", bundle: appLocalizationBundle)) {
-                        TextField("0.000", text: $startText)
-                            .multilineTextAlignment(.trailing)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 120)
-                            #if os(iOS)
-                            .keyboardType(.decimalPad)
-                            #endif
+                        HStack(spacing: 4) {
+                            TextField("", text: $startText)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.body.monospacedDigit())
+                                .frame(width: 90)
+                            Text(String(localized: "秒", bundle: appLocalizationBundle))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     LabeledContent(String(localized: "结束时间", bundle: appLocalizationBundle)) {
-                        TextField("0.000", text: $endText)
-                            .multilineTextAlignment(.trailing)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 120)
-                            #if os(iOS)
-                            .keyboardType(.decimalPad)
-                            #endif
+                        HStack(spacing: 4) {
+                            TextField("", text: $endText)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.body.monospacedDigit())
+                                .frame(width: 90)
+                            Text(String(localized: "秒", bundle: appLocalizationBundle))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -210,24 +212,26 @@ struct AdjustTimingSheet: View {
                     .padding(.vertical, 2)
                 }
 
-                Section(String(localized: "时间轴（秒）", bundle: appLocalizationBundle)) {
+                Section(String(localized: "时间轴", bundle: appLocalizationBundle)) {
                     LabeledContent(String(localized: "开始时间", bundle: appLocalizationBundle)) {
-                        TextField("0.000", text: $startText)
-                            .multilineTextAlignment(.trailing)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 120)
-                            #if os(iOS)
-                            .keyboardType(.decimalPad)
-                            #endif
+                        HStack(spacing: 4) {
+                            TextField("", text: $startText)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.body.monospacedDigit())
+                                .frame(width: 90)
+                            Text(String(localized: "秒", bundle: appLocalizationBundle))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     LabeledContent(String(localized: "结束时间", bundle: appLocalizationBundle)) {
-                        TextField("0.000", text: $endText)
-                            .multilineTextAlignment(.trailing)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 120)
-                            #if os(iOS)
-                            .keyboardType(.decimalPad)
-                            #endif
+                        HStack(spacing: 4) {
+                            TextField("", text: $endText)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.body.monospacedDigit())
+                                .frame(width: 90)
+                            Text(String(localized: "秒", bundle: appLocalizationBundle))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -345,18 +349,21 @@ struct SplitSubtitleSheet: View {
             Divider()
 
             Form {
-                Section(String(localized: "拆分时间点（秒）", bundle: appLocalizationBundle)) {
-                    LabeledContent(String(localized: "拆分时间点", bundle: appLocalizationBundle)) {
-                        TextField("0.000", text: $splitSecondsText)
-                            .multilineTextAlignment(.trailing)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: 120)
-                            #if os(iOS)
-                            .keyboardType(.decimalPad)
-                            #endif
+                Section(String(localized: "拆分时间点", bundle: appLocalizationBundle)) {
+                    LabeledContent(String(localized: "时间点", bundle: appLocalizationBundle)) {
+                        HStack(spacing: 4) {
+                            TextField("", text: $splitSecondsText)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.body.monospacedDigit())
+                                .frame(width: 90)
+                            Text(String(localized: "秒", bundle: appLocalizationBundle))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    Text(String(format: String(localized: "原时间：%.2f 秒 – %.2f 秒", bundle: appLocalizationBundle), locale: .current, Double(cue.startMilliseconds)/1000.0, Double(cue.endMilliseconds)/1000.0))
-                        .font(.caption)
+                    let startStr = TimecodeFormatter.formatTimestamp(milliseconds: cue.startMilliseconds)
+                    let endStr = TimecodeFormatter.formatTimestamp(milliseconds: cue.endMilliseconds)
+                    Text(String(format: String(localized: "原时间：%@ – %@", bundle: appLocalizationBundle), locale: .current, startStr, endStr))
+                        .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
 
@@ -573,7 +580,10 @@ struct MergeSubtitlesSheet: View {
                 Section(String(localized: "合并范围", bundle: appLocalizationBundle)) {
                     if let first = cues.first, let last = cues.last {
                         LabeledContent(String(localized: "起止时间", bundle: appLocalizationBundle)) {
-                            Text(String(format: String(localized: "%.2f 秒 – %.2f 秒", bundle: appLocalizationBundle), locale: .current, Double(first.startMilliseconds)/1000.0, Double(last.endMilliseconds)/1000.0))
+                            let startStr = TimecodeFormatter.formatTimestamp(milliseconds: first.startMilliseconds)
+                            let endStr = TimecodeFormatter.formatTimestamp(milliseconds: last.endMilliseconds)
+                            Text("\(startStr) – \(endStr)")
+                                .font(.body.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
                     }

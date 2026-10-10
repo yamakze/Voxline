@@ -185,7 +185,8 @@ public struct TaskDetailView: View {
 
                                     HStack(spacing: 8) {
                                         if let media = item.media {
-                                            Text(String(format: "%.1fs", Double(media.durationMilliseconds) / 1000.0))
+                                            Text(TimecodeFormatter.formatDuration(milliseconds: media.durationMilliseconds))
+                                                .font(.caption2.monospacedDigit())
                                             Text(String(localized: "音轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
                                             Text(String(localized: "\(item.cues.count) 句字幕", bundle: appLocalizationBundle))
                                         } else {
