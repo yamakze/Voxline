@@ -1,35 +1,16 @@
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
-.codex/
-
-/tmp
-
-### Swift and macOS ###
+# Swift and Xcode
 .build/
 .swiftpm/
-.DS_Store
 /build/
-/.local/
 xcuserdata/
 *.xcuserstate
+
+# macOS
+.DS_Store
+__pycache__/
+
+# Local development tools and private validation material
+.idea/
+.codex/
+/tmp/
+/.local/

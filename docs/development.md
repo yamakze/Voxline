@@ -20,7 +20,7 @@ VOXLINE_MAC_SIGN_IDENTITY="Apple Development: <证书名称>" Scripts/build-app.
 
 也可使用证书 SHA-1。后续构建沿用保存的证书，缺失或失效时明确退出。签名与严格验证在新目录完成后才替换现有应用。固定证书和 Bundle ID 保持系统识别的应用身份；切换证书后可能需要一次钥匙串授权。证书链缺少中间证书时，通过 Apple 官方 [证书颁发机构](https://www.apple.com/certificateauthority/) 补齐对应证书。
 
-两平台 Bundle ID 分别固定为 dev.voxline.app 和 dev.voxline.ios。build-metadata.py 为每次构建生成递增的 CFBundleVersion，保存于忽略目录 .local/build-version；营销版本保持 0.1.0。Mac 产物身份记录在 build/Voxline.identity.json，包含 Bundle ID、构建号、签名证书和 designated requirement。
+两平台 Bundle ID 分别固定为 dev.voxline.app 和 dev.voxline.ios。build-metadata.py 为每次构建生成递增的 CFBundleVersion，保存于忽略目录 .local/build-version；营销版本统一读取根目录 Version.xcconfig，发布前修改其中的 MARKETING_VERSION。Mac 产物身份记录在 build/Voxline.identity.json，包含 Bundle ID、构建号、签名证书和 designated requirement。
 
 ## iOS
 
@@ -155,7 +155,7 @@ swift test --filter 'SubtitleTranslationTests|TranslationServiceStoreTests'
 VOXLINE_KEYCHAIN_TEST=1 swift test --filter realKeychainRoundTripKeepsCredentialOutOfMetadata
 ```
 
-普通测试使用隔离的网络／凭据边界，验证 ID、上下文容量、HTTP 错误、批次恢复、明文迁移和配置保存失败保护。Keychain 可选入口只读写随机测试服务名下的测试字符串，完成后删除测试项，不访问实际服务密钥。真实连接在应用服务页使用当前模型验证；任务验收使用明确选择的服务与字幕文本。
+普通测试使用隔离的网络／凭据边界，验证 ID、上下文容量、HTTP 错误、批次恢复、当前配置格式和配置保存失败保护。Keychain 可选入口只读写随机测试服务名下的测试字符串，完成后删除测试项，不访问实际服务密钥。真实连接在应用服务页使用当前模型验证；任务验收使用明确选择的服务与字幕文本。
 
 客户端独立真实验收需要指定服务元数据文件，并通过终端隐藏输入提供测试密钥；配置文件和验证产物均不包含密钥：
 

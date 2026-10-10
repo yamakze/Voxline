@@ -1,0 +1,36 @@
+name: Core checks and iOS build
+
+on:
+  push:
+    branches: [master, main]
+    paths-ignore: ['docs/**', 'README*']
+  pull_request:
+    paths-ignore: ['docs/**', 'README*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Test core workflows
+        run: swift test --no-parallel --filter 'VoxlineCoreTests|VoxlineTranslationTests|VoxlineWorkflowTests|VoxlineAppTests'
+      - name: Build unsigned iOS application
+        run: Scripts/build-ios.sh device debug
+      - name: Check localization
+        run: python3 Scripts/check-localization.py build/ios/device/DerivedData/Build/Intermediates.noindex/Voxline.build/Debug-iphoneos

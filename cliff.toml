@@ -1,0 +1,33 @@
+[changelog]
+header = "# Changelog\n\nGenerated from Git history. Release drafts are reviewed before publication.\n\n"
+body = """
+{% if version %}## {{ version }} — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}## Unreleased
+{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+
+{% for commit in commits %}- {{ commit.message | split(pat="\n") | first }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/yamakze/Voxline/commit/{{ commit.id }}))
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+format = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Fixes" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Maintenance" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^(build|ci|chore)", group = "Build and tooling" },
+  { message = "^test", group = "Tests" },
+  { message = ".*", group = "Other changes" },
+]
+filter_commits = false
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
+sort_commits = "oldest"

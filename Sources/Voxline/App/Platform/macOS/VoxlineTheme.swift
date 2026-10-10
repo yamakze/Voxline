@@ -22,7 +22,12 @@ public extension Color {
 public final class VoxlineIconManager {
     public static let shared = VoxlineIconManager()
 
-    private init() {}
+    private let appIcon: NSImage?
+
+    private init() {
+        appIcon = Bundle.main.url(forResource: "AppIcon", withExtension: "icns")
+            .flatMap { NSImage(contentsOf: $0) }
+    }
 
     /// 强制为当前运行中的进程刷新 Dock 图标
     public func ensureDockIconIsSet() {
@@ -32,41 +37,7 @@ public final class VoxlineIconManager {
     }
 
     public func loadAppIcon() -> NSImage? {
-        // 1. 尝试从 App Bundle Resources 读取
-        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
-           let img = NSImage(contentsOf: url) {
-            return img
-        }
-        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
-           let img = NSImage(contentsOf: url) {
-            return img
-        }
-
-        // 2. 尝试从 Contents/Resources/AppIcon.icns 路径直接读取
-        let bundleResourceURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/AppIcon.icns")
-        if FileManager.default.fileExists(atPath: bundleResourceURL.path),
-           let img = NSImage(contentsOf: bundleResourceURL) {
-            return img
-        }
-
-        // 3. 尝试从可执行文件所在相对目录向上寻找 Resources/AppIcon.icns 或 AppIcon.png
-        var searchDir = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
-        for _ in 0..<6 {
-            let candidateICNS = searchDir.appendingPathComponent("Resources/AppIcon.icns")
-            if FileManager.default.fileExists(atPath: candidateICNS.path),
-               let img = NSImage(contentsOf: candidateICNS) {
-                return img
-            }
-            let candidatePNG = searchDir.appendingPathComponent("Resources/AppIcon.png")
-            if FileManager.default.fileExists(atPath: candidatePNG.path),
-               let img = NSImage(contentsOf: candidatePNG) {
-                return img
-            }
-            searchDir.deleteLastPathComponent()
-        }
-
-        // 4. 读取系统当前已有图标
-        return NSApp?.applicationIconImage
+        appIcon
     }
 }
 

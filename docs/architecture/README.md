@@ -46,6 +46,12 @@ TaskConfigurationSession 保存原始快照、参数草稿、媒体候选、导�
 
 领域验证使用 DomainValidationError。设备媒体访问接口使用 mediaID；书签记录保留既有固定编码键，不为参数改名引入迁移路径。
 
+## 应用资源与发布文件
+
+本地化资源归各模块 Resources/*.lproj。iOS 资产目录通过软链接引用唯一的 Resources/AppIcon.png；Mac 使用 Resources/AppIcon.icns。应用图标仅从最终包读取，Mac 复用内存中的原生图像，不回查开发目录或系统旧图标。源码 LICENSE 与 Licenses/ 的第三方原始通知进入两平台应用资源；docs、私有样本和临时日志不进入应用包。
+
+Version.xcconfig 是两平台营销版本的唯一来源；设备 Bundle ID 与开发构建号规则保持。发布说明生成与分发要求见 [发布工作流](../release.md)。
+
 ## 界面本地化
 
 简体中文和英文资源按模块归属维护于各自 Resources/*.lproj，页面、菜单、辅助功能标签、应用错误和动态状态使用 Foundation 原生 String(localized:bundle:)。资源在 SwiftPM 模块包或 Xcode 框架中读取；Mac 签名包将模块资源放入 Contents/Resources，缺少资源明确失败，不回读开发目录。默认遵循系统和应用语言选择，不维护全局语言服务或持久语言映射。保留 literal 原生本地化调用以支持编译器提取，不通过自定义包装隐藏键；能力错误说明在负责模块就地维护，页面和导航文案归 App。当前 SwiftPM 不编译 String Catalog，资源使用 strings 与 stringsdict，格式迁移必须覆盖两平台及直接 swift test 的资源构建。动态参数保留编译器确定的格式类型，字幕数量采用原生复数资源；数字与日期使用系统区域格式。

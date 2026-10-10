@@ -32,17 +32,15 @@ shutil.copy2(binary, contents / "MacOS" / "Voxline")
 for resource_bundle in binary.parent.glob("Voxline_*.bundle"):
     shutil.copytree(resource_bundle, contents / "Resources" / resource_bundle.name)
 shutil.copytree(root / "Licenses", contents / "Resources" / "Licenses", dirs_exist_ok=True)
+shutil.copy2(root / "LICENSE", contents / "Resources" / "LICENSE")
 for language in ("zh-Hans", "en"):
     source = root / "Sources" / "Voxline" / "App" / "Resources" / f"{language}.lproj" / "InfoPlist.strings"
     destination = contents / "Resources" / f"{language}.lproj"
     destination.mkdir()
     shutil.copy2(source, destination / source.name)
 icon_source = root / "Resources" / "AppIcon.icns"
-if icon_source.is_file():
-    shutil.copy2(icon_source, contents / "Resources" / "AppIcon.icns")
-icon_png_source = root / "Resources" / "AppIcon.png"
-if icon_png_source.is_file():
-    shutil.copy2(icon_png_source, contents / "Resources" / "AppIcon.png")
+shutil.copy2(icon_source, contents / "Resources" / "AppIcon.icns")
+marketing_version = (root / "Version.xcconfig").read_text().split("=", 1)[1].strip()
 metadata = {
     "CFBundleIdentifier": "dev.voxline.app",
     "CFBundleName": "Voxline",
@@ -51,7 +49,7 @@ metadata = {
     "CFBundleDisplayName": "Voxline",
     "CFBundleExecutable": "Voxline",
     "CFBundlePackageType": "APPL",
-    "CFBundleShortVersionString": "0.1.0",
+    "CFBundleShortVersionString": marketing_version,
     "CFBundleVersion": version,
     "CFBundleIconFile": "AppIcon",
     "CFBundleIconName": "AppIcon",

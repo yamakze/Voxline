@@ -1,0 +1,95 @@
+name: Release changelog
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag (for example v0.1.0 or v0.1.0-rc.1)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changelog-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Validate version tag
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo 'Expected a version tag such as v0.1.0 or v0.1.0-rc.1' >&2
+            exit 1
+          fi
+      - name: Check out tagged source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check application version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^MARKETING_VERSION *= *//p' Version.xcconfig)
+          tag_version=${RELEASE_TAG#v}
+          if [[ "${tag_version%%-*}" != "$version" ]]; then
+            echo 'Tag and Version.xcconfig do not match' >&2
+            exit 1
+          fi
+      - name: Generate complete changelog
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
+        with:
+          version: v2.14.2
+          config: cliff.toml
+          args: --use-branch-tags --output CHANGELOG.md
+      - name: Generate notes for this tag
+        shell: bash
+        run: |
+          "$RUNNER_TEMP/git-cliff/bin/git-cliff" --config cliff.toml \
+            --use-branch-tags --current --strip header --output RELEASE_NOTES.md
+      - name: Upload generated documents
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: changelog-${{ env.RELEASE_TAG }}
+          path: |
+            CHANGELOG.md
+            RELEASE_NOTES.md
+          if-no-files-found: error
+      - name: Create or update release draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          owner=${GH_REPO%%/*}
+          repo=${GH_REPO#*/}
+          state=$(gh api graphql -f query='
+            query($owner:String!,$repo:String!,$tag:String!){
+              repository(owner:$owner,name:$repo){ release(tagName:$tag){ isDraft } }
+            }' -f owner="$owner" -f repo="$repo" -f tag="$RELEASE_TAG" \
+            --jq '.data.repository.release | if . == null then "missing" elif .isDraft then "draft" else "published" end')
+          case "$state" in
+            missing)
+              gh release create "$RELEASE_TAG" CHANGELOG.md --draft --verify-tag \
+                --title "Voxline $RELEASE_TAG" --notes-file RELEASE_NOTES.md
+              ;;
+            draft)
+              gh release edit "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
+              gh release upload "$RELEASE_TAG" CHANGELOG.md --clobber
+              ;;
+            published)
+              echo 'Published release retained; generated documents are available in the workflow artifact.'
+              ;;
+            *) echo "Unexpected release state: $state" >&2; exit 1 ;;
+          esac

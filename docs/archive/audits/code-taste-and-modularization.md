@@ -1,6 +1,8 @@
+状态：归档。审查结论对应当时源码；当前实现规则见 [架构](../../architecture/README.md)，实际进度见 GitHub Project。
+
 # 代码品味与模块组织诊断
 
-审查范围为任务准备、队列生命周期、服务配置、模块职责与本地化构建。当前实现规则见 [架构边界](../architecture/README.md)，治理与验收由 GitHub Project 的 VXL-059 跟踪。编译核验材料保存在 tmp/code-taste。
+审查范围为任务准备、队列生命周期、服务配置、模块职责与本地化构建。当前实现规则见 [架构边界](../../architecture/README.md)，治理与验收由 GitHub Project 的 VXL-059 跟踪。编译核验材料保存在 tmp/code-taste。
 
 ## 诊断
 

@@ -1,6 +1,8 @@
+状态：归档。审查结论对应当时源码；当前实现规则见 [架构](../../architecture/README.md)，实际进度见 GitHub Project。
+
 # Voxline 发布前代码质量诊断
 
-审查基于当前源码及独立审查意见。当前实现规则见 [架构边界](../architecture/README.md)，执行与验收记录见 GitHub Project 的 VXL-059。原始审查材料与测量日志保存在忽略的 tmp/release-final。
+审查基于当前源码及独立审查意见。当前实现规则见 [架构边界](../../architecture/README.md)，执行与验收记录见 GitHub Project 的 VXL-059。原始审查材料与测量日志保存在忽略的 tmp/release-final。
 
 ## 诊断
 
