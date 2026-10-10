@@ -32,7 +32,7 @@ struct SubtitleTranslationTests {
 
     @Test func completeIDsRejectMissingDuplicateExtraBlankButAllowExtraFields() throws {
         let cues = try cues(count: 2)
-        let valid = cues.map { ["id": $0.id.uuidString, "text": "放下它。"] }
+        let valid = cues.map { ["id": $0.id.uuidString, "text": "放下它。保留符号 ``` 。"] }
         func parse(_ values: [[String: String]], rootExtra: Bool = false) throws -> [TranslationBatchOutput] {
             var root: [String: Any] = ["translations": values]
             if rootExtra { root["timestamps"] = [] }

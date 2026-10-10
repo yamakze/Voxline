@@ -68,20 +68,23 @@ public struct OpenAICompatibleTranslationClient: Sendable {
         guard envelope.choices.count == 1, let choice = envelope.choices.first, choice.index == 0,
               choice.message.role == "assistant", choice.message.refusal == nil else { throw SubtitleTranslationError.invalidResponse }
         guard choice.finish_reason == "stop" else { throw SubtitleTranslationError.incompleteResponse(choice.finish_reason) }
-        guard var content = choice.message.content?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+        guard let content = choice.message.content?.trimmingCharacters(in: .whitespacesAndNewlines) else {
             throw SubtitleTranslationError.invalidTranslationResult
         }
+        var root = (try? JSONSerialization.jsonObject(with: Data(content.utf8))) as? [String: Any]
+        // Parse plain JSON first so literal backticks in translated text remain ordinary data.
         // A single complete code block can carry prose around it; multiple blocks are ambiguous.
-        if content.contains("```") {
-            let parts = content.components(separatedBy: "```")
-            guard parts.count == 3, let newline = parts[1].firstIndex(of: "\n") else {
+        if root == nil {
+            let lines = content.components(separatedBy: .newlines)
+            let fences = lines.indices.filter { lines[$0].trimmingCharacters(in: .whitespaces).hasPrefix("```") }
+            guard fences.count == 2, let first = fences.first, let last = fences.last,
+                  lines[last].trimmingCharacters(in: .whitespaces) == "```" else {
                 throw SubtitleTranslationError.invalidTranslationResult
             }
-            content = String(parts[1][parts[1].index(after: newline)...])
+            let json = Data(lines[(first + 1)..<last].joined(separator: "\n").utf8)
+            root = (try? JSONSerialization.jsonObject(with: json)) as? [String: Any]
         }
-        guard let json = content.data(using: .utf8),
-              let root = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
-              let values = root["translations"] as? [[String: Any]] else {
+        guard let values = root?["translations"] as? [[String: Any]] else {
             throw SubtitleTranslationError.invalidTranslationResult
         }
         let outputs = try values.map { value -> TranslationBatchOutput in
