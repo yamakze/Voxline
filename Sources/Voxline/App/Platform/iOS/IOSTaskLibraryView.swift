@@ -583,75 +583,77 @@ private struct IOSTaskDetailView: View {
 
     // MARK: - 概览与控制卡片
     private func overviewCard(_ task: ProcessingTask) -> some View {
-        VStack(spacing: 14) {
-            // 参数概览条
+        VStack(spacing: 16) {
+            // 参数概览条：结构化胶囊标签
             let transcription = task.parameters.transcription
             HStack(spacing: 8) {
                 HStack(spacing: 4) {
-                    Image(systemName: transcription.provider == .openAICompatible ? "waveform.badge.mic" : "cpu")
-                        .foregroundStyle(.secondary)
-                    if transcription.provider == .openAICompatible {
-                        Text(String(localized: "云端：\(transcription.modelID)", bundle: appLocalizationBundle))
-                    } else {
-                        Text(String(localized: "本地：\(transcription.modelID)", bundle: appLocalizationBundle))
+                    Image(systemName: transcription.provider == .openAICompatible ? "cloud" : "cpu")
+                    Text(transcription.provider == .openAICompatible
+                         ? String(localized: "云端 · \(displayModelName(transcription.modelID))", bundle: appLocalizationBundle)
+                         : String(localized: "本地 · \(displayModelName(transcription.modelID))", bundle: appLocalizationBundle))
+                }
+                .font(.caption2.weight(.medium))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.secondary.opacity(0.1), in: .capsule)
+
+                HStack(spacing: 4) {
+                    Text(transcription.languageMode == .specified ? (transcription.languageCode ?? String(localized: "指定", bundle: appLocalizationBundle)) : String(localized: "自动识别", bundle: appLocalizationBundle))
+                    if let translation = task.parameters.translation {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 8, weight: .bold))
+                        Text(translation.targetLanguage)
                     }
                 }
-                Text("•").foregroundStyle(.secondary)
-                Text(transcription.languageMode == .specified ? (transcription.languageCode ?? String(localized: "指定", bundle: appLocalizationBundle)) : String(localized: "自动识别", bundle: appLocalizationBundle))
-                if let translation = task.parameters.translation {
-                    Text("•").foregroundStyle(.secondary)
-                    Text(String(localized: "译：\(translation.targetLanguage)", bundle: appLocalizationBundle))
-                }
+                .font(.caption2.weight(.medium))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.secondary.opacity(0.1), in: .capsule)
+
+                Spacer()
+
                 if let fileState {
-                    Spacer()
                     SyncFileStatusBadge(state: fileState)
                 }
             }
-            .font(.caption2)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 4)
 
-            // 指标行
-            HStack(spacing: 20) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(task.items.count)")
-                        .font(.title2.bold())
-                    Text(String(localized: "媒体总数", bundle: appLocalizationBundle))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+            // 指标行：均分结构化展示
+            HStack(spacing: 0) {
+                metricTile(
+                    value: "\(task.items.count)",
+                    label: String(localized: "媒体总数", bundle: appLocalizationBundle),
+                    color: .primary
+                )
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(task.completedCount)")
-                        .font(.title2.bold())
-                        .foregroundStyle(.green)
-                    Text(String(localized: "已完成", bundle: appLocalizationBundle))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                Spacer()
+
+                metricTile(
+                    value: "\(task.completedCount)",
+                    label: String(localized: "已完成", bundle: appLocalizationBundle),
+                    color: .green
+                )
 
                 if task.failedCount > 0 {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(task.failedCount)")
-                            .font(.title2.bold())
-                            .foregroundStyle(.red)
-                        Text(String(localized: "失败项", bundle: appLocalizationBundle))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+                    Spacer()
+                    metricTile(
+                        value: "\(task.failedCount)",
+                        label: String(localized: "失败项", bundle: appLocalizationBundle),
+                        color: .red
+                    )
                 }
 
                 Spacer()
 
                 let totalCues = task.items.reduce(0) { $0 + $1.cues.count }
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(totalCues)")
-                        .font(.title2.bold())
-                    Text(String(localized: "字幕总句", bundle: appLocalizationBundle))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                metricTile(
+                    value: totalCues.formatted(),
+                    label: String(localized: "字幕总句", bundle: appLocalizationBundle),
+                    color: .primary
+                )
             }
+            .padding(.horizontal, 8)
 
             // 处理控制按钮或正在运行指示
             if library.queue.taskID == taskID {
@@ -682,20 +684,33 @@ private struct IOSTaskDetailView: View {
                 .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
             } else {
                 let canResume = task.items.contains(where: \.canResumeProcessing)
-                Button {
-                    handleStartTask(task: task)
-                } label: {
-                    HStack {
-                        Spacer()
-                        Label(task.startedAt == nil ? String(localized: "开始处理任务", bundle: appLocalizationBundle) : String(localized: "继续未完成处理", bundle: appLocalizationBundle),
-                              systemImage: task.startedAt == nil ? "play.fill" : "arrow.clockwise")
-                            .font(.headline)
-                        Spacer()
+                if canResume {
+                    Button {
+                        handleStartTask(task: task)
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Label(task.startedAt == nil ? String(localized: "开始处理任务", bundle: appLocalizationBundle) : String(localized: "继续未完成处理", bundle: appLocalizationBundle),
+                                  systemImage: task.startedAt == nil ? "play.fill" : "arrow.clockwise")
+                                .font(.headline)
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(library.queue.taskID != nil)
+                } else if !task.items.isEmpty && task.completedCount == task.items.count {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text(String(localized: "全部媒体已处理完成", bundle: appLocalizationBundle))
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.green)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(library.queue.taskID != nil || !canResume)
             }
 
             if let error = library.queue.errorMessage {
@@ -710,6 +725,29 @@ private struct IOSTaskDetailView: View {
         }
         .padding(16)
         .liquidGlassSurface(cornerRadius: 14)
+    }
+
+    private func metricTile(value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 56)
+    }
+
+    private func displayModelName(_ modelID: String) -> String {
+        var name = modelID
+        if name.hasPrefix("openai_") {
+            name = String(name.dropFirst(7))
+        }
+        if let dashRange = name.range(of: "-v20") {
+            name = String(name[..<dashRange.lowerBound])
+        }
+        return name
     }
 
     // MARK: - 媒体卡片
@@ -727,7 +765,7 @@ private struct IOSTaskDetailView: View {
 
                     HStack(spacing: 6) {
                         if let media = item.media {
-                            Text(String(format: "%.1fs", Double(media.durationMilliseconds) / 1000.0))
+                            Text(TimecodeFormatter.formatDuration(milliseconds: media.durationMilliseconds))
                             Text("•")
                             Text(String(localized: "音轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
                             Text("•")

@@ -477,15 +477,6 @@ struct IOSMediaDetailView: View {
                     }
                     .disabled(item.cues.isEmpty)
                 }
-
-                if let currentTask = task {
-                    Divider()
-                    Button {
-                        shareTask(currentTask)
-                    } label: {
-                        Label(String(localized: "分享任务文件 (.voxline)", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
-                    }
-                }
             } label: {
                 Label(String(localized: "导出与分享", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
             }
@@ -572,15 +563,6 @@ struct IOSMediaDetailView: View {
     private func shareSRT(kind: SRTOutputKind, item: TaskMediaItem) {
         do {
             let url = try IOSExportHelper.prepareSRT(for: item, kind: kind)
-            sharingURL = url
-        } catch {
-            session.errorMessage = error.localizedDescription
-        }
-    }
-
-    private func shareTask(_ task: ProcessingTask) {
-        do {
-            let url = try IOSExportHelper.prepareTaskArchive(for: task)
             sharingURL = url
         } catch {
             session.errorMessage = error.localizedDescription
