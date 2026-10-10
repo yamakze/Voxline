@@ -2,6 +2,11 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+if [[ "${1:-}" == --help ]]; then
+    echo "Usage: Scripts/compile_and_run.sh [debug|release]"
+    exit 0
+fi
+if (( $# > 1 )); then echo "Too many arguments; use --help." >&2; exit 2; fi
 ./Scripts/build-app.sh "${1:-debug}"
 
 app_bundle="$PWD/build/Voxline.app"

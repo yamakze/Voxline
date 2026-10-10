@@ -18,6 +18,7 @@ concurrency:
 jobs:
   check:
     runs-on: macos-15
+    timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
     steps:
@@ -29,7 +30,11 @@ jobs:
           xcodebuild -version
           swift --version
       - name: Test core workflows
-        run: swift test --no-parallel --filter 'VoxlineCoreTests|VoxlineTranslationTests|VoxlineWorkflowTests|VoxlineAppTests'
+        run: make test
+      - name: Package macOS application
+        env:
+          VOXLINE_MAC_SIGN_IDENTITY: '-'
+        run: Scripts/build-app.sh debug
       - name: Build unsigned iOS application
         run: Scripts/build-ios.sh device debug
       - name: Check localization

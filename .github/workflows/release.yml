@@ -1,0 +1,187 @@
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag (for example v1.0.0 or v1.0.0-rc.1)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    outputs:
+      build-version: ${{ steps.version.outputs.build-version }}
+    steps:
+      - name: Validate version tag
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo 'Expected a version tag such as v1.0.0 or v1.0.0-rc.1' >&2
+            exit 1
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check version and assign shared build number
+        id: version
+        run: |
+          version=$(sed -n 's/^MARKETING_VERSION *= *//p' Version.xcconfig)
+          tag_version=${RELEASE_TAG#v}
+          if [[ "${tag_version%%-*}" != "$version" ]]; then
+            echo 'Tag and Version.xcconfig do not match' >&2
+            exit 1
+          fi
+          echo "build-version=$(python3 Scripts/lib/build-metadata.py version)" >> "$GITHUB_OUTPUT"
+      - name: Generate complete changelog
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
+        with:
+          version: v2.14.2
+          config: cliff.toml
+          args: --use-branch-tags --output CHANGELOG.md
+      - name: Generate this version's notes
+        run: |
+          "$RUNNER_TEMP/git-cliff/bin/git-cliff" --config cliff.toml \
+            --use-branch-tags --current --strip header --output RELEASE_NOTES.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-notes
+          path: |
+            CHANGELOG.md
+            RELEASE_NOTES.md
+          if-no-files-found: error
+
+  build:
+    needs: notes
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      VOXLINE_BUILD_VERSION: ${{ needs.notes.outputs.build-version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+      - name: Test core workflows
+        run: make test
+      - name: Configure signing and notarization
+        id: signing
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ vars.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          if [[ -z "$MACOS_CERTIFICATE_P12$MACOS_CERTIFICATE_PASSWORD$MACOS_SIGN_IDENTITY$APPLE_ID$APPLE_TEAM_ID$APPLE_APP_PASSWORD" ]]; then
+            echo 'mode=adhoc' >> "$GITHUB_OUTPUT"
+            echo 'No distribution credentials configured; building an ad-hoc, unnotarized Mac draft.'
+            exit 0
+          fi
+          : "${MACOS_CERTIFICATE_P12:?Missing P12}"
+          : "${MACOS_CERTIFICATE_PASSWORD:?Missing P12 password}"
+          : "${MACOS_SIGN_IDENTITY:?Missing MACOS_SIGN_IDENTITY repository variable}"
+          : "${APPLE_ID:?Missing Apple ID}"
+          : "${APPLE_TEAM_ID:?Missing Apple Team ID}"
+          : "${APPLE_APP_PASSWORD:?Missing app-specific password}"
+          keychain="$RUNNER_TEMP/voxline-release.keychain-db"
+          keychain_password=$(uuidgen)
+          echo "::add-mask::$keychain_password"
+          printf '%s' "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/voxline.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/voxline.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          xcrun notarytool store-credentials voxline-release --keychain "$keychain" \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+          rm "$RUNNER_TEMP/voxline.p12"
+          echo "VOXLINE_MAC_SIGN_IDENTITY=$MACOS_SIGN_IDENTITY" >> "$GITHUB_ENV"
+          echo 'VOXLINE_NOTARY_PROFILE=voxline-release' >> "$GITHUB_ENV"
+          echo "VOXLINE_NOTARY_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo 'mode=notarized' >> "$GITHUB_OUTPUT"
+      - name: Build Universal Mac archive and unsigned iOS IPA
+        env:
+          RELEASE_MODE: ${{ steps.signing.outputs.mode }}
+        run: Scripts/build-release.sh all "$RELEASE_MODE"
+      - name: Check localization
+        run: python3 Scripts/check-localization.py build/ios/device/DerivedData/Build/Intermediates.noindex/Voxline.build/Release-iphoneos
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-packages
+          path: |
+            build/release/Voxline-*.zip
+            build/release/Voxline-iOS-*.ipa
+            build/release/SHA256SUMS.txt
+            build/release/PACKAGE_NOTES.md
+          if-no-files-found: error
+      - name: Remove signing credentials
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/voxline.p12"
+          if [[ -f "$RUNNER_TEMP/voxline-release.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/voxline-release.keychain-db"
+          fi
+
+  draft:
+    needs: [notes, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Create or update release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          Path('notes.md').write_text(Path('RELEASE_NOTES.md').read_text() + '\n\n' + Path('PACKAGE_NOTES.md').read_text())
+          PY
+          owner=${GH_REPO%%/*}
+          repo=${GH_REPO#*/}
+          state=$(gh api graphql -f query='
+            query($owner:String!,$repo:String!,$tag:String!){
+              repository(owner:$owner,name:$repo){ release(tagName:$tag){ isDraft } }
+            }' -f owner="$owner" -f repo="$repo" -f tag="$RELEASE_TAG" \
+            --jq '.data.repository.release | if . == null then "missing" elif .isDraft then "draft" else "published" end')
+          assets=(Voxline-*.zip Voxline-iOS-*.ipa SHA256SUMS.txt CHANGELOG.md)
+          case "$state" in
+            missing)
+              gh release create "$RELEASE_TAG" "${assets[@]}" --draft --verify-tag \
+                --title "Voxline ${RELEASE_TAG#v}" --notes-file notes.md
+              ;;
+            draft)
+              gh release edit "$RELEASE_TAG" --notes-file notes.md
+              gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+              ;;
+            published)
+              echo 'Published release retained; new assets remain in workflow artifacts.'
+              ;;
+            *) echo "Unexpected release state: $state" >&2; exit 1 ;;
+          esac

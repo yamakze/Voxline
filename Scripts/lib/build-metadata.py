@@ -7,11 +7,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-root = Path(__file__).resolve().parents[1]
+root = Path(__file__).resolve().parents[2]
 settings = root / ".local"
 settings.mkdir(exist_ok=True)
 
 if sys.argv[1:] == ["version"]:
+    requested = os.environ.get("VOXLINE_BUILD_VERSION")
+    if requested:
+        if not re.fullmatch(r"[1-9][0-9]{0,3}(?:\.[0-9]{1,2}){0,2}", requested):
+            raise SystemExit("VOXLINE_BUILD_VERSION must be a valid CFBundleVersion")
+        print(requested)
+        sys.exit(0)
     now = datetime.datetime.now(datetime.timezone.utc)
     version = ((now.date() - datetime.date(2020, 1, 1)).days, now.hour, now.minute)
     record = settings / "build-version"
@@ -35,6 +41,9 @@ if sys.argv[1:] == ["version"]:
 elif sys.argv[1:] == ["mac-signing"]:
     record = settings / "mac-signing.json"
     requested = os.environ.get("VOXLINE_MAC_SIGN_IDENTITY")
+    if requested == "-":
+        print(requested)
+        sys.exit(0)
     if not requested and record.exists():
         requested = json.loads(record.read_text())["identity"]
     result = subprocess.run(["security", "find-identity", "-v", "-p", "codesigning"],
@@ -50,7 +59,8 @@ elif sys.argv[1:] == ["mac-signing"]:
                          "多个证书时设置 VOXLINE_MAC_SIGN_IDENTITY 为名称或 SHA-1。"
                          "已保存证书失效时须显式重新选择。")
     digest, _ = matches[0]
-    record.write_text(json.dumps({"identity": digest}) + "\n")
+    if os.environ.get("CI") != "true" and os.environ.get("VOXLINE_MAC_DISTRIBUTION") != "1":
+        record.write_text(json.dumps({"identity": digest}) + "\n")
     print(digest)
 else:
     raise SystemExit("Usage: build-metadata.py version|mac-signing")

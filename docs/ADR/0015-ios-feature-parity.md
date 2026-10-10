@@ -20,4 +20,4 @@ Mac 与 iOS 通过 Files 和原生分享手动交接成果，保持独立设备�
 
 后台运行由系统资源和生命周期控制，检查点恢复是可靠的交付基础。设备上的模型内存、语言支持与编码能力需要实际验证，不能从 Mac 成功或模拟器构建推断。
 
-页面与行为统一见 [需求](../RFC/voxline-v1.md#ios-后续页面)，阶段关系见 [交付顺序](../plans/voxline-v1.md)，已实施的模块边界见 [架构](../architecture/README.md)。后台能力依据 [Apple 原生长任务文档](https://developer.apple.com/documentation/backgroundtasks/performing-long-running-tasks-on-ios-and-ipados)。
+页面与行为统一见 [需求](../RFC/voxline-v1.md#ios-后续页面)，已实施的模块边界见 [架构](../architecture/README.md)。后台能力依据 [Apple 原生长任务文档](https://developer.apple.com/documentation/backgroundtasks/performing-long-running-tasks-on-ios-and-ipados)。

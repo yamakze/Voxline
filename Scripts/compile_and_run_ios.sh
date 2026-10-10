@@ -21,7 +21,7 @@ case "$configuration" in
     debug|release) ;;
     *) echo "Configuration must be debug or release." >&2; exit 2 ;;
 esac
-# Prefer an already booted device; otherwise choose the first available iPhone.
+# Default to the iPhone 17 Pro; other devices can be selected explicitly by UDID.
 device_id=$(xcrun simctl list devices available --json | python3 -c '
 import json, sys
 devices = [d for runtime, group in json.load(sys.stdin)["devices"].items()
@@ -30,11 +30,11 @@ requested = sys.argv[1]
 if requested:
     selected = next((d for d in devices if d["udid"] == requested), None)
 else:
-    selected = next((d for d in devices if d["state"] == "Booted"), None)
+    selected = next((d for d in devices if d["name"] == "iPhone 17 Pro" and d["state"] == "Booted"), None)
     if selected is None:
-        selected = next((d for d in devices if d["name"].startswith("iPhone")), None)
+        selected = next((d for d in devices if d["name"] == "iPhone 17 Pro"), None)
 if selected is None:
-    sys.exit("找不到可用 iOS 模拟器；用 --list 查看设备，或在 Xcode 安装 iOS runtime。")
+    sys.exit("找不到目标 iOS 模拟器；用 --list 查看设备，并指定 UDID，或在 Xcode 创建 iPhone 17 Pro。")
 print(selected["udid"])
 ' "$device_id")
 

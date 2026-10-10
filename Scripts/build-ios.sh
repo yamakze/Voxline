@@ -31,7 +31,7 @@ case "$configuration" in
 esac
 
 mkdir -p "build/ios/$platform"
-build_version=$(python3 Scripts/build-metadata.py version)
+build_version=$(python3 Scripts/lib/build-metadata.py version)
 build_started=$SECONDS
 xcodebuild -project Voxline.xcodeproj -scheme VoxlineIOS \
     -configuration "$xcode_configuration" -destination "$destination" \

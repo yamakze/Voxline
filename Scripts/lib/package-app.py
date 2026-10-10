@@ -7,29 +7,27 @@ import sys
 import tempfile
 from pathlib import Path
 
-if len(sys.argv) != 2 or sys.argv[1] not in {"debug", "release"}:
-    raise SystemExit("Usage: package-app.py <debug|release>")
-root = Path(__file__).resolve().parents[1]
+if len(sys.argv) < 3 or sys.argv[1] not in {"debug", "release"}:
+    raise SystemExit("Use Scripts/build-app.sh [debug|release]")
+root = Path(__file__).resolve().parents[2]
 identity = os.environ.get("VOXLINE_MAC_SIGN_IDENTITY")
 version = os.environ.get("VOXLINE_BUILD_VERSION")
 if not identity or not version:
     raise SystemExit("Use Scripts/build-app.sh to select a fixed signing identity and build version")
-result = subprocess.run(
-    ["swift", "build", "--configuration", sys.argv[1], "--show-bin-path"],
-    cwd=root, text=True, capture_output=True, check=True,
-)
-binary = Path(result.stdout.strip()) / "Voxline"
-if not binary.is_file():
-    raise SystemExit(f"Missing compiled executable: {binary}")
-output = root / "build"
-output.mkdir(exist_ok=True)
+binary_directories = [Path(directory) for directory in sys.argv[2:]]
+output = Path(os.environ.get("VOXLINE_MAC_OUTPUT_DIRECTORY", root / "build"))
+output.mkdir(parents=True, exist_ok=True)
 staging = tempfile.TemporaryDirectory(prefix="mac-package.", dir=output)
 bundle = Path(staging.name) / "Voxline.app"
 contents = bundle / "Contents"
 (contents / "MacOS").mkdir(parents=True, exist_ok=True)
 (contents / "Resources").mkdir(exist_ok=True)
-shutil.copy2(binary, contents / "MacOS" / "Voxline")
-for resource_bundle in binary.parent.glob("Voxline_*.bundle"):
+executables = [str(directory / "Voxline") for directory in binary_directories]
+if len(executables) == 1:
+    shutil.copy2(executables[0], contents / "MacOS" / "Voxline")
+else:
+    subprocess.run(["lipo", "-create", *executables, "-output", str(contents / "MacOS" / "Voxline")], check=True)
+for resource_bundle in binary_directories[0].glob("Voxline_*.bundle"):
     shutil.copytree(resource_bundle, contents / "Resources" / resource_bundle.name)
 shutil.copytree(root / "Licenses", contents / "Resources" / "Licenses", dirs_exist_ok=True)
 shutil.copy2(root / "LICENSE", contents / "Resources" / "LICENSE")
@@ -69,11 +67,15 @@ metadata = {
 }
 with (contents / "Info.plist").open("wb") as file:
     plistlib.dump(metadata, file)
-subprocess.run(["codesign", "--force", "--sign", identity, "--timestamp=none", "--entitlements",
+signing_options = ["--options", "runtime", "--timestamp"] if os.environ.get("VOXLINE_MAC_DISTRIBUTION") == "1" else ["--timestamp=none"]
+subprocess.run(["codesign", "--force", "--sign", identity, *signing_options, "--entitlements",
                 str(root / "Scripts" / "Voxline.entitlements"), str(bundle)], check=True)
 subprocess.run(["codesign", "--verify", "--strict", str(bundle)], check=True)
 requirement = subprocess.run(["codesign", "-d", "-r-", str(bundle)],
                              check=True, capture_output=True, text=True).stdout.strip()
+# codesign prefixes the generated cdhash requirement of an ad-hoc signature with '# '.
+if identity == "-":
+    requirement = requirement.removeprefix("# ")
 if not requirement.startswith("designated => "):
     raise SystemExit("codesign did not return a designated requirement")
 identity_manifest = Path(staging.name) / "Voxline.identity.json"
@@ -96,7 +98,7 @@ identity_manifest.replace(output / "Voxline.identity.json")
 staging.cleanup()
 subprocess.run(["touch", str(bundle)], check=True)
 lsregister = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
-if lsregister.is_file():
+if output == root / "build" and lsregister.is_file():
     subprocess.run([str(lsregister), "-f", "-R", "-trusted", str(bundle)], check=True)
 print(bundle)
 print(f"Bundle ID: {metadata['CFBundleIdentifier']} · Build: {version} · Signer: {identity}")

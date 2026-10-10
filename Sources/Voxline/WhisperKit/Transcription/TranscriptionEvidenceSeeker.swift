@@ -143,7 +143,7 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
         }
         let elementSize: Int
         switch weights.dataType {
-        case .float16: elementSize = MemoryLayout<Float16>.stride
+        case .float16: elementSize = MemoryLayout<UInt16>.stride // Raw 16-bit storage; Float16 is unavailable on Intel.
         case .float32: elementSize = MemoryLayout<Float>.stride
         case .double: elementSize = MemoryLayout<Double>.stride
         default:
