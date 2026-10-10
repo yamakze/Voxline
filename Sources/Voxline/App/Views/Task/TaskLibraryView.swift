@@ -10,6 +10,7 @@ public struct TaskLibraryView: View {
     @State private var conflictResolutionTaskID: UUID?
     @State private var errorMessage: String?
     @State private var targetedEntryID: String?
+    @State private var hoveredEntryID: String?
     var onSelectTask: ((ProcessingTask) -> Void)?
     var onNewTask: (() -> Void)?
     var onOpenFile: (() -> Void)?
@@ -163,7 +164,7 @@ public struct TaskLibraryView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                    if !task.items.isEmpty && task.startedAt != nil {
+                    if !task.items.isEmpty && task.startedAt != nil && task.completedCount < task.items.count {
                         ProgressView(
                             value: Double(task.completedCount),
                             total: Double(task.items.count)
@@ -216,8 +217,17 @@ public struct TaskLibraryView: View {
         .liquidGlassSurface()
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(targetedEntryID == entry.id ? Color.voxlineAccent : Color.clear, lineWidth: 2)
+                .strokeBorder(rowBorderColor(for: entry.id), lineWidth: targetedEntryID == entry.id ? 2 : 1)
         )
+        .onHover { isHovered in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                if isHovered {
+                    hoveredEntryID = entry.id
+                } else if hoveredEntryID == entry.id {
+                    hoveredEntryID = nil
+                }
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture {
             if let task = entry.task {
@@ -279,6 +289,16 @@ public struct TaskLibraryView: View {
             return true
         } isTargeted: { targeted in
             targetedEntryID = targeted ? entry.id : (targetedEntryID == entry.id ? nil : targetedEntryID)
+        }
+    }
+
+    private func rowBorderColor(for entryID: String) -> Color {
+        if targetedEntryID == entryID {
+            return Color.voxlineAccent
+        } else if hoveredEntryID == entryID {
+            return Color.voxlineAccent.opacity(0.35)
+        } else {
+            return Color.white.opacity(0.06)
         }
     }
 }

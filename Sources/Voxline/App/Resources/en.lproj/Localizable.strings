@@ -668,3 +668,6 @@
 "开始时间" = "Start Time";
 "结束时间" = "End Time";
 "拆分时间点" = "Split Point";
+"全部就绪" = "All Ready";
+"提取音频 · %@ · 字幕翻译已就绪" = "Audio extraction · %@ · Subtitle translation ready";
+"提取音频 · %@已就绪" = "Audio extraction · %@ ready";

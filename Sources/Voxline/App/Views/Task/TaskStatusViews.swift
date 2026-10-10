@@ -132,20 +132,43 @@ public struct MediaProcessingStepsView: View {
     }
 
     public var body: some View {
-        HStack(spacing: 4) {
-            stepChip(title: String(localized: "提取音频", bundle: appLocalizationBundle), state: item.extractionState)
-            connectorLine(isActive: item.transcriptionState != .waiting)
-            stepChip(title: transcriptionTitle, state: item.transcriptionState)
-
-            if hasTranslation {
-                connectorLine(isActive: item.translationState != .waiting)
-                stepChip(title: status.isTranslationPaused ? String(localized: "翻译暂停", bundle: appLocalizationBundle) : String(localized: "字幕翻译", bundle: appLocalizationBundle), state: item.translationState)
+        if isCompleted {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+                Text(String(localized: "全部就绪", bundle: appLocalizationBundle))
+                    .font(.caption2.weight(.medium))
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.green.opacity(0.12), in: .capsule)
+            .foregroundStyle(.green)
+            .help(completedSummaryTooltip)
+        } else {
+            HStack(spacing: 4) {
+                stepChip(title: String(localized: "提取音频", bundle: appLocalizationBundle), state: item.extractionState)
+                connectorLine(isActive: item.transcriptionState != .waiting)
+                stepChip(title: transcriptionTitle, state: item.transcriptionState)
 
-            connectorLine(isActive: isCompleted)
-            stepChip(title: String(localized: "就绪", bundle: appLocalizationBundle), state: isCompleted ? .completed : (isFailed ? .failed : (isCancelled ? .cancelled : .waiting)))
+                if hasTranslation {
+                    connectorLine(isActive: item.translationState != .waiting)
+                    stepChip(title: status.isTranslationPaused ? String(localized: "翻译暂停", bundle: appLocalizationBundle) : String(localized: "字幕翻译", bundle: appLocalizationBundle), state: item.translationState)
+                }
+
+                connectorLine(isActive: isCompleted)
+                stepChip(title: String(localized: "就绪", bundle: appLocalizationBundle), state: isCompleted ? .completed : (isFailed ? .failed : (isCancelled ? .cancelled : .waiting)))
+            }
+            .font(.caption2)
         }
-        .font(.caption2)
+    }
+
+    private var completedSummaryTooltip: String {
+        if hasTranslation {
+            return String(localized: "提取音频 · \(transcriptionTitle) · 字幕翻译已就绪", bundle: appLocalizationBundle)
+        } else {
+            return String(localized: "提取音频 · \(transcriptionTitle)已就绪", bundle: appLocalizationBundle)
+        }
     }
 
     private var isCompleted: Bool {

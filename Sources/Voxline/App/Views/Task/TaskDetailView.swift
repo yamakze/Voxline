@@ -128,7 +128,7 @@ public struct TaskDetailView: View {
                 SyncFileStatusBadge(state: state)
             }
 
-            if !task.items.isEmpty {
+            if !task.items.isEmpty && task.completedCount < task.items.count {
                 let progress = Double(task.completedCount) / Double(task.items.count)
                 HStack(spacing: 8) {
                     ProgressView(value: progress)
@@ -141,7 +141,7 @@ public struct TaskDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5), in: .rect(cornerRadius: 10))
+        .liquidGlassSurface(cornerRadius: 12)
     }
 
     // MARK: - Media processing queue
@@ -240,12 +240,17 @@ public struct TaskDetailView: View {
                                         .disabled(queue.isCancelling && queue.mediaID == item.id)
                                     }
 
-                                    Button(String(localized: "校对", bundle: appLocalizationBundle), systemImage: "chevron.right") {
+                                    Button {
                                         selectedMediaID = item.id
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Text(String(localized: "校对", bundle: appLocalizationBundle))
+                                            Image(systemName: "chevron.right")
+                                                .font(.caption2.weight(.bold))
+                                        }
                                     }
-                                    .buttonStyle(.borderless)
-                                    .font(.caption.bold())
-                                    .foregroundStyle(.tint)
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
                                 }
                             }
                             .padding(.vertical, 12)
