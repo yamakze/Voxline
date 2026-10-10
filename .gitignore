@@ -12,5 +12,6 @@ __pycache__/
 # Local development tools and private validation material
 .idea/
 .codex/
+.codegraph/
 /tmp/
 /.local/
