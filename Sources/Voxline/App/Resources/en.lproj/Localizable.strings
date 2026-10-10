@@ -81,7 +81,7 @@
 "保存草稿" = "Save Draft";
 "保存设备：%@" = "Saved by: %1$@";
 "保留选定版本" = "Keep Selected Version";
-"偏移时间（秒）：" = "Offset (seconds):";
+"偏移时间" = "Time Offset";
 "偏移秒数（支持小数或负数）" = "Offset in seconds (decimal or negative)";
 "偏移行…" = "Shift Timing…";
 "停止" = "Stop";

@@ -60,19 +60,17 @@ public final class SubtitleBurnInPlan {
     public let renderSize: CGSize
     public let duration: CMTime
     public let options: BurnInOptions
-    fileprivate let renderer: BurnInTextRenderer
     private let hasScopedAccess: Bool
     private var accessReleased = false
 
     fileprivate init(asset: AVComposition, videoComposition: AVVideoComposition, sourceURL: URL,
-         duration: CMTime, options: BurnInOptions, renderer: BurnInTextRenderer, hasScopedAccess: Bool) {
+         duration: CMTime, options: BurnInOptions, hasScopedAccess: Bool) {
         self.asset = asset
         self.videoComposition = videoComposition
         self.sourceURL = sourceURL
         self.renderSize = videoComposition.renderSize
         self.duration = duration
         self.options = options
-        self.renderer = renderer
         self.hasScopedAccess = hasScopedAccess
     }
 
@@ -166,7 +164,7 @@ public enum SubtitleBurnInExporter {
         try Task.checkCancellation()
         retained = true
         return SubtitleBurnInPlan(asset: composition, videoComposition: videoComposition,
-                                  sourceURL: bookmark.url, duration: duration, options: options, renderer: renderer, hasScopedAccess: access)
+                                  sourceURL: bookmark.url, duration: duration, options: options, hasScopedAccess: access)
     }
 
     @MainActor
@@ -189,13 +187,6 @@ public enum SubtitleBurnInExporter {
             }
             guard allowOverwrite else { throw BurnInError.fileAlreadyExists }
         }
-        // Validate the full film before encoding, without blocking the sheet's main actor.
-        let renderer = plan.renderer
-        let renderSize = plan.renderSize
-        let layoutWork = Task.detached(priority: .utility) { try renderer.validateLayouts(size: renderSize) }
-        try await withTaskCancellationHandler {
-            try await layoutWork.value
-        } onCancel: { layoutWork.cancel() }
         try Task.checkCancellation()
         let preset = plan.options.quality.preset(codec: plan.options.codec)
         guard await AVAssetExportSession.compatibility(ofExportPreset: preset, with: plan.asset, outputFileType: .mp4),
@@ -276,13 +267,6 @@ fileprivate final class BurnInTextRenderer: @unchecked Sendable {
     private var cachedOverlay: CIImage?
 
     init(cues: [SubtitleCue], options: BurnInOptions) { self.cues = cues; self.options = options }
-
-    func validateLayouts(size: CGSize) throws {
-        for cue in cues {
-            try Task.checkCancellation()
-            _ = try autoreleasepool { try layout(cue: cue, size: size) }
-        }
-    }
 
     func frame(source: CIImage, time: Double) throws -> CIImage {
         let milliseconds = time * 1000

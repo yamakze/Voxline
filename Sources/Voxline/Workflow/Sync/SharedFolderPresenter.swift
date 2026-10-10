@@ -3,10 +3,15 @@ import Foundation
 /// Directory notifications cover newly arriving documents as well as already queried iCloud items.
 final class SharedFolderPresenter: NSObject, NSFilePresenter, Sendable {
     let presentedItemURL: URL?
-    let presentedItemOperationQueue = OperationQueue.main
+    let presentedItemOperationQueue: OperationQueue
     private let onChange: @Sendable (Set<URL>?) -> Void
 
     init(directory: URL, onChange: @escaping @Sendable (Set<URL>?) -> Void) {
+        let queue = OperationQueue()
+        queue.name = "Voxline.SharedFolderPresenter"
+        queue.maxConcurrentOperationCount = 1
+        queue.qualityOfService = .utility
+        presentedItemOperationQueue = queue
         presentedItemURL = directory
         self.onChange = onChange
     }

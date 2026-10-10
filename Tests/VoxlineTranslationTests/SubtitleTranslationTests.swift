@@ -48,6 +48,13 @@ struct SubtitleTranslationTests {
         #expect(try parse([valid[0], ["id": cues[1].id.uuidString, "text": "第二条", "notes": "context"]]).count == 2)
         let wrapped = "```json\n" + String(decoding: try JSONSerialization.data(withJSONObject: ["translations": valid, "notes": "extra"]), as: UTF8.self) + "\n```"
         #expect(try OpenAICompatibleTranslationClient.parseResponse(response(wrapped), expectedIDs: cues.map(\.id)).count == 2)
+        #expect(try OpenAICompatibleTranslationClient.parseResponse(response("结果：\n" + wrapped + "\n以上为译文。"), expectedIDs: cues.map(\.id)).count == 2)
+        #expect(throws: SubtitleTranslationError.invalidTranslationResult) {
+            try OpenAICompatibleTranslationClient.parseResponse(response(wrapped + "\n" + wrapped), expectedIDs: cues.map(\.id))
+        }
+        #expect(throws: SubtitleTranslationError.invalidTranslationResult) {
+            try OpenAICompatibleTranslationClient.parseResponse(response(String(wrapped.dropLast(3))), expectedIDs: cues.map(\.id))
+        }
         #expect(throws: SubtitleTranslationError.invalidTranslationResult) {
             try OpenAICompatibleTranslationClient.parseResponse(response("```json\n{}\n```"), expectedIDs: cues.map(\.id))
         }
@@ -70,6 +77,17 @@ struct SubtitleTranslationTests {
         for ids in bounded {
             let request = try SubtitleTranslationRequest(inputs: long.filter { ids.contains($0.id) }.map(TranslationBatchInput.init), cues: long)
             #expect(try request.payload(targetLanguage: "zh-Hans").count <= SubtitleTranslationBatchPlanner.maximumPayloadBytes)
+        }
+        // JSON escaping and noncontiguous selections must count the exact neighboring context.
+        let escaped = try self.cues(count: 21, text: String(repeating: "\"中👩🏽‍💻\" \\ / \n\t", count: 35))
+        let pendingIDs = escaped.enumerated().filter { $0.offset.isMultiple(of: 2) }.map { $0.element.id }
+        let selectedBatches = try SubtitleTranslationBatchPlanner.batches(cues: escaped, pendingIDs: pendingIDs,
+            targetLanguage: "Chinese \"中文\"", batchSize: 50)
+        #expect(selectedBatches.count > 1)
+        #expect(selectedBatches.flatMap { $0 } == pendingIDs)
+        for ids in selectedBatches {
+            let request = try SubtitleTranslationRequest(inputs: escaped.filter { ids.contains($0.id) }.map(TranslationBatchInput.init), cues: escaped)
+            #expect(try request.payload(targetLanguage: "Chinese \"中文\"").count <= SubtitleTranslationBatchPlanner.maximumPayloadBytes)
         }
         let oversized = try self.cues(count: 1, text: String(repeating: "中", count: 5000))
         #expect(throws: SubtitleTranslationError.requestTooLarge) {

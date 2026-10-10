@@ -380,7 +380,7 @@ public struct MediaDetailProofreadingView: View {
                 .background(Color.secondary.opacity(0.1), in: .capsule)
                 .frame(width: 170)
 
-                if session.previewKind != .source, item.cues.contains(where: { !$0.hasTranslation }) {
+                if session.previewKind != .source, session.hasUntranslatedCues {
                     Text(String(localized: "未完成翻译可返回队列重试", bundle: appLocalizationBundle))
                         .font(.caption).foregroundStyle(.secondary)
                 }

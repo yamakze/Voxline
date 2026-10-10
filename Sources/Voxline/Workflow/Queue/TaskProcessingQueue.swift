@@ -419,7 +419,8 @@ public final class TaskProcessingQueue {
             do {
                 request = try updateMedia(taskID: taskID, mediaID: mediaID) { item in
                     let batch = try item.beginTranslationBatch(batchID, using: workIndex)
-                    return try SubtitleTranslationRequest(inputs: batch.inputs, cues: item.cues)
+                    return try SubtitleTranslationRequest(inputs: batch.inputs, cues: item.cues,
+                        cuePosition: { workIndex.cuePosition($0, in: item.cues) })
                 }
             } catch let error as CheckpointError {
                 try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .failed(reason: error.localizedDescription) }
@@ -434,7 +435,9 @@ public final class TaskProcessingQueue {
                     try Task.checkCancellation()
                     if retries > 0 {
                         guard let latest = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }),
-                              request.inputs.allSatisfy({ input in latest.cues.contains { input.matches($0) } }) else {
+                              request.inputs.allSatisfy({ input in
+                                  workIndex.cuePosition(input.cueID, in: latest.cues).map { input.matches(latest.cues[$0]) } == true
+                              }) else {
                             throw CheckpointError.editedCue
                         }
                     }

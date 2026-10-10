@@ -1,4 +1,3 @@
-import AVFoundation
 import Foundation
 import VoxlineCore
 
@@ -9,9 +8,11 @@ public struct AudioChatTranscriptionProvider: TranscriptionProvider {
     private let session: URLSession
     private let evidenceDirectory: URL
     private let onProgress: @Sendable (TranscriptionProgress) -> Void
+    private let padShortAudio: @Sendable (TranscriptionAudio) throws -> Data
     private let wait: @Sendable (TimeInterval) async throws -> Void
 
-    public init(settings: TranscriptionSettings, apiKey: String, session: URLSession = .shared,
+    public init(settings: TranscriptionSettings, apiKey: String,
+                padShortAudio: @escaping @Sendable (TranscriptionAudio) throws -> Data, session: URLSession = .shared,
                 evidenceDirectory: URL? = nil, mediaID: UUID = UUID(),
                 onProgress: @escaping @Sendable (TranscriptionProgress) -> Void = { _ in },
                 wait: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }) throws {
@@ -19,6 +20,7 @@ public struct AudioChatTranscriptionProvider: TranscriptionProvider {
         guard settings.cloud?.protocolKind.usesSpeechChunks == true else { throw CloudTranscriptionError.invalidConfiguration }
         self.settings = settings; self.apiKey = apiKey; self.session = session
         self.onProgress = onProgress; self.wait = wait
+        self.padShortAudio = padShortAudio
         self.evidenceDirectory = (evidenceDirectory ?? URL.cachesDirectory.appendingPathComponent("Voxline/Transcription"))
             .appendingPathComponent(mediaID.uuidString)
     }
@@ -42,7 +44,7 @@ public struct AudioChatTranscriptionProvider: TranscriptionProvider {
                 // Eight seconds of PCM16 remains far below both vendors' encoded limits.
                 guard size <= 1_000_000 else { throw CloudTranscriptionError.uploadTooLarge }
                 let audioData = cloud.protocolKind == .qwenAudioChat && audio.durationMilliseconds < 1000
-                    ? try qwenShortAudioData(audio: audio) : try Data(contentsOf: audio.localURL)
+                    ? try padShortAudio(audio) : try Data(contentsOf: audio.localURL)
                 let payload = try requestBody(audioData: audioData, duration: Double(audio.durationMilliseconds) / 1000)
                 var request = URLRequest(url: cloud.baseURL.appendingPathComponent("chat/completions"))
                 request.httpMethod = "POST"; request.timeoutInterval = 300
@@ -97,41 +99,6 @@ public struct AudioChatTranscriptionProvider: TranscriptionProvider {
             catch let storageError { throw TranscriptionFailure(cause: error, evidence: evidence, evidenceURL: nil, storageError: storageError.localizedDescription) }
             throw TranscriptionFailure(cause: error, evidence: evidence, evidenceURL: url)
         }
-    }
-
-    /// Qwen rejects very short, nonempty PCM as empty audio. Append transport-only silence;
-    /// recognition evidence still belongs to the original range, including existing checkpoints.
-    func qwenShortAudioData(audio: TranscriptionAudio) throws -> Data {
-        let file = try AVAudioFile(forReading: audio.localURL, commonFormat: .pcmFormatInt16, interleaved: true)
-        guard file.processingFormat.sampleRate == 16_000, file.processingFormat.channelCount == 1,
-              file.length > 0, file.length < 16_000, (file.length + 15) / 16 == audio.durationMilliseconds,
-              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)) else {
-            throw TranscriptionInputError.invalidAudio
-        }
-        try file.read(into: buffer)
-        guard Int64(buffer.frameLength) == file.length, let samples = buffer.int16ChannelData?[0] else {
-            throw TranscriptionInputError.invalidAudio
-        }
-        // Canonical little-endian mono PCM16 WAV; only the upload envelope has a 1 s duration.
-        var data = Data("RIFF".utf8)
-        func appendInteger<T: FixedWidthInteger>(_ value: T) {
-            var littleEndian = value.littleEndian
-            withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
-        }
-        appendInteger(UInt32(36 + 32_000))
-        data.append(Data("WAVEfmt ".utf8))
-        appendInteger(UInt32(16))
-        appendInteger(UInt16(1))
-        appendInteger(UInt16(1))
-        appendInteger(UInt32(16_000))
-        appendInteger(UInt32(32_000))
-        appendInteger(UInt16(2))
-        appendInteger(UInt16(16))
-        data.append(Data("data".utf8))
-        appendInteger(UInt32(32_000))
-        data.append(contentsOf: UnsafeRawBufferPointer(start: samples, count: Int(file.length) * 2))
-        data.append(Data(count: (16_000 - Int(file.length)) * 2))
-        return data
     }
 
     func requestBody(audioData: Data, duration: Double) throws -> Data {

@@ -112,7 +112,7 @@ public struct TranslationCheckpointIndex: Sendable {
         batchPositions = positions
     }
 
-    func cuePosition(_ id: UUID, in cues: [SubtitleCue]) -> Int? {
+    public func cuePosition(_ id: UUID, in cues: [SubtitleCue]) -> Int? {
         if let position = cuePositions[id], cues.indices.contains(position), cues[position].id == id { return position }
         // Structural edits can move or remove a cue while an external request is in flight.
         return cues.firstIndex { $0.id == id }
@@ -165,10 +165,11 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
             }
         }
         // Recognition and translation snapshots describe past work, not the editable timeline.
+        let allTranscribed = chunks.allSatisfy(\.isCompleted)
         var batchIDs = Set<UUID>()
         var activeIDs = Set<UUID>()
         for batch in translationBatches {
-            guard parameters.translation != nil, chunks.allSatisfy(\.isCompleted), batchIDs.insert(batch.id).inserted,
+            guard parameters.translation != nil, allTranscribed, batchIDs.insert(batch.id).inserted,
                   batch.isCompleted || !batch.inputs.isEmpty,
                   Set(batch.inputs.map(\.cueID)).count == batch.inputs.count else { throw CheckpointError.invalidRecord }
             for input in batch.inputs {
@@ -193,13 +194,13 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
         }
         guard runningCount <= 1 else { throw CheckpointError.invalidRecord }
         if case .translationPaused = status {
-            guard parameters.translation != nil, chunks.allSatisfy(\.isCompleted),
+            guard parameters.translation != nil, allTranscribed,
                   translationBatches.contains(where: { if case .failed = $0.state { true } else { false } }) else {
                 throw CheckpointError.incompleteWork
             }
         }
         if status == .completed {
-            guard chunks.allSatisfy(\.isCompleted),
+            guard allTranscribed,
                   parameters.translation == nil || cues.allSatisfy(\.hasTranslation) else { throw CheckpointError.incompleteWork }
         }
     }
@@ -292,8 +293,12 @@ public extension TaskMediaItem {
         let subtitled = result.cues.map(\.sourceText).joined().precomposedStringWithCanonicalMapping.filter { !$0.isWhitespace }
         guard recognized == subtitled else { throw CheckpointError.invalidRecord }
         var updated = self
+        let previousStart = updated.cues.last?.startMilliseconds
         updated.cues.append(contentsOf: result.cues)
-        updated.cues.sort { $0.startMilliseconds < $1.startMilliseconds }
+        // Sequential chunks append directly; only a recovered earlier range needs reordering.
+        if let previousStart, let incomingStart = result.cues.first?.startMilliseconds, incomingStart < previousStart {
+            updated.cues.sort { $0.startMilliseconds < $1.startMilliseconds }
+        }
         record.chunks[index].state = .completed(.init(sourceID: result.sourceID))
         updated.checkpoint = record
         if let reason = record.chunks.compactMap({ chunk -> String? in

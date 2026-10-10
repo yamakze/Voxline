@@ -3,6 +3,7 @@ import Foundation
 import Synchronization
 import Testing
 import VoxlineCore
+import VoxlineMedia
 @testable import VoxlineTranslation
 
 @Suite("Cloud transcription protocol", .serialized)
@@ -132,7 +133,7 @@ struct CloudTranscriptionTests {
             modelID: "gemini-test", protocolKind: .geminiAudioChat).settings(languageCode: "en")
         let session = session()
         defer { session.invalidateAndCancel() }
-        let provider = try AudioChatTranscriptionProvider(settings: settings, apiKey: "test-key", session: session, evidenceDirectory: root)
+        let provider = try AudioChatTranscriptionProvider(settings: settings, apiKey: "test-key", padShortAudio: { try TranscriptionAudioUpload.paddedToOneSecond($0) }, session: session, evidenceDirectory: root)
         let request = try #require(JSONSerialization.jsonObject(with: provider.requestBody(audioData: Data("RIFF".utf8), duration: 2)) as? [String: Any])
         let messages = try #require(request["messages"] as? [[String: Any]])
         let parts = try #require(messages.first?["content"] as? [[String: Any]])
@@ -175,7 +176,7 @@ struct CloudTranscriptionTests {
         let session = session()
         defer { session.invalidateAndCancel() }
         let delays = Mutex<[TimeInterval]>([])
-        let provider = try AudioChatTranscriptionProvider(settings: settings, apiKey: "", session: session,
+        let provider = try AudioChatTranscriptionProvider(settings: settings, apiKey: "", padShortAudio: { try TranscriptionAudioUpload.paddedToOneSecond($0) }, session: session,
             evidenceDirectory: root, wait: { delay in delays.withLock { $0.append(delay) } })
         let request = try #require(JSONSerialization.jsonObject(with: provider.requestBody(audioData: Data("RIFF".utf8), duration: 2)) as? [String: Any])
         let messages = try #require(request["messages"] as? [[String: Any]])
@@ -225,8 +226,8 @@ struct CloudTranscriptionTests {
             modelID: "qwen3-asr-flash", protocolKind: .qwenAudioChat).settings()
         let session = session()
         defer { session.invalidateAndCancel() }
-        let provider = try AudioChatTranscriptionProvider(settings: settings, apiKey: "", session: session, evidenceDirectory: root)
-        let padded = try provider.qwenShortAudioData(audio: audio)
+        let provider = try AudioChatTranscriptionProvider(settings: settings, apiKey: "", padShortAudio: { try TranscriptionAudioUpload.paddedToOneSecond($0) }, session: session, evidenceDirectory: root)
+        let padded = try TranscriptionAudioUpload.paddedToOneSecond(audio)
         let paddedURL = root.appendingPathComponent("padded.wav")
         try padded.write(to: paddedURL)
         let decoded = try AVAudioFile(forReading: paddedURL, commonFormat: .pcmFormatInt16, interleaved: true)
@@ -263,7 +264,7 @@ struct CloudTranscriptionTests {
         let pending = checkpoint.chunks.filter { !$0.isCompleted }
         #expect(pending.count == fixture.audioPaths.count)
         let root = URL(fileURLWithPath: fixturePath).deletingLastPathComponent().appendingPathComponent("qwen-retry-evidence")
-        let provider = try AudioChatTranscriptionProvider(settings: task.parameters.transcription, apiKey: key, evidenceDirectory: root)
+        let provider = try AudioChatTranscriptionProvider(settings: task.parameters.transcription, apiKey: key, padShortAudio: { try TranscriptionAudioUpload.paddedToOneSecond($0) }, evidenceDirectory: root)
         for (chunk, path) in zip(pending, fixture.audioPaths) {
             let audio = try TranscriptionAudio(localURL: URL(fileURLWithPath: path),
                 sourceStartMilliseconds: chunk.range.sourceStartMilliseconds, durationMilliseconds: chunk.range.durationMilliseconds)

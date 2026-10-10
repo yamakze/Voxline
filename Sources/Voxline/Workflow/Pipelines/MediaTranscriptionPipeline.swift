@@ -52,6 +52,7 @@ public struct ConfiguredMediaTranscriptionPipeline: MediaTranscriptionPipeline {
             let key = try await CloudTranscriptionServiceStore.shared.apiKey(for: settings)
             if settings.cloud?.protocolKind.usesSpeechChunks == true {
                 let provider = try AudioChatTranscriptionProvider(settings: settings, apiKey: key,
+                    padShortAudio: { try TranscriptionAudioUpload.paddedToOneSecond($0) },
                     evidenceDirectory: evidenceDirectory, mediaID: mediaID, onProgress: progress)
                 return try await provider.transcribeEvidence(audio: audio)
             }

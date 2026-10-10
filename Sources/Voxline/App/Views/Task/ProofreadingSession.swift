@@ -16,6 +16,7 @@ final class ProofreadingSession {
         didSet { filterTranscriptRows() }
     }
     private(set) var transcriptRows: [TranscriptRow] = []
+    private(set) var hasUntranslatedCues = false
     @ObservationIgnored private var allTranscriptRows: [TranscriptRow] = []
     var errorMessage: String?
     var editingSnapshot: SubtitleCue?
@@ -32,9 +33,12 @@ final class ProofreadingSession {
     }
 
     func updateSubtitles(_ cues: [SubtitleCue]) {
+        guard allTranscriptRows.count != cues.count ||
+              !zip(allTranscriptRows, cues).allSatisfy({ $0.cue == $1 }) else { return }
         allTranscriptRows = cues.indices.map { index in
             TranscriptRow(cue: cues[index], nextCue: index + 1 < cues.count ? cues[index + 1] : nil)
         }
+        hasUntranslatedCues = cues.contains { !$0.hasTranslation }
         filterTranscriptRows()
     }
 

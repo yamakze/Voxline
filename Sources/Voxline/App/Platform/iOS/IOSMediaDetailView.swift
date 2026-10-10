@@ -11,14 +11,14 @@ struct IOSMediaDetailView: View {
     let taskID: UUID
     let mediaID: UUID
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isScrollingTranscript = false
     @State private var session: ProofreadingSession
     @State private var playback = MediaPlaybackController()
     @State private var importingMedia = false
     @State private var association: IOSMediaAssociationCandidate?
     @State private var showingOffset = false
     @State private var structureState = SubtitleStructureState()
-
-    // 多选重译
 
     // 导出与烧录
     @State private var sharingURL: URL?
@@ -354,9 +354,12 @@ struct IOSMediaDetailView: View {
                 }
             }
             .listStyle(.plain)
+            .onScrollPhaseChange { _, phase in
+                isScrollingTranscript = phase == .tracking || phase == .interacting || phase == .decelerating
+            }
             .onChange(of: activeCue?.id) { _, newID in
-                if let newID, playback.isPlaying {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                if let newID, playback.isPlaying, !isScrollingTranscript {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
                         proxy.scrollTo(newID, anchor: .center)
                     }
                 }
@@ -485,7 +488,7 @@ struct IOSMediaDetailView: View {
 
             let hasTranslation = task?.parameters.translation != nil
             if hasTranslation {
-                if !item.cues.isEmpty && !item.cues.allSatisfy(\.hasTranslation) {
+                if session.hasUntranslatedCues {
                     Button(String(localized: "继续翻译", bundle: appLocalizationBundle), systemImage: "character.bubble") {
                         do { try library.startTranslation(taskID: taskID, mediaID: mediaID) }
                         catch { session.errorMessage = error.localizedDescription }

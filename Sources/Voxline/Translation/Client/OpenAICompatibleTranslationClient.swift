@@ -71,9 +71,13 @@ public struct OpenAICompatibleTranslationClient: Sendable {
         guard var content = choice.message.content?.trimmingCharacters(in: .whitespacesAndNewlines) else {
             throw SubtitleTranslationError.invalidTranslationResult
         }
-        // Accept a complete Markdown fence without accepting partial or invented results.
-        if content.hasPrefix("```"), content.hasSuffix("```"), let newline = content.firstIndex(of: "\n") {
-            content = String(content[content.index(after: newline)...].dropLast(3))
+        // A single complete code block can carry prose around it; multiple blocks are ambiguous.
+        if content.contains("```") {
+            let parts = content.components(separatedBy: "```")
+            guard parts.count == 3, let newline = parts[1].firstIndex(of: "\n") else {
+                throw SubtitleTranslationError.invalidTranslationResult
+            }
+            content = String(parts[1][parts[1].index(after: newline)...])
         }
         guard let json = content.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: json) as? [String: Any],

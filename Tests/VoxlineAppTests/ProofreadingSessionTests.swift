@@ -15,6 +15,7 @@ struct ProofreadingSessionTests {
         let library = TaskLibrary(tasksDirectory: root)
         try library.save(task)
         let session = ProofreadingSession(item: item)
+        #expect(session.hasUntranslatedCues)
         session.searchQuery = "人工译文"
         #expect(session.transcriptRows.isEmpty)
         session.beginEditing(cue)
@@ -45,6 +46,15 @@ struct ProofreadingSessionTests {
         #expect(session.canUndo(in: saved))
         #expect(session.transcriptRows.first?.cue == saved.cues.first)
         #expect(session.transcriptRows.first?.nextCue == nil)
+        #expect(!session.hasUntranslatedCues)
+        session.updateSubtitles(saved.cues) // The page receives the same successful save via observation.
+        session.searchQuery = "Corrected"
+        #expect(session.transcriptRows.first?.cue == saved.cues.first)
+        try session.undo(in: saved) { edited, original in
+            try library.updateItem(edited, taskID: task.id, comparedTo: original)
+        }
+        #expect(session.hasUntranslatedCues)
+        #expect(TaskLibrary(tasksDirectory: root).task(for: task.id)?.items.first == item)
     }
 
     @Test func undoPersistsThePreviousTimelineAndRejectsInterveningEdits() throws {

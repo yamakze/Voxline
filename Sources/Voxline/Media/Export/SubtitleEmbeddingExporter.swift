@@ -134,7 +134,10 @@ public enum SubtitleEmbeddingExporter {
                            let format = CMSampleBufferGetFormatDescription(sample),
                            CMFormatDescriptionGetMediaSubType(format) == kAudioFormatMPEG4AAC {
                             if let trim = CMGetAttachment(sample, key: kCMSampleBufferAttachmentKey_TrimDurationAtStart, attachmentModeOut: nil) {
-                                audioPriming = CMTimeAdd(audioPriming, CMTimeMakeFromDictionary(trim as! CFDictionary))
+                                guard let dictionary = trim as? [String: Any] else { throw SubtitleEmbeddingError.invalidOutput }
+                                let priming = CMTimeMakeFromDictionary(dictionary as CFDictionary)
+                                guard priming.isNumeric else { throw SubtitleEmbeddingError.invalidOutput }
+                                audioPriming = CMTimeAdd(audioPriming, priming)
                             }
                             audioStarted = CMSampleBufferGetOutputDuration(sample) > .zero
                         }
@@ -258,6 +261,8 @@ final class SubtitleEmbeddingFinalization: @unchecked Sendable {
     private var continuation: CheckedContinuation<Void, Never>?
     private var finished = false
     private var cancelled = false
+    // Accessed only on the serial native-operation queue.
+    private var finalizationStarted = false
 
     init(writer: AVAssetWriter) { self.writer = writer }
 
@@ -273,7 +278,10 @@ final class SubtitleEmbeddingFinalization: @unchecked Sendable {
                 else {
                     queue.async {
                         guard !self.lock.withLock({ self.cancelled }) else { return }
-                        self.writer.finishWriting { self.complete(cancelled: false) }
+                        self.finalizationStarted = true
+                        self.writer.finishWriting {
+                            self.queue.async { self.complete() }
+                        }
                     }
                 }
             }
@@ -289,13 +297,14 @@ final class SubtitleEmbeddingFinalization: @unchecked Sendable {
         guard shouldCancel else { return }
         queue.async {
             self.writer.cancelWriting()
-            self.complete(cancelled: true)
+            // An active finalization owns its completion callback, including cancellation.
+            if !self.finalizationStarted { self.complete() }
         }
     }
 
-    private func complete(cancelled: Bool) {
+    private func complete() {
         let waiting = lock.withLock { () -> CheckedContinuation<Void, Never>? in
-            guard !finished, cancelled || !self.cancelled else { return nil }
+            guard !finished else { return nil }
             finished = true
             let waiting = continuation
             continuation = nil

@@ -52,7 +52,7 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
         guard hasCompleteRecognition(original) else {
             throw WhisperTranscriptionError.invalidAlignment(String(localized: "没有完整的本地识别结果可恢复。", bundle: voxlineLocalizationBundle))
         }
-        let frameCount = original.windows.map { $0.seekFrame + $0.frameCount }.max()!
+        let frameCount = original.windows.reduce(0) { max($0, $1.seekFrame + $1.frameCount) }
         let offset = Double(original.sourceStartMilliseconds) / 1000
         let selected = original.windows.flatMap { $0.usesSegmentTimings == true ? $0.segmentsBeforeAlignment :
             ($0.alignedSegments ?? $0.segmentsBeforeAlignment) }
