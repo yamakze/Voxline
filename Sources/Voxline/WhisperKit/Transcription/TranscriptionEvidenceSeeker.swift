@@ -141,17 +141,21 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
               shape[0] > 0, shape[1] > 0, frameCount >= samplesPerColumn else {
             throw WhisperTranscriptionError.invalidAlignment(String(localized: "对齐矩阵或实际音频窗口不足一个 20 毫秒帧。", bundle: voxlineLocalizationBundle))
         }
-        // The pinned model emits Float16 weights; copy its logical rows before alignment.
-        guard weights.dataType == .float16 else {
-            throw WhisperTranscriptionError.invalidAlignment(String(localized: "固定 SDK 的词对齐只支持 Float16 权重。", bundle: voxlineLocalizationBundle))
+        let elementSize: Int
+        switch weights.dataType {
+        case .float16: elementSize = MemoryLayout<Float16>.stride
+        case .float32: elementSize = MemoryLayout<Float>.stride
+        case .double: elementSize = MemoryLayout<Double>.stride
+        default:
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐权重类型不支持。", bundle: voxlineLocalizationBundle))
         }
         let columns = min(shape[1], frameCount / samplesPerColumn)
-        let cropped = try MLMultiArray(shape: [shape[0], columns] as [NSNumber], dataType: .float16)
+        let cropped = try MLMultiArray(shape: [shape[0], columns] as [NSNumber], dataType: weights.dataType)
         let destinationStride = cropped.strides[0].intValue
         for row in 0..<shape[0] {
-            memcpy(cropped.dataPointer.advanced(by: row * destinationStride * MemoryLayout<Float16>.stride),
-                   weights.dataPointer.advanced(by: row * strides[0] * MemoryLayout<Float16>.stride),
-                   columns * MemoryLayout<Float16>.stride)
+            memcpy(cropped.dataPointer.advanced(by: row * destinationStride * elementSize),
+                   weights.dataPointer.advanced(by: row * strides[0] * elementSize),
+                   columns * elementSize)
         }
         return cropped
     }

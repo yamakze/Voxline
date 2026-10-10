@@ -16,7 +16,7 @@ public struct WhisperModelInventory: Sendable {
     public let state: State
 }
 
-/// Owns one local model installation and the single SDK worker used by transcription.
+/// Owns local model installations and the single SDK worker used by transcription.
 public actor WhisperModelStore {
     public static let shared = WhisperModelStore()
     private let directory: URL?
@@ -43,89 +43,83 @@ public actor WhisperModelStore {
     private func removeActivityObserver(_ id: UUID) { activityObservers[id] = nil }
 
     public func inventory(modelID: String) throws -> WhisperModelInventory {
-        let manifest = try ModelFileManifest.baseline()
-        guard modelID == manifest.modelID else { throw WhisperModelError.unknownModel }
+        let model = try WhisperModels.model(id: modelID)
         let root = try installationDirectory(modelID: modelID)
         if !FileManager.default.fileExists(atPath: root.path) {
-            return WhisperModelInventory(directory: root, revision: manifest.modelRevision, byteCount: 0, state: .missing)
+            return WhisperModelInventory(directory: root, revision: WhisperModels.revision, byteCount: 0, state: .missing)
         }
         let bytes = try Self.diskUsage(in: root)
         do {
-            let receipt = try JSONDecoder().decode(ModelFileManifest.self,
+            let receipt = try JSONDecoder().decode(ModelInstallation.self,
                 from: Data(contentsOf: root.appendingPathComponent("installation.json")))
-            guard receipt == manifest else { throw WhisperModelError.differentVersion }
+            guard receipt.modelID == modelID else { throw WhisperModelError.unknownModel }
             let hub = HubApiWrapper(downloadBase: root)
-            let model = hub.localRepoLocation(.init(id: manifest.modelRepository)).appendingPathComponent(modelID)
-            let tokenizer = hub.localRepoLocation(.init(id: manifest.tokenizerRepository))
-            try ModelFileManifest.verify(manifest.modelFiles, in: model, hashes: false)
-            try ModelFileManifest.verify(manifest.tokenizerFiles, in: tokenizer, hashes: false)
-            return WhisperModelInventory(directory: root, revision: manifest.modelRevision, byteCount: bytes,
+            let modelDirectory = hub.localRepoLocation(.init(id: WhisperModels.repository)).appendingPathComponent(modelID)
+            let tokenizer = hub.localRepoLocation(.init(id: model.tokenizerRepository))
+            try ModelInstallation.verify(receipt.modelFiles, in: modelDirectory, required: ModelInstallation.modelPaths)
+            try ModelInstallation.verify(receipt.tokenizerFiles, in: tokenizer, required: ModelInstallation.tokenizerPaths)
+            return WhisperModelInventory(directory: root, revision: receipt.modelRevision, byteCount: bytes,
                                          state: loadedModelID == modelID ? .loaded : .installed)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            return WhisperModelInventory(directory: root, revision: manifest.modelRevision, byteCount: bytes, state: .incomplete(reason: error.localizedDescription))
+            return WhisperModelInventory(directory: root, revision: WhisperModels.revision, byteCount: bytes, state: .incomplete(reason: error.localizedDescription))
         }
     }
 
     /// Re-download is an explicit fresh installation; partial files remain visible after cancellation.
     public func download(modelID: String,
                          onProgress: @escaping @Sendable (WhisperModelDownloadProgress) -> Void) async throws {
-        let manifest = try ModelFileManifest.baseline()
-        guard modelID == manifest.modelID else { throw WhisperModelError.unknownModel }
+        let model = try WhisperModels.model(id: modelID)
         guard !operating else { throw WhisperTranscriptionError.busy }
+        try Task.checkCancellation()
         try unload(modelID: modelID)
         operating = true
         defer { operating = false }
-        try Task.checkCancellation()
         let root = try installationDirectory(modelID: modelID)
-        let parent = root.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
-        let attributes = try FileManager.default.attributesOfFileSystem(forPath: parent.path)
-        guard let free = attributes[.systemFreeSize] as? NSNumber else { throw WhisperModelError.unavailableDiskSpace }
-        let required = (manifest.modelFiles + manifest.tokenizerFiles).reduce(Int64(10_000_000)) { $0 + $1.byteCount }
-        guard free.int64Value >= required else {
-            throw WhisperModelError.insufficientSpace(required: required, available: free.int64Value)
-        }
         if FileManager.default.fileExists(atPath: root.path) { try FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let hub = HubApiWrapper(downloadBase: root)
-        let modelRoot = try await hub.snapshot(from: .init(id: manifest.modelRepository),
-            revision: manifest.modelRevision, matching: ["\(modelID)/*"]) { progress in
+        let modelRoot = try await hub.snapshot(from: .init(id: WhisperModels.repository),
+            revision: WhisperModels.revision, matching: ["\(modelID)/*"]) { progress in
                 onProgress(.files(component: String(localized: "权重", bundle: voxlineLocalizationBundle), fraction: progress.fractionCompleted))
             }
         // The pinned SDK may return partial files instead of throwing when cancelled.
         try Task.checkCancellation()
-        let tokenizer = try await hub.snapshot(from: .init(id: manifest.tokenizerRepository),
-            revision: manifest.tokenizerRevision, matching: manifest.tokenizerFiles.map(\.path)) { progress in
+        let tokenizer = try await hub.snapshot(from: .init(id: model.tokenizerRepository),
+            revision: model.tokenizerRevision, matching: ModelInstallation.tokenizerPaths) { progress in
                 onProgress(.files(component: String(localized: "分词器", bundle: voxlineLocalizationBundle), fraction: progress.fractionCompleted))
             }
         try Task.checkCancellation()
         onProgress(.checking)
-        try ModelFileManifest.verify(manifest.modelFiles, in: modelRoot.appendingPathComponent(modelID), hashes: true)
-        try ModelFileManifest.verify(manifest.tokenizerFiles, in: tokenizer, hashes: true)
+        let receipt = ModelInstallation(modelID: modelID, modelRepository: WhisperModels.repository,
+            modelRevision: WhisperModels.revision,
+            modelFiles: try ModelInstallation.files(in: modelRoot.appendingPathComponent(modelID), required: ModelInstallation.modelPaths),
+            tokenizerRepository: model.tokenizerRepository, tokenizerRevision: model.tokenizerRevision,
+            tokenizerFiles: try ModelInstallation.files(in: tokenizer, required: ModelInstallation.tokenizerPaths))
         try Task.checkCancellation()
-        try JSONEncoder().encode(manifest).write(to: root.appendingPathComponent("installation.json"), options: .atomic)
+        try JSONEncoder().encode(receipt).write(to: root.appendingPathComponent("installation.json"), options: .atomic)
     }
 
     public func load(modelID: String) async throws {
+        try Task.checkCancellation()
         guard !operating else { throw WhisperTranscriptionError.busy }
         if loadedModelID == modelID { return }
         operating = true
         defer { operating = false }
-        let manifest = try ModelFileManifest.baseline()
-        guard modelID == manifest.modelID else { throw WhisperModelError.unknownModel }
+        let model = try WhisperModels.model(id: modelID)
         let inventory = try inventory(modelID: modelID)
         guard case .installed = inventory.state else {
             if case .incomplete(let reason) = inventory.state { throw CocoaError(.fileReadCorruptFile, userInfo: [NSLocalizedDescriptionKey: reason]) }
             throw WhisperModelError.notInstalled
         }
         let hub = HubApiWrapper(downloadBase: inventory.directory)
-        let model = hub.localRepoLocation(.init(id: manifest.modelRepository)).appendingPathComponent(modelID)
-        let tokenizer = hub.localRepoLocation(.init(id: manifest.tokenizerRepository))
-        try ModelFileManifest.verify(manifest.modelFiles, in: model, hashes: true)
-        try ModelFileManifest.verify(manifest.tokenizerFiles, in: tokenizer, hashes: true)
-        let kit = try await Self.loadedModel(model: model, tokenizer: tokenizer, modelID: modelID)
+        let modelDirectory = hub.localRepoLocation(.init(id: WhisperModels.repository)).appendingPathComponent(modelID)
+        let tokenizer = hub.localRepoLocation(.init(id: model.tokenizerRepository))
+        // Release the previous worker before loading another model to avoid holding both sets of weights.
+        loadedKit = nil
+        loadedModelID = nil
+        let kit = try await Self.loadedModel(model: modelDirectory, tokenizer: tokenizer, modelID: modelID)
         try Task.checkCancellation()
         loadedKit = kit
         loadedModelID = modelID
@@ -137,7 +131,7 @@ public actor WhisperModelStore {
     }
 
     public func delete(modelID: String) throws {
-        guard modelID == TranscriptionSettings.whisperKitBaseline.modelID else { throw WhisperModelError.unknownModel }
+        _ = try WhisperModels.model(id: modelID)
         guard !operating else { throw WhisperTranscriptionError.busy }
         try unload(modelID: modelID)
         try FileManager.default.removeItem(at: installationDirectory(modelID: modelID))
@@ -152,6 +146,7 @@ public actor WhisperModelStore {
         if loadedModelID != settings.modelID { onProgress(.loadingModel) }
         try await load(modelID: settings.modelID)
         try Task.checkCancellation()
+        guard !operating else { throw WhisperTranscriptionError.busy }
         guard let kit = loadedKit, loadedModelID == settings.modelID else { throw WhisperModelError.notInstalled }
         operating = true
         let previousSeeker = kit.segmentSeeker

@@ -13,7 +13,7 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
                 onProgress: @escaping @Sendable (VoxlineCore.TranscriptionProgress) -> Void = { _ in }) throws {
         try settings.validate()
         guard settings.provider == .whisperKit else { throw CloudTranscriptionError.invalidConfiguration }
-        guard settings.modelID == TranscriptionSettings.whisperKitBaseline.modelID else { throw WhisperModelError.unknownModel }
+        _ = try WhisperModels.model(id: settings.modelID)
         if let code = settings.languageCode, !Constants.languageCodes.contains(code) {
             throw WhisperTranscriptionError.unsupportedLanguage(code)
         }

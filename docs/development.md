@@ -24,7 +24,7 @@ VOXLINE_MAC_SIGN_IDENTITY="Apple Development: <证书名称>" Scripts/build-app.
 
 ## iOS
 
-Voxline.xcodeproj 保留 VoxlineIOS scheme，应用 target 为 VoxlineApp；两平台应用源码统一在 Sources/Voxline/App。能力框架直接使用相同源码目录，WhisperKit 产品固定到与 SwiftPM 相同的提交。模型清单作为框架资源打包，权重由模型页按需下载。Xcode 可打开工程进行断点调试与 SwiftUI Preview。
+Voxline.xcodeproj 保留 VoxlineIOS scheme，应用 target 为 VoxlineApp；两平台应用源码统一在 Sources/Voxline/App。能力框架直接使用相同源码目录，WhisperKit 产品固定到与 SwiftPM 相同的提交。模型清单编译到共享 WhisperKit 集成框架，权重由模型页按需下载。Xcode 可打开工程进行断点调试与 SwiftUI Preview。
 
 ```sh
 Scripts/build-ios-ipa.sh
@@ -46,7 +46,7 @@ AltStore 覆盖更新须沿用相同原始 Bundle ID 和签名账号／Team，�
 
 当前 iOS 功能与文件规则见 [架构](architecture/README.md)。
 
-原生集成测试复用实际 iOS 模块和 Apple 结果映射测试，检查模型清单资源、真实 Keychain、独立文件副本及错误边界：
+原生集成测试复用实际 iOS 模块和 Apple 结果映射测试，检查五种型号的安装状态、真实 Keychain、独立文件副本及错误边界：
 
 ```sh
 xcodebuild -project Voxline.xcodeproj -scheme VoxlineIOS \
@@ -107,6 +107,13 @@ swift test --filter 'realSampleProvider|realProviderLanguageAndCancellation'
 ```sh
 VOXLINE_MODEL_DIRECTORY="/absolute/path/Models" \
 swift test --filter ModelInstallationTests
+```
+
+五模型真实下载与转写验证使用独立临时安装目录，下载 Large v3、Turbo、Base、Small、Tiny，重开 Store 检查安装记录，再切换模型识别同一段最长 30 秒对白并切分字幕，最后删除独立下载。检查真实引擎输出和字幕结构，不代替人工识别质量验收。源音频须为 16 kHz 单声道 PCM，已有应用模型保持原样。显式设置 VOXLINE_MULTI_MODEL_DIRECTORY 可复用专用测试目录里的完整下载；验证成功后删除其中模型，保留诊断证据。VOXLINE_MULTI_MODEL_ID 可指定只复核一个型号。此网络入口默认跳过：
+
+```sh
+VOXLINE_MULTI_MODEL_AUDIO="/absolute/path/speech.wav" \
+swift test --filter 'realCatalogDownloadsLoadsAndTranscribes|realDownloadCancellationKeepsPartialFilesAndReinstalls'
 ```
 
 ## 已保存转写证据的字幕切分验证

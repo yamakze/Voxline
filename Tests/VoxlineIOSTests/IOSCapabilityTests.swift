@@ -55,12 +55,15 @@ struct IOSCapabilityTests {
         #expect(IOSTaskLibrary(directory: directory).tasks == reopened.tasks)
     }
 
-    @Test func frameworkResourceProvidesPinnedModelInventory() async throws {
+    @Test func modelCatalogProvidesPersistentInventory() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let inventory = try await WhisperModelStore(directory: directory).inventory(modelID: TranscriptionSettings.whisperKitBaseline.modelID)
-        #expect(inventory.revision == "0f63a7800b00dd0226abd051b906c246e1907482")
-        #expect(inventory.byteCount == 0)
-        guard case .missing = inventory.state else { Issue.record("Missing weights must not appear installed or loaded"); return }
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for model in ModelManager.availableModels {
+            let inventory = try await WhisperModelStore(directory: directory).inventory(modelID: model.id)
+            #expect(inventory.revision == "0f63a7800b00dd0226abd051b906c246e1907482")
+            #expect(inventory.byteCount == 0)
+            guard case .missing = inventory.state else { Issue.record("Missing weights must not appear installed or loaded"); return }
+        }
         await #expect(throws: WhisperModelError.self) {
             try await WhisperModelStore(directory: directory).inventory(modelID: "unknown-model")
         }

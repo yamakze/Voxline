@@ -64,8 +64,9 @@ struct TranscriptionProviderTests {
         #expect(silent.count == 1 && silent[0].isSilent)
     }
 
-    @Test func usesRealFramesBeforeAlignmentAndKeepsRows() throws {
-        let weights = try MLMultiArray(shape: [2, 1500], dataType: .float16)
+    @Test(arguments: [MLMultiArrayDataType.float16, .float32, .double])
+    func usesRealFramesBeforeAlignmentAndKeepsRows(dataType: MLMultiArrayDataType) throws {
+        let weights = try MLMultiArray(shape: [2, 1500], dataType: dataType)
         for row in 0..<2 {
             for column in 0..<1500 { weights[[row, column] as [NSNumber]] = NSNumber(value: row * 1500 + column) }
         }
@@ -73,8 +74,7 @@ struct TranscriptionProviderTests {
         #expect(cropped.shape == [2, 1075])
         #expect(cropped[[1, 1074] as [NSNumber]] == weights[[1, 1074] as [NSNumber]])
         #expect(throws: (any Error).self) { try TranscriptionEvidenceSeeker.validAudioColumns(weights, frameCount: 1) }
-        let floatWeights = try MLMultiArray(shape: [2, 1500], dataType: .float32)
-        #expect(throws: (any Error).self) { try TranscriptionEvidenceSeeker.validAudioColumns(floatWeights, frameCount: 16000) }
+        #expect(cropped.dataType == dataType)
     }
 
     @Test func alignmentPathUsesLogicalRowsWithIOSurfacePadding() throws {

@@ -545,7 +545,7 @@ public struct TaskConfigurationView: View {
                         let status = modelManager.status(for: modelID)
                         HStack(spacing: 5) {
                             switch status {
-                            case .ready, .downloaded:
+                            case .ready:
                                 Circle().fill(Color.green).frame(width: 7, height: 7)
                                 Text(String(localized: "已就绪", bundle: appLocalizationBundle)).foregroundStyle(.green)
                             case .downloading, .checking:
@@ -557,7 +557,7 @@ public struct TaskConfigurationView: View {
                                     .buttonStyle(.borderless)
                             case .failed, .corrupted:
                                 Text(String(localized: "异常", bundle: appLocalizationBundle)).foregroundStyle(.red)
-                            case .loading, .cancelling:
+                            case .cancelling:
                                 ProgressView().controlSize(.mini)
                             }
                         }

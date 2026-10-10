@@ -47,7 +47,7 @@ public struct ModelManagementView: View {
                     ) {
                         #if os(macOS)
                         Button {
-                            if let dir = modelManager.modelDirectories.values.first ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.appendingPathComponent("huggingface/models") {
+                            if let dir = modelManager.modelDirectories.values.first?.deletingLastPathComponent() {
                                 NSWorkspace.shared.open(dir)
                             }
                         } label: {
@@ -166,6 +166,7 @@ public struct ModelManagementView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
+                        .disabled(modelManager.isOperating || modelManager.deletingModels.contains(model.id))
 
                     case .downloading, .checking:
                         Button(String(localized: "取消", bundle: appLocalizationBundle)) {
@@ -174,7 +175,7 @@ public struct ModelManagementView: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
 
-                    case .downloaded, .ready:
+                    case .ready:
                         modelOptionsMenu(model: model, usage: usage)
 
                     case .failed, .corrupted:
@@ -191,7 +192,7 @@ public struct ModelManagementView: View {
                             modelOptionsMenu(model: model, usage: usage)
                         }
 
-                    case .loading, .cancelling:
+                    case .cancelling:
                         ProgressView().controlSize(.small)
                     }
                 }
@@ -280,7 +281,7 @@ public struct ModelManagementView: View {
     private func statusBadge(status: ModelStatus) -> some View {
         HStack(spacing: 4) {
             switch status {
-            case .ready, .downloaded:
+            case .ready:
                 Circle().fill(modelManager.isOperating ? Color.orange : Color.green).frame(width: 7, height: 7)
                 Text(String(localized: "已就绪", bundle: appLocalizationBundle))
                     .foregroundStyle(modelManager.isOperating ? .orange : .green)
@@ -289,9 +290,6 @@ public struct ModelManagementView: View {
                 Text(String(localized: "下载中", bundle: appLocalizationBundle)).foregroundStyle(.blue)
             case .notDownloaded:
                 EmptyView()
-            case .loading:
-                ProgressView().controlSize(.mini)
-                Text(String(localized: "准备中", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
             case .cancelling:
                 ProgressView().controlSize(.mini)
                 Text(String(localized: "正在取消", bundle: appLocalizationBundle)).foregroundStyle(.secondary)

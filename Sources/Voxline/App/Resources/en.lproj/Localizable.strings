@@ -647,3 +647,7 @@
 
 
 
+"已启用" = "Enabled";
+"开始时间" = "Start Time";
+"结束时间" = "End Time";
+"拆分时间点" = "Split Point";

@@ -5,8 +5,7 @@ import VoxlineCore
 public enum ModelStatus: Equatable, Sendable {
     case notDownloaded
     case downloading(component: String, progress: Double)
-    case checking, loading, cancelling, cancelled
-    case downloaded(path: String, byteCount: Int64)
+    case checking, cancelling, cancelled
     case ready(path: String, byteCount: Int64)
     case failed(reason: String)
     case corrupted(reason: String)
@@ -15,11 +14,10 @@ public enum ModelStatus: Equatable, Sendable {
         switch self {
         case .notDownloaded: String(localized: "未下载", bundle: voxlineLocalizationBundle)
         case .downloading(let component, let progress): String(format: String(localized: "%@文件下载 %.0f%%", bundle: voxlineLocalizationBundle), locale: .current, component, progress * 100)
-        case .checking: String(localized: "校验版本与文件", bundle: voxlineLocalizationBundle)
-        case .loading: String(localized: "加载中", bundle: voxlineLocalizationBundle)
+        case .checking: String(localized: "检查文件", bundle: voxlineLocalizationBundle)
         case .cancelling: String(localized: "取消中", bundle: voxlineLocalizationBundle)
         case .cancelled: String(localized: "已取消，可重新下载", bundle: voxlineLocalizationBundle)
-        case .downloaded(_, let bytes), .ready(_, let bytes): String(format: String(localized: "已安装 %.1f MB", bundle: voxlineLocalizationBundle), locale: .current, Double(bytes) / 1_000_000)
+        case .ready(_, let bytes): String(format: String(localized: "已安装 %.1f MB", bundle: voxlineLocalizationBundle), locale: .current, Double(bytes) / 1_000_000)
         case .failed(let reason): String(localized: "操作失败：\(reason)", bundle: voxlineLocalizationBundle)
         case .corrupted(let reason): String(localized: "安装不完整：\(reason)", bundle: voxlineLocalizationBundle)
         }
@@ -37,16 +35,11 @@ public struct WhisperModelDescriptor: Identifiable, Sendable {
 @Observable @MainActor
 public final class ModelManager {
     public static let shared = ModelManager()
-    public static let availableModels = [WhisperModelDescriptor(
-        id: TranscriptionSettings.whisperKitBaseline.modelID,
-        name: "Whisper · 626 MB 基准",
-        description: String(localized: "Whisper large-v3 压缩模型，使用固定仓库版本。本地处理不上传音频。", bundle: voxlineLocalizationBundle),
-        expectedSizeMB: 629.5, isBaseline: true)]
+    public static let availableModels = WhisperModels.all.map(\.descriptor)
 
     public private(set) var modelStatuses: [String: ModelStatus] = [:]
     public private(set) var diskUsage: [String: Int64] = [:]
     public private(set) var modelDirectories: [String: URL] = [:]
-    public private(set) var modelRevisions: [String: String] = [:]
     public private(set) var isOperating = false
     public private(set) var deletingModels: Set<String> = []
     public private(set) var deletionErrors: [String: String] = [:]
@@ -73,7 +66,12 @@ public final class ModelManager {
 
     public func refreshAll() async {
         for model in Self.availableModels where operations[model.id] == nil {
-            await refresh(modelID: model.id)
+            let preserveStatus: Bool
+            switch modelStatuses[model.id] {
+            case .cancelled, .failed: preserveStatus = true
+            default: preserveStatus = false
+            }
+            await refresh(modelID: model.id, preserveStatus: preserveStatus)
         }
     }
 
@@ -84,13 +82,11 @@ public final class ModelManager {
             guard operations[modelID] == nil, modelStatuses[modelID] == previousStatus else { return }
             diskUsage[modelID] = inventory.byteCount
             modelDirectories[modelID] = inventory.directory
-            modelRevisions[modelID] = inventory.revision
             storageError = nil
             if preserveStatus { return }
             switch inventory.state {
             case .missing: modelStatuses[modelID] = .notDownloaded
-            case .installed: modelStatuses[modelID] = .downloaded(path: inventory.directory.path, byteCount: inventory.byteCount)
-            case .loaded: modelStatuses[modelID] = .ready(path: inventory.directory.path, byteCount: inventory.byteCount)
+            case .installed, .loaded: modelStatuses[modelID] = .ready(path: inventory.directory.path, byteCount: inventory.byteCount)
             case .incomplete(let reason): modelStatuses[modelID] = .corrupted(reason: reason)
             }
         } catch {
@@ -139,34 +135,6 @@ public final class ModelManager {
         guard let operation = operations[modelID] else { return }
         operation.task.cancel()
         modelStatuses[modelID] = .cancelling
-    }
-
-    public func load(modelID: String) {
-        guard operations[modelID] == nil else { return }
-        let operationID = UUID()
-        modelStatuses[modelID] = .loading
-        let task = Task {
-            do {
-                try await store.load(modelID: modelID)
-                guard operations[modelID]?.id == operationID else { return }
-                operations[modelID] = nil
-                await refresh(modelID: modelID)
-            } catch {
-                guard operations[modelID]?.id == operationID else { return }
-                operations[modelID] = nil
-                modelStatuses[modelID] = .failed(reason: error.localizedDescription)
-                await refresh(modelID: modelID, preserveStatus: true)
-            }
-        }
-        operations[modelID] = Operation(id: operationID, task: task)
-    }
-
-    public func unload(modelID: String) async {
-        guard operations[modelID] == nil else { return }
-        do {
-            try await store.unload(modelID: modelID)
-            await refresh(modelID: modelID)
-        } catch { modelStatuses[modelID] = .failed(reason: error.localizedDescription) }
     }
 
     public func delete(modelID: String) async {
