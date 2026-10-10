@@ -40,6 +40,7 @@ public struct TaskConfigurationView: View {
     @State private var showModelManager = false
     @State private var showTranslationSettings = false
     @State private var showCloudTranscriptionSettings = false
+    @State private var isDropTargeted = false
 
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -149,45 +150,7 @@ public struct TaskConfigurationView: View {
             switch result {
             case .failure(let error): errorMessage = error.localizedDescription
             case .success(let urls):
-                importTask = Task {
-                    isInspecting = true
-                    defer { isInspecting = false }
-
-                    let additions = urls.filter { url in
-                        !candidates.contains { $0.url == url }
-                    }
-
-                    for url in additions {
-                        if Task.isCancelled { return }
-                        let access = url.startAccessingSecurityScopedResource()
-                        defer { if access { url.stopAccessingSecurityScopedResource() } }
-
-                        let kind: TaskMediaKind
-                        do { kind = try MediaInspector.kind(of: url) }
-                        catch {
-                            errorMessage = "\(url.lastPathComponent)：\(error.localizedDescription)"
-                            continue
-                        }
-                        let candidate = ImportCandidate(url: url, kind: kind)
-                        candidates.append(candidate)
-                        do {
-                            let inspection = try await inspector.inspect(url)
-                            try Task.checkCancellation()
-                            if let idx = candidates.firstIndex(where: { $0.id == candidate.id }) {
-                                candidates[idx].inspection = inspection
-                                if inspection.audioTracks.count == 1 {
-                                    candidates[idx].trackID = inspection.audioTracks[0].id
-                                }
-                            }
-                        } catch is CancellationError {
-                            return
-                        } catch {
-                            if let idx = candidates.firstIndex(where: { $0.id == candidate.id }) {
-                                candidates[idx].error = error.localizedDescription
-                            }
-                        }
-                    }
-                }
+                importMediaURLs(urls)
             }
         }
         .onChange(of: translates) { _, enabled in
@@ -387,24 +350,7 @@ public struct TaskConfigurationView: View {
             ScrollView {
                 VStack(spacing: 10) {
                     if existingItems.isEmpty && candidates.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "arrow.down.doc")
-                                .font(.system(size: 28))
-                                .foregroundStyle(.secondary)
-                            Text(String(localized: "添加音视频媒体文件", bundle: appLocalizationBundle))
-                                .font(.callout.weight(.medium))
-                            Text(String(localized: "支持 MP4, MOV, M4V, M4A, MP3, WAV", bundle: appLocalizationBundle))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(32)
-                        .frame(maxWidth: .infinity)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5]))
-                                .foregroundStyle(Color.secondary.opacity(0.25))
-                        )
-                        .padding(14)
+                        emptyMediaDropZone
                     }
 
                     // Existing Items List
@@ -983,6 +929,131 @@ public struct TaskConfigurationView: View {
             allowedRange.contains(code.count) && code.allSatisfy({ $0.isASCII && $0.isLetter })
         }
         return Array(Set(filtered)).sorted()
+    }
+
+    // MARK: - Media Drag & Drop Zone
+    private var emptyMediaDropZone: some View {
+        Button {
+            showMediaImporter = true
+        } label: {
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(isDropTargeted ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08))
+                        .frame(width: 52, height: 52)
+
+                    Image(systemName: isDropTargeted ? "arrow.down.circle.fill" : "waveform.badge.plus")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(isDropTargeted ? Color.accentColor : Color.secondary)
+                }
+
+                VStack(spacing: 5) {
+                    Text(String(localized: "拖入音视频文件", bundle: appLocalizationBundle))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(isDropTargeted ? Color.accentColor : Color.primary)
+
+                    Text(String(localized: "支持 MP4, MOV, M4V, M4A, MP3, WAV 等格式", bundle: appLocalizationBundle))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                Button {
+                    showMediaImporter = true
+                } label: {
+                    Label(String(localized: "选择文件…", bundle: appLocalizationBundle), systemImage: "folder")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .padding(.top, 4)
+            }
+            .padding(.vertical, 36)
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isDropTargeted ? Color.accentColor.opacity(0.06) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(
+                        isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.28),
+                        style: StrokeStyle(lineWidth: isDropTargeted ? 2.0 : 1.5, dash: isDropTargeted ? [] : [6, 4])
+                    )
+            )
+            .contentShape(Rectangle())
+            .animation(.easeInOut(duration: 0.2), value: isDropTargeted)
+        }
+        .buttonStyle(.plain)
+        .padding(14)
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            handleDroppedProviders(providers)
+        }
+    }
+
+    private func handleDroppedProviders(_ providers: [NSItemProvider]) -> Bool {
+        let matching = providers.filter { $0.canLoadObject(ofClass: URL.self) }
+        guard !matching.isEmpty else { return false }
+
+        Task { @MainActor in
+            var urls: [URL] = []
+            for provider in matching {
+                let url: URL? = await withCheckedContinuation { continuation in
+                    _ = provider.loadObject(ofClass: URL.self) { loadedURL, _ in
+                        continuation.resume(returning: loadedURL)
+                    }
+                }
+                if let url {
+                    urls.append(url)
+                }
+            }
+            if !urls.isEmpty {
+                importMediaURLs(urls)
+            }
+        }
+        return true
+    }
+
+    private func importMediaURLs(_ urls: [URL]) {
+        importTask = Task {
+            isInspecting = true
+            defer { isInspecting = false }
+
+            let additions = urls.filter { url in
+                !candidates.contains { $0.url == url }
+            }
+
+            for url in additions {
+                if Task.isCancelled { return }
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+
+                let kind: TaskMediaKind
+                do { kind = try MediaInspector.kind(of: url) }
+                catch {
+                    errorMessage = "\(url.lastPathComponent)：\(error.localizedDescription)"
+                    continue
+                }
+                let candidate = ImportCandidate(url: url, kind: kind)
+                candidates.append(candidate)
+                do {
+                    let inspection = try await inspector.inspect(url)
+                    try Task.checkCancellation()
+                    if let idx = candidates.firstIndex(where: { $0.id == candidate.id }) {
+                        candidates[idx].inspection = inspection
+                        if inspection.audioTracks.count == 1 {
+                            candidates[idx].trackID = inspection.audioTracks[0].id
+                        }
+                    }
+                } catch is CancellationError {
+                    return
+                } catch {
+                    if let idx = candidates.firstIndex(where: { $0.id == candidate.id }) {
+                        candidates[idx].error = error.localizedDescription
+                    }
+                }
+            }
+        }
     }
 }
 
