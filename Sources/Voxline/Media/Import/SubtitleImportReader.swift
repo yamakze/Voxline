@@ -28,11 +28,26 @@ public actor SubtitleImportReader {
         for track in tracks {
             let formats = try await track.load(.formatDescriptions)
             if formats.contains(where: { CMFormatDescriptionGetMediaSubType($0) == kCMSubtitleFormatType_3GText }) {
-                result.append(.init(id: track.trackID, language: try await track.load(.extendedLanguageTag)))
+                let extended = try await track.load(.extendedLanguageTag)
+                let language = try await track.load(.languageCode)
+                result.append(.init(id: track.trackID, language: extended ?? language))
             }
         }
         try Task.checkCancellation()
         return result
+    }
+
+    /// Adding a video imports its preferred text track; absent text tracks leave ASR as the source.
+    public func automaticSelection(in url: URL, preferredLanguage: String?) async throws -> SubtitleImportSelection? {
+        let available = try await tracks(in: url)
+        guard let first = available.first else { return nil }
+        let preferredCode = preferredLanguage.flatMap { Locale.Language(identifier: $0).languageCode }
+        let track = available.first { track in
+            guard let language = track.language, let preferredCode else { return false }
+            return Locale.Language(identifier: language).languageCode == preferredCode
+        } ?? first
+        let entries = try await readEmbeddedTrack(track.id, in: url)
+        return .init(entries: entries, origin: .embedded(trackID: track.id, language: track.language))
     }
 
     public func readEmbeddedTrack(_ trackID: Int32, in url: URL) async throws -> [SubtitleImportEntry] {

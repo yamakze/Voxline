@@ -4,7 +4,6 @@ import Observation
 import SwiftUI
 import VoxlineCore
 import VoxlineWorkflow
-import VoxlineTranslation
 
 /// The shared task store owns results; iOS always imports into an independent Documents copy.
 @MainActor @Observable
@@ -44,17 +43,6 @@ final class IOSTaskLibrary {
     func save(_ task: ProcessingTask) throws {
         guard queue.taskID != task.id else { throw QueueError.busy }
         try storage.save(task)
-    }
-
-    func bindTranslationService(_ service: TranslationServiceConfig, taskID: UUID) throws {
-        guard var task = storage.task(for: taskID), let settings = task.parameters.translation,
-              let api = settings.api else { throw CheckpointError.taskUnavailable }
-        var parameters = task.parameters
-        parameters.translation = try TranslationSettings(baseURL: service.baseURL, modelID: service.modelID,
-            targetLanguage: settings.targetLanguage, serviceID: service.id,
-            batchSize: settings.batchSize, systemPrompt: api.systemPrompt)
-        try task.updateParameters(parameters)
-        try save(task)
     }
 
     func startTranslation(taskID: UUID, mediaID: UUID) throws {

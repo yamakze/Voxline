@@ -282,6 +282,14 @@ public final class TaskLibrary {
                 .filter { $0.pathExtension == "voxline" }.map(\.lastPathComponent) + documents.pendingURLs.map(\.lastPathComponent))
             let sharedIDs = Set(sharedNames.compactMap { UUID(uuidString: ($0 as NSString).deletingPathExtension) })
             let localFiles = try FileManager.default.contentsOfDirectory(at: tasksDirectory, includingPropertiesForKeys: nil)
+            let knownURLs = Set(openTasks.values.compactMap(\.url) + recentDocumentURLs())
+            let knownByCanonicalURL = Dictionary(grouping: knownURLs) { $0.resolvingSymlinksInPath().standardizedFileURL }
+            var archivedURLs = Set<URL>()
+            defer {
+                openTasks = openTasks.filter { entry in
+                    entry.value.url.map { !archivedURLs.contains($0.resolvingSymlinksInPath().standardizedFileURL) } ?? true
+                }
+            }
             for url in localFiles where url.pathExtension == "voxline" {
                 let id: UUID
                 do { id = try TaskDocumentCodec.decode(Data(contentsOf: url)).id }
@@ -291,10 +299,9 @@ public final class TaskLibrary {
                 try FileManager.default.createDirectory(at: taskBackups, withIntermediateDirectories: true)
                 let backup = taskBackups.appendingPathComponent(UUID().uuidString).appendingPathExtension("voxline")
                 let canonical = url.resolvingSymlinksInPath().standardizedFileURL
-                let knownURLs = openTasks.values.compactMap(\.url) + recentDocumentURLs()
                 try FileManager.default.moveItem(at: url, to: backup)
-                openTasks = openTasks.filter { $0.value.url?.resolvingSymlinksInPath().standardizedFileURL != canonical }
-                for original in Set(knownURLs + [url]) where original.resolvingSymlinksInPath().standardizedFileURL == canonical {
+                archivedURLs.insert(canonical)
+                for original in Set(knownByCanonicalURL[canonical] ?? []).union([url]) {
                     forgetRecentDocument(original)
                 }
             }
@@ -386,14 +393,18 @@ public final class TaskLibrary {
                 skipping: retained, skippingURLs: retainedURLs)
         }.value
         guard !Task.isCancelled, refreshGeneration == generation, sharedDocuments === documents else { return }
+        let previousByID = Dictionary(previousEntries.map { ($0.taskID, $0) }, uniquingKeysWith: { first, _ in first })
+        let previousByURL = Dictionary(previousEntries.compactMap { entry in entry.url.map { ($0, entry) } }, uniquingKeysWith: { first, _ in first })
+        let currentByID = Dictionary(entries.map { ($0.taskID, $0) }, uniquingKeysWith: { first, _ in first })
+        let currentByURL = Dictionary(entries.compactMap { entry in entry.url.map { ($0, entry) } }, uniquingKeysWith: { first, _ in first })
         var found = entries.filter { entry in
             openTasks[entry.taskID] != nil || entry.taskID == protectedTaskID || entry.url.map { documents?.contains($0) == true } == true ||
-                !previousEntries.contains(entry)
+                (previousByID[entry.taskID] != entry && entry.url.flatMap { previousByURL[$0] } != entry)
         }
         var seenIDs = Set(found.map(\.taskID))
         for entry in local.entries {
-            let previous = previousEntries.first { $0.taskID == entry.taskID || $0.url == entry.url }
-            let current = entries.first { $0.taskID == entry.taskID || $0.url == entry.url }
+            let previous = previousByID[entry.taskID] ?? entry.url.flatMap { previousByURL[$0] }
+            let current = currentByID[entry.taskID] ?? entry.url.flatMap { currentByURL[$0] }
             // An edit, deletion or worker commit after this refresh began wins over disk results.
             guard previous == current, entry.taskID != protectedTaskID,
                   seenIDs.insert(entry.taskID).inserted else { continue }

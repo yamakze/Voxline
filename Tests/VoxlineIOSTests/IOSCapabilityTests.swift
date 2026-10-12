@@ -2,7 +2,6 @@
 import Foundation
 import Testing
 import VoxlineCore
-import VoxlineWhisperKit
 import VoxlineWorkflow
 @testable import VoxlineTranslation
 @testable import VoxlineApp
@@ -53,20 +52,6 @@ struct IOSCapabilityTests {
         try FileManager.default.removeItem(at: orderURL)
         try savedOrder.write(to: orderURL)
         #expect(IOSTaskLibrary(directory: directory).tasks == reopened.tasks)
-    }
-
-    @Test func modelCatalogProvidesPersistentInventory() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        for model in ModelManager.availableModels {
-            let inventory = try await WhisperModelStore(directory: directory).inventory(modelID: model.id)
-            #expect(inventory.revision == "0f63a7800b00dd0226abd051b906c246e1907482")
-            #expect(inventory.byteCount == 0)
-            guard case .missing = inventory.state else { Issue.record("Missing weights must not appear installed or loaded"); return }
-        }
-        await #expect(throws: WhisperModelError.self) {
-            try await WhisperModelStore(directory: directory).inventory(modelID: "unknown-model")
-        }
     }
 
     @Test func realIOSKeychainKeepsCredentialsOutOfMetadataAndPreservesFrozenConfiguration() async throws {
@@ -137,41 +122,6 @@ struct IOSCapabilityTests {
         try Data(#"{"formatVersion":999}"#.utf8).write(to: invalid)
         #expect(throws: DomainValidationError.self) { try library.readImportedTask(from: invalid) }
         #expect(library.task(task.id) == imported)
-    }
-
-    @Test func explicitDeviceServiceBindingUsesExistingKeychainAndKeepsImportedSourceUntouched() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let store = TranslationServiceStore(storageURL: directory.appendingPathComponent("services.json"),
-            vault: KeychainTranslationCredentialVault(service: "dev.voxline.binding-tests.\(UUID())"), autoLoad: false)
-        let service = TranslationServiceConfig(name: "Existing device service", baseURL: URL(string: "https://example.com/v1")!, modelID: "device-model")
-        let credential = "binding-test-\(UUID())"
-        try await store.addOrUpdate(service, apiKey: credential)
-        do {
-            let old = try TranslationSettings(baseURL: service.baseURL, modelID: "imported-model", targetLanguage: "zh-Hans",
-                serviceID: UUID(), batchSize: 2, systemPrompt: "Preserve tone.")
-            let imported = ProcessingTask(title: "Imported service", parameters: .init(transcription: .whisperKitBaseline, translation: old))
-            let source = directory.appendingPathComponent("source.voxline")
-            let bytes = try TaskDocumentCodec.encode(imported)
-            try bytes.write(to: source)
-            let library = IOSTaskLibrary(directory: directory.appendingPathComponent("device"))
-            try library.save(library.readImportedTask(from: source))
-            await #expect(throws: TranslationServiceError.unknownService) { try await store.apiKey(for: old) }
-            try library.bindTranslationService(service, taskID: imported.id)
-            let settings = try #require(library.task(imported.id)?.parameters.translation)
-            #expect(try await store.apiKey(for: settings) == credential)
-            #expect(settings.api?.modelID == "device-model")
-            #expect(settings.batchSize == 2)
-            #expect(settings.api?.systemPrompt == "Preserve tone.")
-            #expect(settings.targetLanguage == "zh-Hans")
-            #expect(try Data(contentsOf: source) == bytes)
-            #expect(IOSTaskLibrary(directory: directory.appendingPathComponent("device")).task(imported.id)?.parameters.translation == settings)
-            try await store.remove(id: service.id)
-        } catch {
-            try await store.remove(id: service.id)
-            throw error
-        }
     }
 
     #if targetEnvironment(simulator)

@@ -102,7 +102,7 @@ private final class ReleaseStub: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        Self.started.withLock { $0?.yield(()) }
+        Self.started.withLock { _ = $0?.yield(()) }
         if Self.delayResponse.withLock({ $0 }) { return }
         if let failure = Self.failure.withLock({ $0 }) {
             client?.urlProtocol(self, didFailWithError: failure)

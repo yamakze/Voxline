@@ -24,7 +24,6 @@ struct IOSMediaDetailView: View {
     @State private var sharingURL: URL?
     @State private var showingEmbedding = false
     @State private var showingBurnIn = false
-    @State private var editingParameters = false
     @State private var showingImportOriginal = false
     @State private var showingImportTranslation = false
     @State private var showingResumingUnmatched = false
@@ -75,39 +74,33 @@ struct IOSMediaDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Button {
-                        structureState.insert(at: playback.currentTimeSeconds)
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .disabled(library.queue.taskID != nil)
-                    .accessibilityLabel(String(localized: "添加字幕", bundle: appLocalizationBundle))
-
-                    Button {
-                        guard let current = self.item else { return }
-                        do {
-                            try session.undo(in: current) { updated, original in
-                                try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
-                            }
-                        } catch {
-                            session.errorMessage = error.localizedDescription
-                        }
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward")
-                    }
-                    .disabled(!session.canUndo(in: item) || library.queue.taskID != nil)
-                    .accessibilityLabel(String(localized: "撤销", bundle: appLocalizationBundle))
-
-                    if !item.cues.isEmpty {
-                        Button(session.isSelecting ? String(localized: "完成", bundle: appLocalizationBundle) : String(localized: "选择", bundle: appLocalizationBundle)) {
+                    if session.isSelecting {
+                        Button(String(localized: "完成", bundle: appLocalizationBundle)) {
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                session.isSelecting.toggle()
-                                if !session.isSelecting { session.selectedCueIDs.removeAll() }
+                                session.isSelecting = false
+                                session.selectedCueIDs.removeAll()
                             }
                         }
-                    }
+                        .bold()
+                        .accessibilityLabel(String(localized: "完成选择", bundle: appLocalizationBundle))
+                    } else {
+                        Button {
+                            guard let current = self.item else { return }
+                            do {
+                                try session.undo(in: current) { updated, original in
+                                    try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
+                                }
+                            } catch {
+                                session.errorMessage = error.localizedDescription
+                            }
+                        } label: {
+                            Image(systemName: "arrow.uturn.backward")
+                        }
+                        .disabled(!session.canUndo(in: item) || library.queue.taskID != nil)
+                        .accessibilityLabel(String(localized: "撤销", bundle: appLocalizationBundle))
 
-                    mediaActionMenu(item)
+                        mediaActionMenu(item)
+                    }
                 }
             }
             .fileImporter(isPresented: $importingMedia, allowedContentTypes: [
@@ -170,14 +163,7 @@ struct IOSMediaDetailView: View {
                 }
                 Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
             }
-            .sheet(isPresented: $editingParameters) {
-                if let currentTask = task {
-                    TaskTranslationParametersView(task: currentTask) { updated, original in
-                        guard library.task(taskID) == original else { throw TaskValidationError.taskChanged }
-                        try library.save(updated)
-                    }
-                }
-            }
+
             .sheet(isPresented: $showingImportOriginal) {
                 if let current = self.item {
                     SubtitleImportSheet(item: current) { selection, replacesExisting, snapshot in
@@ -510,6 +496,17 @@ struct IOSMediaDetailView: View {
             }
             .disabled(library.queue.taskID != nil)
 
+            if !item.cues.isEmpty {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        session.isSelecting = true
+                    }
+                } label: {
+                    Label(String(localized: "选择字幕…", bundle: appLocalizationBundle), systemImage: "checkmark.circle")
+                }
+                .disabled(library.queue.taskID != nil)
+            }
+
             Divider()
 
             Section(String(localized: "字幕导入", bundle: appLocalizationBundle)) {
@@ -609,11 +606,6 @@ struct IOSMediaDetailView: View {
                     }
                     .disabled(library.queue.taskID != nil)
                 }
-            } else {
-                Button(String(localized: "配置翻译服务…", bundle: appLocalizationBundle), systemImage: "slider.horizontal.3") {
-                    editingParameters = true
-                }
-                .disabled(library.queue.taskID == taskID)
             }
 
             Divider()
@@ -629,6 +621,7 @@ struct IOSMediaDetailView: View {
             Image(systemName: "ellipsis.circle")
                 .font(.title3)
         }
+        .accessibilityLabel(String(localized: "媒体操作", bundle: appLocalizationBundle))
     }
 
     private func selectedAdjacentCues(in item: TaskMediaItem) -> [SubtitleCue]? {

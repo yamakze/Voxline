@@ -26,8 +26,7 @@ final class TaskConfigurationSession {
 
     var existingItems: [TaskMediaItem]
     var candidates: [ImportCandidate] = []
-    var subtitleImports: [UUID: SubtitleImportSelection] = [:]
-    var speechRecognitionSelections = Set<UUID>()
+    private(set) var subtitleImports: [UUID: SubtitleImportSelection] = [:]
     private(set) var isInspecting = false
     private(set) var isSaving = false
     var errorMessage: String?
@@ -89,19 +88,8 @@ final class TaskConfigurationSession {
 
     var requiresSpeechRecognition: Bool {
         if existingItems.isEmpty && candidates.isEmpty { return true }
-        return existingItems.contains { speechRecognitionSelections.contains($0.id) || (subtitleImports[$0.id] == nil && $0.importedSubtitleOrigin == nil) } ||
+        return existingItems.contains { $0.importedSubtitleOrigin == nil } ||
         candidates.contains { $0.error == nil && subtitleImports[$0.id] == nil }
-    }
-
-    func subtitleImportItem(for id: UUID) throws -> TaskMediaItem {
-        if let item = existingItems.first(where: { $0.id == id }) { return item }
-        guard let candidate = candidates.first(where: { $0.id == id }),
-              let inspection = candidate.inspection, let trackID = candidate.trackID else {
-            throw TaskConfigurationError.missingTrack(candidates.first(where: { $0.id == id })?.url.lastPathComponent ?? "")
-        }
-        let media = try inspection.identity(audioTrackID: trackID)
-        return TaskMediaItem(id: id, title: candidate.url.deletingPathExtension().lastPathComponent,
-            kind: candidate.kind, source: .localFile(fileName: media.fileName), media: media)
     }
 
     var preflightBlockReason: String? {
@@ -253,8 +241,6 @@ final class TaskConfigurationSession {
             if let selection = subtitleImports[item.id] {
                 try updated.importOriginalSubtitles(mediaID: item.id, entries: selection.entries,
                     origin: selection.origin, comparedTo: item, replacingExisting: true)
-            } else if speechRecognitionSelections.contains(item.id) {
-                try updated.useSpeechRecognition(mediaID: item.id, comparedTo: item)
             }
         }
         guard currentTask() == originalTask else { throw TaskValidationError.taskChanged }
@@ -291,12 +277,18 @@ final class TaskConfigurationSession {
                 candidates.append(candidate)
                 do {
                     let inspection = try await inspector.inspect(url)
+                    let subtitle: SubtitleImportSelection?
+                    if kind == .video {
+                        subtitle = try await SubtitleImportReader.shared.automaticSelection(in: url,
+                            preferredLanguage: languageMode == .specified ? languageCode : inspection.audioTracks.first?.language)
+                    } else { subtitle = nil }
                     try Task.checkCancellation()
                     if let idx = candidates.firstIndex(where: { $0.id == candidate.id }) {
                         candidates[idx].inspection = inspection
                         if inspection.audioTracks.count == 1 {
                             candidates[idx].trackID = inspection.audioTracks[0].id
                         }
+                        subtitleImports[candidate.id] = subtitle
                     }
                 } catch is CancellationError {
                     return

@@ -21,9 +21,6 @@ public struct TaskConfigurationView: View {
     @State private var showTranslationSettings = false
     @State private var showCloudTranscriptionSettings = false
     @State private var isDropTargeted = false
-    @State private var activeImportItem: TaskMediaItem?
-    @State private var activeImportCandidateURL: URL?
-    @State private var confirmResetASRItemID: UUID?
 
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -91,33 +88,7 @@ public struct TaskConfigurationView: View {
                     }
             }
         }
-        .sheet(item: $activeImportItem) { item in
-            SubtitleImportSheet(item: item, mediaURL: activeImportCandidateURL) { selection, _, snapshot in
-                session.subtitleImports[snapshot.id] = selection
-                session.speechRecognitionSelections.remove(snapshot.id)
-            }
-        }
-        .confirmationDialog(
-            String(localized: "改用语音识别？", bundle: appLocalizationBundle),
-            isPresented: Binding(
-                get: { confirmResetASRItemID != nil },
-                set: { if !$0 { confirmResetASRItemID = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            if let id = confirmResetASRItemID {
-                Button(String(localized: "清除已有字幕并改用语音识别", bundle: appLocalizationBundle), role: .destructive) {
-                    session.subtitleImports.removeValue(forKey: id)
-                    session.speechRecognitionSelections.insert(id)
-                    confirmResetASRItemID = nil
-                }
-            }
-            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {
-                confirmResetASRItemID = nil
-            }
-        } message: {
-            Text(String(localized: "将清除该媒体的原文和译文。", bundle: appLocalizationBundle))
-        }
+
         .fileImporter(isPresented: $showMediaImporter, allowedContentTypes: [
             .mpeg4Movie, .quickTimeMovie, UTType(importedAs: "com.apple.m4v-video"),
             .mpeg4Audio, .mp3, .wav
@@ -338,11 +309,8 @@ public struct TaskConfigurationView: View {
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(item.title).font(.system(size: 13, weight: .semibold))
-                                HStack(spacing: 6) {
-                                    Text(item.media == nil ? String(localized: "未关联", bundle: appLocalizationBundle) : item.status.label)
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                    subtitleSourceMenu(for: item.id, canImport: item.media != nil)
-                                }
+                                Text(item.media == nil ? String(localized: "未关联", bundle: appLocalizationBundle) : item.status.label)
+                                    .font(.caption2).foregroundStyle(.secondary)
                             }
                             Spacer()
 
@@ -410,8 +378,6 @@ public struct TaskConfigurationView: View {
                         }
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-
-                        subtitleSourceMenu(for: cand.id, canImport: cand.inspection != nil && cand.trackID != nil)
                     } else if let error = cand.error {
                         Text(error).font(.caption2).foregroundStyle(.red)
                     } else {
@@ -872,93 +838,4 @@ public struct TaskConfigurationView: View {
         return true
     }
 
-    private func isImported(_ id: UUID) -> Bool {
-        if session.subtitleImports[id] != nil { return true }
-        if let existing = session.existingItems.first(where: { $0.id == id }) {
-            return existing.importedSubtitleOrigin != nil && !session.speechRecognitionSelections.contains(id)
-        }
-        return false
-    }
-
-    private func subtitleOriginLabel(for id: UUID) -> String {
-        if let selection = session.subtitleImports[id] {
-            switch selection.origin {
-            case .file(let name):
-                return String(localized: "已导入：\(name)", bundle: appLocalizationBundle)
-            case .embedded(let trackID, let lang):
-                let langStr = lang.map { " (\($0))" } ?? ""
-                return String(localized: "已导入：内嵌轨 \(trackID)\(langStr)", bundle: appLocalizationBundle)
-            }
-        }
-        if let existing = session.existingItems.first(where: { $0.id == id }) {
-            if session.speechRecognitionSelections.contains(id) {
-                return String(localized: "语音识别", bundle: appLocalizationBundle)
-            }
-            if existing.hasSourceSubtitles {
-                if let origin = existing.importedSubtitleOrigin {
-                    switch origin {
-                    case .file(let name):
-                        return String(localized: "已导入：\(name)", bundle: appLocalizationBundle)
-                    case .embedded(let trackID, let lang):
-                        let langStr = lang.map { " (\($0))" } ?? ""
-                        return String(localized: "已导入：内嵌轨 \(trackID)\(langStr)", bundle: appLocalizationBundle)
-                    }
-                }
-                return String(localized: "已有字幕", bundle: appLocalizationBundle)
-            }
-        }
-        return String(localized: "语音识别", bundle: appLocalizationBundle)
-    }
-
-    @ViewBuilder
-    private func subtitleSourceMenu(for id: UUID, canImport: Bool) -> some View {
-        let imported = isImported(id)
-        Menu {
-            Button {
-                openSubtitleImport(for: id)
-            } label: {
-                Label(imported ? String(localized: "替换原文字幕…", bundle: appLocalizationBundle) : String(localized: "导入原文字幕…", bundle: appLocalizationBundle), systemImage: "doc.text")
-            }
-            .disabled(!canImport)
-
-            if imported {
-                Button(role: .destructive) {
-                    if session.existingItems.contains(where: { $0.id == id }) {
-                        confirmResetASRItemID = id
-                    } else {
-                        session.subtitleImports.removeValue(forKey: id)
-                    }
-                } label: {
-                    Label(String(localized: "改用语音识别", bundle: appLocalizationBundle), systemImage: "waveform")
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: imported ? "doc.text.fill" : "waveform")
-                    .font(.caption2)
-                Text(subtitleOriginLabel(for: id))
-                    .font(.caption2)
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8))
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(imported ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.1), in: .capsule)
-            .foregroundStyle(imported ? Color.accentColor : Color.secondary)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(String(localized: "选择媒体字幕来源", bundle: appLocalizationBundle))
-    }
-
-    private func openSubtitleImport(for id: UUID) {
-        do {
-            let item = try session.subtitleImportItem(for: id)
-            let candidateURL = session.candidates.first(where: { $0.id == id })?.url
-            activeImportItem = item
-            activeImportCandidateURL = candidateURL
-        } catch {
-            session.errorMessage = error.localizedDescription
-        }
-    }
 }

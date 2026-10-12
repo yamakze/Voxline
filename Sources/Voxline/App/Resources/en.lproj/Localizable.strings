@@ -22,7 +22,6 @@
 "Apple Translation 返回的字幕 ID 或文本不完整，本批结果未保存。" = "The subtitle ID or text returned by Apple Translation is incomplete, and the results of this batch have not been saved.";
 "Apple 本机翻译" = "Apple Translation";
 "Apple 本机翻译不支持 iOS 模拟器，请在真实设备准备语言并翻译。" = "Apple Translation is unavailable in the iOS simulator. Prepare languages and translate on a physical device.";
-"OpenAI 兼容接口" = "OpenAI-Compatible API";
 "OpenAI 接口" = "OpenAI API";
 "iCloud 同步" = "iCloud Sync";
 "iCloud 文件夹同步" = "iCloud Folder Sync";
@@ -125,7 +124,6 @@
 "原文" = "Source";
 "原文内容" = "Source Text";
 "原文语言" = "Source Language";
-"原服务未在此设备配置" = "The original service is not configured on this device.";
 "原音视频媒体同步" = "Source Media Sync";
 "去配置…" = "Configure…";
 "参数" = "Parameters";
@@ -155,7 +153,6 @@
 "后台执行不可用。" = "Background execution is not available.";
 "启用 iCloud 文件夹同步" = "Enable iCloud Folder Sync";
 "启用字幕翻译" = "Enable subtitle translation";
-"启用翻译" = "Enable translation";
 "在 Finder 中显示" = "Show in Finder";
 "在 Mac 上大批量转写并自动翻译，出门后用 iPhone 或 iPad 继续校对和微调字幕。" = "Transcribe and translate on Mac, then review and edit on iPhone or iPad.";
 "在字幕中搜索…" = "Search Subtitles…";
@@ -262,7 +259,7 @@
 "当前转写配置" = "Current Transcription Settings";
 "待更新" = "Out of Date";
 "待校对" = "Needs Review";
-"待翻译" = "Awaiting Translation";
+"待翻译" = "Translation pending";
 "恢复默认" = "Restore Defaults";
 "所选媒体" = "Selected media";
 "所选文件格式与媒体类型不一致。" = "The selected file format is inconsistent with the media type.";
@@ -315,7 +312,6 @@
 "更新预览" = "Update Preview";
 "有 %lld 条字幕缺少有效译文。请完成翻译或校对后导出，或选择原文。" = "%1$lld subtitles are missing translations. Complete translation first, or export source subtitles.";
 "有 %lld 条字幕缺少有效译文。请完成翻译或校对，或选择原文 SRT。" = "%1$lld subtitles are missing translations. Complete translation first, or export source SRT.";
-"服务地址" = "Service address";
 "服务接入" = "Service Connection";
 "服务提供商" = "Service provider";
 "服务操作失败" = "Service operation failed";
@@ -328,7 +324,6 @@
 "未启用" = "Not enabled";
 "未命名任务" = "Untitled Task";
 "未在本机配置的服务" = "Service Not Configured Locally";
-"未完成翻译可返回队列重试" = "Resume unfinished translation from the queue.";
 "未指定" = "Not specified";
 "未收录：%@" = "Unknown model: %1$@";
 "未标明语言" = "Unspecified Language";
@@ -411,7 +406,6 @@
 "等待上传" = "Waiting for upload";
 "简体中文" = "Simplified Chinese";
 "管理模型" = "Manage Models";
-"管理翻译服务" = "Manage Translation Services";
 "管理转写服务…" = "Manage Transcription Services…";
 "系统" = "System";
 "系统不支持此语言对" = "Unsupported language pair";
@@ -437,7 +431,6 @@
 "翻译暂停：%@" = "Translation paused: %1$@";
 "翻译服务" = "Translation";
 "翻译服务配置正在读取或保存。" = "The translation service configuration is being read or saved.";
-"翻译模型" = "Translation model";
 "翻译模型名称不能为空。" = "The name of the translation model cannot be empty.";
 "自动识别" = "Automatic Detection";
 "草稿" = "Draft";
@@ -486,10 +479,8 @@
 "调整参数" = "Adjust Parameters";
 "调整参数…" = "Adjust Parameters…";
 "调整当前媒体中全部 %lld 条字幕的时间位置。正数向后延后，负数向前提前。" = "Shift timing for all %1$lld subtitles. Positive values delay; negative values advance.";
-"调整翻译参数" = "Adjust Translation Settings";
 "质量" = "Quality";
 "轨 %d" = "Track %1$d";
-"转写" = "Transcription";
 "转写方式" = "Transcription Method";
 "转写服务" = "Transcription Service";
 "转写模型" = "Transcription Model";
@@ -516,7 +507,6 @@
 "通过 iCloud Drive 目录跨设备同步您的任务项目与字幕成果。" = "Sync tasks and subtitles across devices via iCloud Drive.";
 "配置 OpenAI 兼容接口或本地模型服务以启用字幕翻译。" = "Configure an OpenAI-compatible service to enable subtitle translation.";
 "配置此服务" = "Configure this service";
-"配置翻译服务…" = "Configure Translation Service…";
 "配置转写服务…" = "Configure Transcription Service…";
 "重新下载" = "Download Again";
 "重新关联" = "Link Again";
@@ -556,7 +546,6 @@
 "默认仅同步轻量的任务结构与字幕文字，不占用庞大的 iCloud 视频存储空间。" = "Only tasks and subtitle text are synced by default, saving iCloud storage.";
 "默认推荐" = "Recommended";
 
-"待翻译" = "Translation pending";
 
 "时长 %.3f 秒" = "Duration %1$.3f seconds";
 
@@ -623,8 +612,6 @@
 "取消选择" = "Deselect";
 "快退 5 秒" = "Skip Back 5 Seconds";
 "快进 5 秒" = "Skip Forward 5 Seconds";
-"翻译引擎" = "Translation Engine";
-"服务" = "Service";
 "暂无媒体" = "No Media";
 "偏移秒数" = "Offset (seconds)";
 "当前字幕" = "Current Subtitle";
@@ -698,7 +685,6 @@
 "下载 IPA" = "Download IPA";
 "版本详情" = "Release Details";
 "前往 GitHub" = "View on GitHub";
-"重试" = "Retry";
 
 
 "请先准备原文字幕并启用翻译。" = "Prepare source subtitles and enable translation first.";
@@ -719,23 +705,10 @@
 "当前已有字幕将被新导入的字幕替换。" = "Existing subtitles will be replaced by the imported subtitles.";
 "当前已有译文将被导入的匹配结果替换。" = "Existing translations will be replaced by the imported matches.";
 "导入遇到问题" = "Import Issue";
-"字幕来源" = "Subtitle Source";
-"字幕文件" = "Subtitle File";
-"内嵌字幕" = "Embedded Subtitles";
-"选择字幕导入方式" = "Select Subtitle Import Source";
-"选择文件 (.srt / .vtt)…" = "Choose File (.srt / .vtt)…";
 "选择本地字幕文件" = "Choose Local Subtitle File";
-"未发现支持的内嵌字幕轨道 (tx3g)" = "No supported embedded subtitle tracks found (tx3g)";
-"重新检测" = "Redetect";
-"重新检索内嵌字幕" = "Redetect Embedded Subtitles";
-"内嵌轨道" = "Embedded Track";
-"请选择轨道" = "Select Track";
-"选择内嵌字幕轨道" = "Select Embedded Subtitle Track";
 "轨道 %d (%@)" = "Track %d (%@)";
 "正在解析字幕内容…" = "Parsing subtitle content…";
-"等待选择字幕" = "Select Subtitles";
 "共解析 %lld 条原文字幕" = "Parsed %lld original subtitle cues";
-"暂无待匹配译文" = "No Translations to Match";
 "已匹配 %lld / %lld 条" = "Matched %lld / %lld cues";
 "多对一合并" = "Merged to Single Cue";
 "此条目将与相同目标的原文字幕合并" = "This entry will merge with others sharing the same original cue";
@@ -749,15 +722,10 @@
 "当前译文：" = "Current Translation:";
 "搜索原文字幕…" = "Search original cues…";
 "选择匹配原文字幕" = "Select Matching Original Cue";
-"改用语音识别？" = "Switch to Speech Recognition?";
-"清除已有字幕并改用语音识别" = "Clear Subtitles and Use Speech Recognition";
 "已导入：%@" = "Imported: %@";
 "已导入：内嵌轨 %d%@" = "Imported: Embedded Track %d%@";
-"已有字幕" = "Existing Subtitles";
-"语音识别" = "Speech Recognition";
 "改用语音识别" = "Use Speech Recognition";
 "改用语音识别…" = "Use Speech Recognition…";
-"选择媒体字幕来源" = "Select Media Subtitle Source";
 "字幕导入" = "Subtitle Import";
 "清除已有字幕并改用语音识别？" = "Clear Existing Subtitles and Use Speech Recognition?";
 "导入原文" = "Import Subtitles";
@@ -766,10 +734,14 @@
 
 "原文字幕已就绪" = "Source subtitles ready";
 "待匹配译文" = "Unmatched translations";
-"SRT · VTT · 内嵌字幕" = "SRT · VTT · Embedded subtitles";
-"译文字幕" = "Translated subtitles";
 "原文字幕未就绪" = "Source subtitles not ready";
 "将清除当前媒体的原文和译文。" = "Source subtitles and translations for this media will be cleared.";
-"将清除该媒体的原文和译文。" = "Source subtitles and translations for this media will be cleared.";
 "待匹配" = "Unmatched";
 "保留为待匹配" = "Keep unmatched";
+"选择字幕…" = "Select Subtitles…";
+"完成选择" = "Done Selecting";
+"媒体操作" = "Media Actions";
+"选择字幕文件" = "Select Subtitle File";
+"支持 SRT、VTT 等外挂字幕格式" = "Supports external SRT and VTT formats";
+"更换文件…" = "Change File…";
+"未分配译文" = "Unassigned Translations";
