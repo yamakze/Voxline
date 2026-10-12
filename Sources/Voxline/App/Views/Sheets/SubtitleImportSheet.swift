@@ -441,6 +441,7 @@ public struct SubtitleImportSheet: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .menuIndicator(.hidden)
                         .accessibilityLabel(String(localized: "选择匹配的原文字幕目标", bundle: appLocalizationBundle))
                     }
                     .padding(8)

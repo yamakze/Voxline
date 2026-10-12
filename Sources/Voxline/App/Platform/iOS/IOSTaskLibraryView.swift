@@ -49,6 +49,7 @@ struct IOSTaskLibraryView: View {
                             .font(.title3)
                             .foregroundStyle(Color.voxlineAccent)
                     }
+                    .menuIndicator(.hidden)
                 }
             }
             .sheet(item: $newTaskDraft) { draft in
@@ -534,6 +535,7 @@ private struct IOSTaskDetailView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                    .menuIndicator(.hidden)
                 }
             }
             .sheet(item: Binding(get: { sharingURL.map { SharePayload(url: $0) } }, set: { sharingURL = $0?.url })) { payload in

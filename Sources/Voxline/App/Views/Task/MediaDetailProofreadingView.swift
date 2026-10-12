@@ -153,6 +153,7 @@ public struct MediaDetailProofreadingView: View {
                 } label: {
                     Label(String(localized: "工具", bundle: appLocalizationBundle), systemImage: "ellipsis.circle")
                 }
+                .menuIndicator(.hidden)
                 .help(String(localized: "校对与媒体工具", bundle: appLocalizationBundle))
 
                 Menu {
@@ -182,6 +183,7 @@ public struct MediaDetailProofreadingView: View {
                 } label: {
                     Label(String(localized: "导出", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                 }
+                .menuIndicator(.hidden)
                 .disabled(item.cues.isEmpty || session.editingSnapshot?.id != nil)
                 .help(String(localized: "导出字幕或包含字幕的媒体文件", bundle: appLocalizationBundle))
             }

@@ -154,5 +154,6 @@ struct ProofreadingPlayerControls: View {
         #if os(macOS)
         .menuStyle(.borderlessButton)
         #endif
+        .menuIndicator(.hidden)
     }
 }

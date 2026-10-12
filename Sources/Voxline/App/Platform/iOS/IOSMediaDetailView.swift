@@ -345,6 +345,7 @@ struct IOSMediaDetailView: View {
                     .background(Color.secondary.opacity(0.12), in: Capsule())
             }
             .buttonStyle(.plain)
+            .menuIndicator(.hidden)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -621,6 +622,7 @@ struct IOSMediaDetailView: View {
             Image(systemName: "ellipsis.circle")
                 .font(.title3)
         }
+        .menuIndicator(.hidden)
         .accessibilityLabel(String(localized: "媒体操作", bundle: appLocalizationBundle))
     }
 

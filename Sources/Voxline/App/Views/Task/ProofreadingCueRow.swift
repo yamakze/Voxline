@@ -141,8 +141,8 @@ struct ProofreadingCueRow: View {
                 }
                 #if os(macOS)
                 .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
                 #endif
+                .menuIndicator(.hidden)
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(String(localized: "更多操作", bundle: appLocalizationBundle))
