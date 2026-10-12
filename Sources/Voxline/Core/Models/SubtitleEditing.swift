@@ -4,9 +4,7 @@ public extension TaskMediaItem {
     /// Commit an editable timeline without rewriting recognition or translation history.
     mutating func replaceSubtitles(_ replacement: [SubtitleCue], comparedTo original: [SubtitleCue]) throws {
         guard cues == original else { throw CheckpointError.editedCue }
-        let sorted = replacement.enumerated().sorted {
-            $0.element.startMilliseconds == $1.element.startMilliseconds ? $0.offset < $1.offset : $0.element.startMilliseconds < $1.element.startMilliseconds
-        }.map(\.element)
+        let sorted = replacement.sorted { $0.startMilliseconds < $1.startMilliseconds }
         let validated = try SubtitleCue.clampedToMedia(sorted, media: media)
         cues = validated
         updateProofreadingStatus()
@@ -69,7 +67,7 @@ public extension TaskMediaItem {
         }
         guard Array(cues[index..<(index + originals.count)]) == originals else { throw CheckpointError.editedCue }
         var merged = try SubtitleCue(id: UUID(), startMilliseconds: originals[0].startMilliseconds,
-            endMilliseconds: originals.map(\.endMilliseconds).max()!, sourceText: sourceText)
+            endMilliseconds: originals.reduce(originals[0].endMilliseconds) { max($0, $1.endMilliseconds) }, sourceText: sourceText)
         if !translationText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             merged.translation = .succeeded(text: translationText, sourceRevision: merged.sourceRevision)
         }

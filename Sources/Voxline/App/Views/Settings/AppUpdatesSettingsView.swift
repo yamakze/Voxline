@@ -21,7 +21,7 @@ private struct AppIconView: View {
             fallbackIcon
         }
         #elseif os(iOS)
-        if let uiImage = loadIOSAppIcon() {
+        if let uiImage = Self.cachedIOSAppIcon {
             Image(uiImage: uiImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -36,7 +36,9 @@ private struct AppIconView: View {
     }
 
     #if os(iOS)
-    private func loadIOSAppIcon() -> UIImage? {
+    private static let cachedIOSAppIcon = loadIOSAppIcon()
+
+    private static func loadIOSAppIcon() -> UIImage? {
         if let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
            let primaryIcon = icons["CFBundlePrimaryIcon"] as? [String: Any],
            let iconFiles = primaryIcon["CFBundleIconFiles"] as? [String],

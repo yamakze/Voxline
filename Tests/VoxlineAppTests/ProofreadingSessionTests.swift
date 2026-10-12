@@ -118,4 +118,45 @@ struct ProofreadingSessionTests {
         #expect(TaskLibrary(tasksDirectory: root).task(for: task.id)?.items.first == original)
     }
 
+    @Test func sourceReplacementAndRecognitionResetUndoRestoreCheckpointTranslationsAndOrigin() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let media = try MediaIdentity(fileName: "clip.mp4", byteCount: 123,
+            fingerprint: String(repeating: "a", count: 64), durationMilliseconds: 1000, audioTrackID: 1)
+        let item = TaskMediaItem(title: "clip", kind: .video, source: .localFile(fileName: media.fileName), media: media)
+        let task = ProcessingTask(items: [item])
+        let library = TaskLibrary(tasksDirectory: root)
+        try library.save(task)
+        let imported = try library.importOriginalSubtitles(.init(entries: [
+            .init(startMilliseconds: 0, endMilliseconds: 800, text: "Original")
+        ], origin: .file(name: "source.srt")), taskID: task.id, comparedTo: item)
+        let session = ProofreadingSession(item: imported)
+        session.beginEditing(imported.cues[0])
+        session.sourceDraft = "Manual source"
+        session.translationDraft = "人工译文"
+        try session.saveEditing(in: imported) { updated, original in
+            try library.updateItem(updated, taskID: task.id, comparedTo: original)
+        }
+        let edited = try #require(library.task(for: task.id)?.items.first)
+        let reset = try library.useSpeechRecognition(taskID: task.id, comparedTo: edited)
+        session.recordSavedChange(reset, comparedTo: edited)
+        #expect(reset.checkpoint == nil && reset.cues.isEmpty && reset.importedSubtitleOrigin == nil)
+        try session.undo(in: reset) { updated, original in
+            try library.updateItem(updated, taskID: task.id, comparedTo: original)
+        }
+        #expect(TaskLibrary(tasksDirectory: root).task(for: task.id)?.items.first == edited)
+        let replacement = try library.importOriginalSubtitles(.init(entries: [
+            .init(startMilliseconds: 100, endMilliseconds: 500, text: "Replacement")
+        ], origin: .file(name: "replacement.vtt")), taskID: task.id, comparedTo: edited, replacingExisting: true)
+        session.recordSavedChange(replacement, comparedTo: edited)
+        // A task updated after the preview was opened cannot be replaced by a stale import.
+        #expect(throws: CheckpointError.editedCue) {
+            try library.useSpeechRecognition(taskID: task.id, comparedTo: edited)
+        }
+        try session.undo(in: replacement) { updated, original in
+            try library.updateItem(updated, taskID: task.id, comparedTo: original)
+        }
+        #expect(TaskLibrary(tasksDirectory: root).task(for: task.id)?.items.first == edited)
+    }
+
 }

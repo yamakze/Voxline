@@ -68,7 +68,6 @@ struct MediaPlaybackControllerTests {
         controller.seek(toMilliseconds: 400)
         try await waitFor { abs(controller.currentTimeSeconds - 0.4) < 0.01 }
         #expect(controller.activeSubtitle?.id == item.cues[1].id)
-        #expect(controller.activeSubtitle?.id == item.cues[1].id)
         #expect(controller.completedSubtitleEndMilliseconds == 400)
         controller.seek(to: .nan)
         controller.setRate(.infinity)
@@ -85,7 +84,6 @@ struct MediaPlaybackControllerTests {
         controller.togglePlayPause()
         #expect(player.rate == 2)
         try await waitFor { controller.currentTimeSeconds >= 0.99 && !controller.isPlaying }
-        #expect(controller.activeSubtitle == nil)
         #expect(controller.activeSubtitle == nil && controller.completedSubtitleEndMilliseconds == 1000)
         controller.togglePlayPause()
         #expect(controller.playbackRate == 2)
@@ -107,6 +105,17 @@ struct MediaPlaybackControllerTests {
         #expect(controller.activeSubtitle == nil) // The shifted subtitle has not started.
         controller.updateSubtitles(item.cues)
         #expect(controller.activeSubtitle?.id == item.cues[0].id)
+        var revised = item.cues
+        revised[0].endMilliseconds = 800
+        try revised[0].replaceSourceText(with: "Edited while retaining the same timeline index")
+        controller.updateSubtitles(revised)
+        #expect(controller.activeSubtitle?.sourceText == revised[0].sourceText)
+        controller.seek(to: 0.5)
+        try await waitFor { controller.activeSubtitles.count == 2 }
+        #expect(controller.activeSubtitles.map(\.id) == revised.map(\.id))
+        controller.seek(to: 0.85)
+        try await waitFor { abs(controller.currentTimeSeconds - 0.85) < 0.01 }
+        #expect(controller.activeSubtitles.map(\.id) == [revised[1].id])
         let playerItem = try #require(player.currentItem)
         NotificationCenter.default.post(name: .AVPlayerItemFailedToPlayToEndTime, object: playerItem,
             userInfo: [AVPlayerItemFailedToPlayToEndTimeErrorKey: NSError(domain: "PlaybackTest", code: 1,

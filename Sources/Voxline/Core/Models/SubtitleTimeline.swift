@@ -16,19 +16,20 @@ public struct SubtitleTimeline: Sendable {
 
     public init(ranges: [(start: Int64, end: Int64)]) {
         var changes: [Int64: (starting: [Int], ending: [Int])] = [:]
-        for (index, range) in ranges.enumerated() {
+        // Empty or reversed ranges have no display interval. Domain validation owns their errors.
+        for (index, range) in ranges.enumerated() where range.end > range.start {
             changes[range.start, default: ([], [])].starting.append(index)
             changes[range.end, default: ([], [])].ending.append(index)
         }
-        let times = changes.keys.sorted()
+        let events = changes.sorted { $0.key < $1.key }
         var active = Set<Int>()
         var result: [SubtitleDisplayInterval] = []
-        for (index, time) in times.enumerated() {
-            let change = changes[time]!
+        for (index, event) in events.enumerated() {
+            let (time, change) = event
             active.subtract(change.ending)
             active.formUnion(change.starting)
-            if index + 1 < times.count, !active.isEmpty {
-                result.append(.init(startMilliseconds: time, endMilliseconds: times[index + 1], cueIndices: active.sorted()))
+            if index + 1 < events.count, !active.isEmpty {
+                result.append(.init(startMilliseconds: time, endMilliseconds: events[index + 1].key, cueIndices: active.sorted()))
             }
         }
         intervals = result

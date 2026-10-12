@@ -466,7 +466,7 @@
 "请求下载失败：%@" = "Download request failed: %1$@";
 "请点击右上角“调整参数与媒体”导入音视频。" = "Please click \"Adjust Parameters and Media\" in the upper right corner to import audio and video.";
 "请点击右上角参数菜单添加音视频。" = "Please click the parameter menu in the upper right corner to add audio and video.";
-"请点击重新关联指定本地原文件。" = "Link the original local file to continue.";
+"本地媒体文件已移动或无法访问。" = "The local media file has moved or is unavailable.";
 "请输入有效的 HTTP 或 HTTPS API 根地址。" = "Please enter a valid HTTP or HTTPS API root address.";
 "请输入转写模型 ID。" = "Enter a transcription model ID.";
 "请选择保存目录" = "Please select the save directory.";
@@ -687,7 +687,7 @@
 "前往 GitHub" = "View on GitHub";
 
 
-"请先准备原文字幕并启用翻译。" = "Prepare source subtitles and enable translation first.";
+"原文字幕未就绪或未启用翻译。" = "Source subtitles are unavailable or translation is disabled.";
 
 /* VXL-037 Subtitle Import and Matching */
 "继续匹配译文字幕" = "Resume Translation Matching";
@@ -698,32 +698,21 @@
 "导入译文字幕…" = "Import Translated Subtitles…";
 "继续匹配未分配译文 (%lld)…" = "Resume Unmatched Translations (%lld)…";
 "取消导入" = "Cancel Import";
-"确认导入并保存" = "Confirm Import and Save";
-"覆盖已有原文字幕？" = "Replace Existing Original Subtitles?";
-"覆盖已有译文字幕？" = "Replace Existing Translated Subtitles?";
-"确认覆盖" = "Confirm Replacement";
-"当前已有字幕将被新导入的字幕替换。" = "Existing subtitles will be replaced by the imported subtitles.";
-"当前已有译文将被导入的匹配结果替换。" = "Existing translations will be replaced by the imported matches.";
 "导入遇到问题" = "Import Issue";
 "选择本地字幕文件" = "Choose Local Subtitle File";
-"轨道 %d (%@)" = "Track %d (%@)";
 "正在解析字幕内容…" = "Parsing subtitle content…";
 "共解析 %lld 条原文字幕" = "Parsed %lld original subtitle cues";
 "已匹配 %lld / %lld 条" = "Matched %lld / %lld cues";
 "多对一合并" = "Merged to Single Cue";
-"此条目将与相同目标的原文字幕合并" = "This entry will merge with others sharing the same original cue";
 "对应原文：" = "Original Cue:";
 "暂不匹配" = "Do Not Match";
 "时间重叠推荐" = "Time Overlap Suggestions";
 "在全部原文字幕中选择…" = "Choose from All Original Cues…";
 "选择目标" = "Select Target";
 "更换目标" = "Change Target";
-"选择匹配的原文字幕目标" = "Select matching original cue target";
 "当前译文：" = "Current Translation:";
 "搜索原文字幕…" = "Search original cues…";
 "选择匹配原文字幕" = "Select Matching Original Cue";
-"已导入：%@" = "Imported: %@";
-"已导入：内嵌轨 %d%@" = "Imported: Embedded Track %d%@";
 "改用语音识别" = "Use Speech Recognition";
 "改用语音识别…" = "Use Speech Recognition…";
 "字幕导入" = "Subtitle Import";
@@ -742,6 +731,6 @@
 "完成选择" = "Done Selecting";
 "媒体操作" = "Media Actions";
 "选择字幕文件" = "Select Subtitle File";
-"支持 SRT、VTT 等外挂字幕格式" = "Supports external SRT and VTT formats";
+"SRT · VTT" = "SRT · VTT";
 "更换文件…" = "Change File…";
 "未分配译文" = "Unassigned Translations";

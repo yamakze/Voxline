@@ -94,9 +94,7 @@ public enum SubtitleImporter {
         }
         guard !entries.isEmpty else { throw SubtitleImportError.emptyFile }
         // File numbering and ordering are presentation details; retain equal-start ordering.
-        return entries.enumerated().sorted {
-            $0.element.startMilliseconds == $1.element.startMilliseconds ? $0.offset < $1.offset : $0.element.startMilliseconds < $1.element.startMilliseconds
-        }.map(\.element)
+        return entries.sorted { $0.startMilliseconds < $1.startMilliseconds }
     }
 
     private static func milliseconds(_ text: String) -> Int64? {
@@ -111,18 +109,31 @@ public enum SubtitleImporter {
         return hour * 3_600_000 + minute * 60_000 + second * 1000 + fraction
     }
 
+    // Fixed source-code patterns: compilation failure is a programming error, not invalid subtitle data.
+    private static let presentationTags = try! NSRegularExpression(
+        pattern: #"</?(?:b|i|u|font|c|v|lang|ruby|rt)(?:[.\s][^>]*)?>|<\d{2}:\d{2}(?::\d{2})?\.\d{3}>"#, options: .caseInsensitive)
+    private static let characterReferences = try! NSRegularExpression(
+        pattern: #"&(#(?:[xX][0-9a-fA-F]+|[0-9]+)|lt|gt|quot|apos|nbsp|amp);"#)
+    private static let namedCharacters = ["lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ", "amp": "&"]
+
     public static func plainText(_ text: String) -> String {
-        var result = text.replacingOccurrences(of: #"</?(?:b|i|u|font|c|v|lang|ruby|rt)(?:[.\s][^>]*)?>|<\d{2}:\d{2}(?::\d{2})?\.\d{3}>"#, with: "", options: [.regularExpression, .caseInsensitive])
-        for match in result.matches(of: /&#(x[0-9a-fA-F]+|[0-9]+);/).reversed() {
-            let reference = match.output.1
-            let value = reference.hasPrefix("x") ? UInt32(reference.dropFirst(), radix: 16) : UInt32(reference)
-            if let value, let scalar = UnicodeScalar(value) {
-                result.replaceSubrange(match.range, with: String(scalar))
-            }
+        let unstyled = presentationTags.stringByReplacingMatches(in: text,
+            range: NSRange(text.startIndex..., in: text), withTemplate: "") as NSString
+        var result = ""
+        var cursor = 0
+        for match in characterReferences.matches(in: unstyled as String, range: NSRange(location: 0, length: unstyled.length)) {
+            result += unstyled.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            let reference = unstyled.substring(with: match.range(at: 1))
+            if reference.hasPrefix("#") {
+                let number = reference.dropFirst()
+                let value = number.hasPrefix("x") || number.hasPrefix("X")
+                    ? UInt32(number.dropFirst(), radix: 16) : UInt32(number)
+                if let value, let scalar = UnicodeScalar(value) { result += String(scalar) }
+                else { result += unstyled.substring(with: match.range) }
+            } else { result += namedCharacters[reference] ?? unstyled.substring(with: match.range) }
+            cursor = NSMaxRange(match.range)
         }
-        for (entity, value) in [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&nbsp;", " "), ("&amp;", "&")] {
-            result = result.replacingOccurrences(of: entity, with: value)
-        }
+        result += unstyled.substring(from: cursor)
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

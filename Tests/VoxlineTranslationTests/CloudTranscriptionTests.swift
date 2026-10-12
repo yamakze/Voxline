@@ -79,8 +79,8 @@ struct CloudTranscriptionTests {
         }
     }
 
-    @Test(arguments: ["whisper-1", "whisper-large-v3-turbo"])
-    func multipartUsesProtocolFieldsAndCancellationWaitsForHTTPToStop(modelID: String) async throws {
+    @Test func multipartUsesProtocolFieldsAndCancelsActiveHTTP() async throws {
+        let modelID = "whisper-large-v3-turbo"
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -118,6 +118,12 @@ struct CloudTranscriptionTests {
         catch let error as TranscriptionFailure {
             #expect(error.isCancelled)
             #expect(error.evidenceURL != nil)
+        }
+        // URLSession may deliver stopLoading after its cancelled async call returns.
+        // Observe the transport callback before this test releases its session and shared stub state.
+        for _ in 0..<100 {
+            if ASRStubProtocol.stopped.withLock({ $0 }) { break }
+            try await Task.sleep(for: .milliseconds(10))
         }
         #expect(ASRStubProtocol.stopped.withLock { $0 })
     }

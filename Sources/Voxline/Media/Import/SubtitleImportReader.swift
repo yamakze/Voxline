@@ -113,7 +113,7 @@ public enum SubtitleTrackError: LocalizedError {
     case unsupportedFormat, invalidSample
     public var errorDescription: String? {
         switch self {
-        case .unsupportedFormat: String(localized: "请选择 SRT、VTT 或 tx3g 文本字幕轨。", bundle: voxlineLocalizationBundle)
+        case .unsupportedFormat: String(localized: "不支持此字幕格式。", bundle: voxlineLocalizationBundle)
         case .invalidSample: String(localized: "内嵌字幕的文本或时间无法读取。", bundle: voxlineLocalizationBundle)
         }
     }

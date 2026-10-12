@@ -39,6 +39,8 @@ final class MacUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
 
     func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
                  untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        deferredInstallation?.cancel()
+        deferredInstallation = nil
         guard TaskProcessingQueue.shared.taskID != nil else { return false }
         deferredInstallation = Task { @MainActor in
             while TaskProcessingQueue.shared.taskID != nil {

@@ -9,7 +9,6 @@ public struct SubtitleImportSheet: View {
     @State private var session: SubtitleImportSession
     @State private var showFilePicker = false
     @State private var selectedFile: SelectedSubtitleFile?
-    @State private var showConfirmReplace = false
     @State private var errorMessage: String?
     @State private var selectingAssignment: AssignmentTargetSelection?
 
@@ -75,17 +74,6 @@ public struct SubtitleImportSheet: View {
         }
     }
 
-    /// 统计每个原文字幕被分配的次数，用于检测多对一合并
-    private var cueAssignmentCounts: [UUID: Int] {
-        var counts: [UUID: Int] = [:]
-        for assignment in session.assignments {
-            if let cueID = assignment.cueID {
-                counts[cueID, default: 0] += 1
-            }
-        }
-        return counts
-    }
-
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -113,11 +101,10 @@ public struct SubtitleImportSheet: View {
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "完成", bundle: appLocalizationBundle)) {
-                        if session.replacesExisting { showConfirmReplace = true }
-                        else { saveImportedSubtitles(replacingExisting: false) }
+                        saveImportedSubtitles(replacingExisting: true)
                     }
                     .disabled(!canCommit)
-                    .accessibilityLabel(String(localized: "确认导入并保存", bundle: appLocalizationBundle))
+                    .accessibilityLabel(String(localized: "完成", bundle: appLocalizationBundle))
                 }
             }
             .fileImporter(
@@ -139,24 +126,6 @@ public struct SubtitleImportSheet: View {
             }
             .task(id: selectedFile?.id) {
                 if let selectedFile { await session.readFile(selectedFile.url) }
-            }
-            .confirmationDialog(
-                session.role == .original
-                    ? String(localized: "覆盖已有原文字幕？", bundle: appLocalizationBundle)
-                    : String(localized: "覆盖已有译文字幕？", bundle: appLocalizationBundle),
-                isPresented: $showConfirmReplace,
-                titleVisibility: .visible
-            ) {
-                Button(String(localized: "确认覆盖", bundle: appLocalizationBundle), role: .destructive) {
-                    saveImportedSubtitles(replacingExisting: true)
-                }
-                Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
-            } message: {
-                Text(
-                    session.role == .original
-                        ? String(localized: "当前已有字幕将被新导入的字幕替换。", bundle: appLocalizationBundle)
-                        : String(localized: "当前已有译文将被导入的匹配结果替换。", bundle: appLocalizationBundle)
-                )
             }
             .sheet(item: $selectingAssignment) { target in
                 if let index = session.assignments.firstIndex(where: { $0.id == target.id }) {
@@ -207,7 +176,7 @@ public struct SubtitleImportSheet: View {
             VStack(spacing: 6) {
                 Text(String(localized: "选择字幕文件", bundle: appLocalizationBundle))
                     .font(.headline)
-                Text(String(localized: "支持 SRT、VTT 等外挂字幕格式", bundle: appLocalizationBundle))
+                Text(String(localized: "SRT · VTT", bundle: appLocalizationBundle))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -349,10 +318,10 @@ public struct SubtitleImportSheet: View {
 
             Divider()
 
-            let counts = cueAssignmentCounts
+            let counts = session.cueAssignmentCounts
             List(Array(session.assignments.enumerated()), id: \.element.id) { index, assignment in
                 let targetCue = assignment.cueID.flatMap { session.cuesByID[$0] }
-                let isMerged = (assignment.cueID != nil) && ((counts[assignment.cueID!] ?? 0) > 1)
+                let isMerged = assignment.cueID.map { (counts[$0] ?? 0) > 1 } ?? false
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .top) {
@@ -386,7 +355,7 @@ public struct SubtitleImportSheet: View {
                             .padding(.vertical, 2)
                             .background(Color.orange.opacity(0.15), in: .capsule)
                             .foregroundStyle(.orange)
-                            .accessibilityLabel(String(localized: "此条目将与相同目标的原文字幕合并", bundle: appLocalizationBundle))
+                            .accessibilityLabel(String(localized: "多对一合并", bundle: appLocalizationBundle))
                         }
                     }
 
@@ -442,7 +411,7 @@ public struct SubtitleImportSheet: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .menuIndicator(.hidden)
-                        .accessibilityLabel(String(localized: "选择匹配的原文字幕目标", bundle: appLocalizationBundle))
+                        .accessibilityLabel(String(localized: "选择目标", bundle: appLocalizationBundle))
                     }
                     .padding(8)
                     .background(Color.secondary.opacity(0.06), in: .rect(cornerRadius: 6))
@@ -478,12 +447,7 @@ private struct TargetCuePickerSheet: View {
 
     @State private var searchText = ""
 
-    private var filteredCues: [SubtitleCue] {
-        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return allCues
-        }
-        return allCues.filter { $0.sourceText.localizedCaseInsensitiveContains(searchText) }
-    }
+    @State private var filteredCues: [SubtitleCue] = []
 
     var body: some View {
         NavigationStack {
@@ -555,6 +519,15 @@ private struct TargetCuePickerSheet: View {
                 }
                 .listStyle(.plain)
                 .searchable(text: $searchText, prompt: Text(String(localized: "搜索原文字幕…", bundle: appLocalizationBundle)))
+            }
+            .task(id: searchText) {
+                let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !query.isEmpty {
+                    do { try await Task.sleep(for: .milliseconds(150)) }
+                    catch { return }
+                }
+                guard !Task.isCancelled else { return }
+                filteredCues = query.isEmpty ? allCues : allCues.filter { $0.sourceText.localizedCaseInsensitiveContains(query) }
             }
             .navigationTitle(String(localized: "选择匹配原文字幕", bundle: appLocalizationBundle))
             #if os(iOS)

@@ -49,6 +49,6 @@
 "音频缓存文件缺失，重新提取。" = "An audio cache file is missing. Extracting again.";
 "音频缓存记录损坏，重新提取。" = "Audio cache metadata is damaged. Extracting again.";
 
-"请选择 SRT、VTT 或 tx3g 文本字幕轨。" = "Choose SRT, VTT or a tx3g text subtitle track.";
+"不支持此字幕格式。" = "Unsupported subtitle format.";
 
 "内嵌字幕的文本或时间无法读取。" = "Cannot read the embedded subtitle text or timing.";

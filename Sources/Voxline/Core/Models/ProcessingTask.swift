@@ -263,7 +263,7 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
         try media?.validate()
         if importedSubtitleOrigin != nil, checkpoint == nil { throw CheckpointError.missingCheckpoint }
         try SubtitleCue.validateTimeline(cues, within: nil)
-        try checkpoint?.validate(media: media, cues: cues, status: status, imported: importedSubtitleOrigin != nil)
+        try checkpoint?.validate(media: media, cues: cues, status: status, subtitleOrigin: importedSubtitleOrigin)
         switch status {
         case .failed(let reason), .translationPaused(let reason):
             if reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -322,7 +322,8 @@ public enum TaskValidationError: Error, LocalizedError, Equatable {
 }
 
 public extension ProcessingTask {
-    mutating func useSpeechRecognition(mediaID: UUID, comparedTo original: TaskMediaItem) throws {
+    @discardableResult
+    mutating func useSpeechRecognition(mediaID: UUID, comparedTo original: TaskMediaItem) throws -> TaskMediaItem {
         guard let index = items.firstIndex(where: { $0.id == mediaID }), items[index] == original else { throw CheckpointError.editedCue }
         guard !items.contains(where: { if case .running = $0.status { true } else { false } }) else { throw CheckpointError.workRunning }
         var updated = self
@@ -333,19 +334,19 @@ public extension ProcessingTask {
         updated.items[index].status = .pending
         try updated.validate()
         self = updated
+        return items[index]
     }
 
+    @discardableResult
     mutating func importOriginalSubtitles(mediaID: UUID, entries: [SubtitleImportEntry], origin: ImportedSubtitleOrigin,
-                                         comparedTo original: TaskMediaItem, replacingExisting: Bool = false) throws {
+                                         comparedTo original: TaskMediaItem, replacingExisting: Bool = false) throws -> TaskMediaItem {
         guard let index = items.firstIndex(where: { $0.id == mediaID }), items[index] == original else { throw CheckpointError.editedCue }
         guard !items.contains(where: { if case .running = $0.status { true } else { false } }) else { throw CheckpointError.workRunning }
         guard original.cues.isEmpty || replacingExisting else { throw SubtitleImportError.replacementRequired }
         guard let media = original.media else { throw TaskValidationError.unassociatedMedia(mediaID) }
         guard !entries.isEmpty else { throw SubtitleImportError.emptyFile }
         var updated = self
-        let sorted = entries.enumerated().sorted {
-            $0.element.startMilliseconds == $1.element.startMilliseconds ? $0.offset < $1.offset : $0.element.startMilliseconds < $1.element.startMilliseconds
-        }.map(\.element)
+        let sorted = entries.sorted { $0.startMilliseconds < $1.startMilliseconds }
         updated.items[index].cues = try SubtitleCue.clampedToMedia(sorted.map { try $0.cue() }, media: media)
         updated.items[index].importedSubtitleOrigin = origin
         updated.items[index].unmatchedTranslationEntries = nil
@@ -354,5 +355,6 @@ public extension ProcessingTask {
         updated.startedAt = updated.startedAt ?? Date()
         try updated.validate()
         self = updated
+        return items[index]
     }
 }

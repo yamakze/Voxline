@@ -130,11 +130,11 @@ public struct MediaProcessingCheckpoint: Codable, Equatable, Sendable {
     public internal(set) var chunks: [TranscriptionChunkCheckpoint]
     public internal(set) var translationBatches: [TranslationBatchCheckpoint]
 
-    func validate(media currentMedia: MediaIdentity?, cues: [SubtitleCue], status: TaskMediaStatus, imported: Bool) throws {
+    func validate(media currentMedia: MediaIdentity?, cues: [SubtitleCue], status: TaskMediaStatus, subtitleOrigin: ImportedSubtitleOrigin?) throws {
         guard currentMedia != nil else { throw CheckpointError.incompatibleContext }
         try media.validate()
         try parameters.validate()
-        guard imported ? chunks.isEmpty : !chunks.isEmpty else { throw CheckpointError.invalidRecord }
+        guard subtitleOrigin == nil ? !chunks.isEmpty : chunks.isEmpty else { throw CheckpointError.invalidRecord }
         var chunkIDs = Set<UUID>()
         var sourceIDs = Set<UUID>()
         var previousEnd: Int64 = 0

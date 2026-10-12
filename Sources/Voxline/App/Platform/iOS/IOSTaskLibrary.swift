@@ -49,7 +49,7 @@ final class IOSTaskLibrary {
         guard let task = storage.task(for: taskID), task.parameters.translation != nil,
               let item = task.items.first(where: { $0.id == mediaID }),
               item.hasSourceSubtitles else {
-            throw QueueError.unavailable(String(localized: "请先准备原文字幕并启用翻译。", bundle: appLocalizationBundle))
+            throw QueueError.unavailable(String(localized: "原文字幕未就绪或未启用翻译。", bundle: appLocalizationBundle))
         }
         try queue.start(taskID: taskID, mediaID: mediaID)
     }

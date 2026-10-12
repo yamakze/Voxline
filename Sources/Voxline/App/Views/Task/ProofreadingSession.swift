@@ -25,7 +25,7 @@ final class ProofreadingSession {
     var isSelecting = false
     var selectedCueIDs = Set<UUID>()
     var retranslatingCues: [SubtitleCue]?
-    private var lastEdit: (mediaID: UUID, before: [SubtitleCue], after: [SubtitleCue])?
+    private var lastEdit: (before: TaskMediaItem, after: TaskMediaItem)?
 
     init(item: TaskMediaItem?) {
         previewKind = item?.cues.contains(where: \.hasTranslation) == true ? .bilingual : .source
@@ -70,26 +70,27 @@ final class ProofreadingSession {
     func saveChanges(_ updated: TaskMediaItem, comparedTo original: TaskMediaItem,
                      onCommit: (TaskMediaItem, TaskMediaItem) throws -> Void) throws {
         try onCommit(updated, original)
-        if updated.cues != original.cues {
-            lastEdit = (original.id, original.cues, updated.cues)
-            updateSubtitles(updated.cues)
-        }
+        recordSavedChange(updated, comparedTo: original)
+    }
+
+    /// Also records commands whose checkpoint/source mutation was saved by the task library.
+    func recordSavedChange(_ updated: TaskMediaItem, comparedTo original: TaskMediaItem) {
+        if updated != original { lastEdit = (original, updated) }
+        updateSubtitles(updated.cues)
         selectedCueIDs.formIntersection(updated.cues.map(\.id))
         errorMessage = nil
     }
 
     func canUndo(in item: TaskMediaItem) -> Bool {
-        lastEdit?.mediaID == item.id && lastEdit?.after == item.cues
+        lastEdit?.after == item
     }
 
     func undo(in item: TaskMediaItem, onCommit: (TaskMediaItem, TaskMediaItem) throws -> Void) throws {
-        guard let edit = lastEdit, edit.mediaID == item.id else { throw CheckpointError.editedCue }
-        var updated = item
-        try updated.replaceSubtitles(edit.before, comparedTo: edit.after)
-        try onCommit(updated, item)
-        updateSubtitles(updated.cues)
+        guard let edit = lastEdit, edit.after == item else { throw CheckpointError.editedCue }
+        try onCommit(edit.before, item)
+        updateSubtitles(edit.before.cues)
         lastEdit = nil
-        selectedCueIDs.formIntersection(updated.cues.map(\.id))
+        selectedCueIDs.formIntersection(edit.before.cues.map(\.id))
         errorMessage = nil
     }
 }

@@ -23,10 +23,7 @@ public struct MediaDetailProofreadingView: View {
     @State private var showEmbeddingSheet = false
     @State private var showBurnInSheet = false
     @State private var showRelinkSheet = false
-    @State private var showImportOriginalSheet = false
-    @State private var showImportTranslationSheet = false
-    @State private var showResumingUnmatchedSheet = false
-    @State private var showConfirmResetASR = false
+    @State private var importState = SubtitleImportState()
     @State private var structureState = SubtitleStructureState()
 
     public var onBack: (() -> Void)?
@@ -41,15 +38,14 @@ public struct MediaDetailProofreadingView: View {
     }
 
     public var body: some View {
-        let activeCue = playbackController.activeSubtitle
         HSplitView {
             // Left Column: QuickTime Player with Floating Glass Capsule Controls
-            quickTimePlayerPane(activeCue: activeCue)
+            quickTimePlayerPane
                 .frame(minWidth: 440, idealWidth: 540)
                 .frame(maxHeight: .infinity)
 
             // Right Column: Apple Podcasts Lyrics/Transcript Stream
-            podcastsTranscriptPane(activeCueID: activeCue?.id)
+            podcastsTranscriptPane
                 .frame(minWidth: 460, idealWidth: 580)
                 .frame(maxHeight: .infinity)
         }
@@ -98,39 +94,8 @@ public struct MediaDetailProofreadingView: View {
                 .help(String(localized: "撤销最近一次编辑 (⌘Z)", bundle: appLocalizationBundle))
 
                 Menu {
-                    Section(String(localized: "字幕导入", bundle: appLocalizationBundle)) {
-                        Button {
-                            showImportOriginalSheet = true
-                        } label: {
-                            Label(item.cues.isEmpty ? String(localized: "导入原文字幕…", bundle: appLocalizationBundle) : String(localized: "替换原文字幕…", bundle: appLocalizationBundle), systemImage: "doc.text")
-                        }
-                        .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil || item.media == nil)
-
-                        Button {
-                            showImportTranslationSheet = true
-                        } label: {
-                            Label(String(localized: "导入译文字幕…", bundle: appLocalizationBundle), systemImage: "character.book.closed")
-                        }
-                        .disabled(item.cues.isEmpty || queue.taskID != nil || session.editingSnapshot?.id != nil)
-
-                        if let unmatched = item.unmatchedTranslationEntries, !unmatched.isEmpty {
-                            Button {
-                                showResumingUnmatchedSheet = true
-                            } label: {
-                                Label(String(localized: "继续匹配未分配译文 (\(unmatched.count))…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge")
-                            }
-                            .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
-                        }
-
-                        if item.importedSubtitleOrigin != nil {
-                            Button(role: .destructive) {
-                                showConfirmResetASR = true
-                            } label: {
-                                Label(String(localized: "改用语音识别…", bundle: appLocalizationBundle), systemImage: "waveform")
-                            }
-                            .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
-                        }
-                    }
+                    SubtitleImportActions(state: importState, item: item,
+                        isDisabled: queue.taskID != nil || session.editingSnapshot != nil)
 
                     Divider()
 
@@ -229,41 +194,8 @@ public struct MediaDetailProofreadingView: View {
         }) {
             MediaRelinkSheet(item: item, onCommit: onCommit)
         }
-        .sheet(isPresented: $showImportOriginalSheet) {
-            SubtitleImportSheet(item: item) { selection, replacesExisting, snapshot in
-                try TaskLibrary.shared.importOriginalSubtitles(selection, taskID: taskID, comparedTo: snapshot, replacingExisting: replacesExisting)
-            }
-        }
-        .sheet(isPresented: $showImportTranslationSheet) {
-            SubtitleImportSheet(item: item) { assignments, replacesExisting, snapshot in
-                var updated = snapshot
-                try updated.importTranslations(assignments, comparedTo: snapshot.cues, replacingExisting: replacesExisting)
-                try session.saveChanges(updated, comparedTo: snapshot, onCommit: onCommit)
-            }
-        }
-        .sheet(isPresented: $showResumingUnmatchedSheet) {
-            SubtitleImportSheet(resumingItem: item) { assignments, replacesExisting, snapshot in
-                var updated = snapshot
-                try updated.importTranslations(assignments, comparedTo: snapshot.cues, replacingExisting: replacesExisting)
-                try session.saveChanges(updated, comparedTo: snapshot, onCommit: onCommit)
-            }
-        }
-        .confirmationDialog(
-            String(localized: "清除已有字幕并改用语音识别？", bundle: appLocalizationBundle),
-            isPresented: $showConfirmResetASR,
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "改用语音识别", bundle: appLocalizationBundle), role: .destructive) {
-                do {
-                    try TaskLibrary.shared.useSpeechRecognition(taskID: taskID, comparedTo: item)
-                } catch {
-                    session.errorMessage = error.localizedDescription
-                }
-            }
-            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
-        } message: {
-            Text(String(localized: "将清除当前媒体的原文和译文。", bundle: appLocalizationBundle))
-        }
+        .subtitleImportSheets(state: importState, item: item, taskID: taskID,
+            library: TaskLibrary.shared, session: session, onCommit: onCommit)
         .subtitleStructureSheets(state: structureState, item: item, session: session, onCommit: onCommit)
         .confirmationDialog(String(localized: "重新翻译全部字幕？", bundle: appLocalizationBundle),
                             isPresented: Binding(get: { session.retranslatingCues != nil }, set: { if !$0 { session.retranslatingCues = nil } }), titleVisibility: .visible) {
@@ -284,7 +216,7 @@ public struct MediaDetailProofreadingView: View {
     }
 
     // MARK: - QuickTime Player Pane (with Floating Glass Capsule)
-    private func quickTimePlayerPane(activeCue: SubtitleCue?) -> some View {
+    private var quickTimePlayerPane: some View {
         ZStack(alignment: .bottom) {
             // Video or Audio Canvas
             Group {
@@ -329,7 +261,7 @@ public struct MediaDetailProofreadingView: View {
                                     .foregroundStyle(.white.opacity(0.6))
                                 Text(item.media == nil ? String(localized: "媒体待关联", bundle: appLocalizationBundle) : String(localized: "无法播放媒体", bundle: appLocalizationBundle))
                                     .font(.headline).foregroundStyle(.white)
-                                Text(playbackController.errorMessage ?? String(localized: "请点击重新关联指定本地原文件。", bundle: appLocalizationBundle))
+                                Text(playbackController.errorMessage ?? String(localized: "本地媒体文件已移动或无法访问。", bundle: appLocalizationBundle))
                                     .font(.caption).foregroundStyle(.white.opacity(0.7))
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal, 24)
@@ -425,7 +357,7 @@ public struct MediaDetailProofreadingView: View {
     }
 
     // MARK: - Apple Podcasts Lyrics/Transcript Pane
-    private func podcastsTranscriptPane(activeCueID: UUID?) -> some View {
+    private var podcastsTranscriptPane: some View {
         VStack(spacing: 0) {
             // Transcript Controls Toolbar (Podcasts style)
             HStack(spacing: 12) {
@@ -475,7 +407,7 @@ public struct MediaDetailProofreadingView: View {
                     Text(String(localized: "原文字幕未就绪", bundle: appLocalizationBundle))
                 } actions: {
                     Button(String(localized: "导入原文字幕…", bundle: appLocalizationBundle)) {
-                        showImportOriginalSheet = true
+                        importState.presentation = .original
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(queue.taskID != nil || item.media == nil)
@@ -522,7 +454,7 @@ public struct MediaDetailProofreadingView: View {
                     .onScrollPhaseChange { _, phase in
                         isScrollingTranscript = phase == .tracking || phase == .interacting || phase == .decelerating
                     }
-                    .onChange(of: activeCueID) { _, newActiveID in
+                    .onChange(of: playbackController.activeSubtitle?.id) { _, newActiveID in
                         if let newActiveID, !isScrollingTranscript {
                             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                                 proxy.scrollTo(newActiveID, anchor: .center)

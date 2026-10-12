@@ -109,18 +109,20 @@ public final class TaskLibrary {
         try save(task)
     }
 
+    @discardableResult
     public func importOriginalSubtitles(_ selection: SubtitleImportSelection, taskID: UUID, comparedTo original: TaskMediaItem,
-                                        replacingExisting: Bool = false) throws {
+                                        replacingExisting: Bool = false) throws -> TaskMediaItem {
         guard protectedTaskID != taskID else { throw CheckpointError.workRunning }
-        try commitCheckpoint(taskID: taskID, publishingImmediately: true) { task in
+        return try commitCheckpoint(taskID: taskID, publishingImmediately: true) { task in
             try task.importOriginalSubtitles(mediaID: original.id, entries: selection.entries, origin: selection.origin,
                 comparedTo: original, replacingExisting: replacingExisting)
         }
     }
 
-    public func useSpeechRecognition(taskID: UUID, comparedTo original: TaskMediaItem) throws {
+    @discardableResult
+    public func useSpeechRecognition(taskID: UUID, comparedTo original: TaskMediaItem) throws -> TaskMediaItem {
         guard protectedTaskID != taskID else { throw CheckpointError.workRunning }
-        try commitCheckpoint(taskID: taskID, publishingImmediately: true) { task in
+        return try commitCheckpoint(taskID: taskID, publishingImmediately: true) { task in
             try task.useSpeechRecognition(mediaID: original.id, comparedTo: original)
         }
     }

@@ -17,6 +17,7 @@ struct SubtitleImportTests {
         #expect(web.map(\.text) == parsed.map(\.text))
         #expect(web.map(\.startMilliseconds) == parsed.map(\.startMilliseconds))
         #expect(web.map(\.endMilliseconds) == parsed.map(\.endMilliseconds))
+        #expect(SubtitleImporter.plainText("<i>你好</i> &#X1F600; &amp;lt; &lt; &unknown;") == "你好 😀 &lt; < &unknown;")
         #expect(throws: (any Error).self) { try SubtitleImporter.parse(srt + "\n8\n00:00:06,000 --> 00:00:05,000\nbad", format: .srt) }
     }
 
@@ -63,5 +64,8 @@ struct SubtitleImportTests {
         #expect(output.contains("00:00:00,000 --> 00:00:05,000\nLong"))
         #expect(output.contains("00:00:01,000 --> 00:00:02,000\nShort"))
         #expect(cues[0].endMilliseconds == 5000)
+        let emptyRanges = SubtitleTimeline(ranges: [(0, 100), (50, 50), (80, 60), (100, 200)])
+        #expect(emptyRanges.interval(atMilliseconds: 75)?.cueIndices == [0])
+        #expect(emptyRanges.interval(atMilliseconds: 100)?.cueIndices == [3])
     }
 }

@@ -246,6 +246,12 @@ public struct TaskLibraryView: View {
             }
         }
         .contextMenu {
+            if let url = entry.url, syncSettings.fileStates[url.standardizedFileURL] == .conflict {
+                Button(String(localized: "解决版本冲突…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge") {
+                    conflictResolutionTaskID = entry.taskID
+                }
+                .disabled(TaskProcessingQueue.shared.taskID == entry.taskID)
+            }
             if isPlaceholder, let url = entry.url {
                 Button(String(localized: "请求下载云端任务", bundle: appLocalizationBundle), systemImage: "icloud.and.arrow.down") {
                     do {

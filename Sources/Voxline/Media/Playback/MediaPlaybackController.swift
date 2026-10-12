@@ -21,13 +21,14 @@ public final class MediaPlaybackController {
     public private(set) var currentTimeSeconds: Double = 0
     public private(set) var durationSeconds: Double = 0
     public private(set) var playbackRate: Float = 1
-    public private(set) var activeSubtitle: SubtitleCue?
+    public var activeSubtitle: SubtitleCue? { activeSubtitles.last }
     public private(set) var activeSubtitles: [SubtitleCue] = []
     public private(set) var completedSubtitleEndMilliseconds: Int64 = 0
 
     @ObservationIgnored private var subtitles: [SubtitleCue] = []
     @ObservationIgnored private var subtitleTimeline = SubtitleTimeline(cues: [])
     @ObservationIgnored private var subtitleEndTimes: [Int64] = []
+    @ObservationIgnored private var activeCueIndices: [Int]?
 
     private let mediaStore: LocalMediaStore
     private let inspector: MediaInspector
@@ -199,8 +200,8 @@ public final class MediaPlaybackController {
         errorMessage = nil
         currentTimeSeconds = 0
         subtitles = []
-        activeSubtitle = nil
         activeSubtitles = []
+        activeCueIndices = nil
         subtitleTimeline = SubtitleTimeline(cues: [])
         subtitleEndTimes = []
         completedSubtitleEndMilliseconds = 0
@@ -246,6 +247,7 @@ public final class MediaPlaybackController {
         subtitles = cues
         subtitleTimeline = SubtitleTimeline(cues: cues)
         subtitleEndTimes = cues.map(\.endMilliseconds).sorted()
+        activeCueIndices = nil
         updatePlaybackTime(currentTimeSeconds)
     }
 
@@ -253,15 +255,17 @@ public final class MediaPlaybackController {
     private func updatePlaybackTime(_ seconds: Double) {
         currentTimeSeconds = seconds
         let milliseconds = Int64((seconds * 1000).rounded(.down))
-        let active = subtitleTimeline.interval(atMilliseconds: milliseconds)?.cueIndices.map { subtitles[$0] } ?? []
+        let indices = subtitleTimeline.interval(atMilliseconds: milliseconds)?.cueIndices ?? []
+        if activeCueIndices != indices {
+            activeCueIndices = indices
+            activeSubtitles = indices.map { subtitles[$0] }
+        }
         var lower = 0, upper = subtitleEndTimes.count
         while lower < upper {
             let middle = (lower + upper) / 2
             if subtitleEndTimes[middle] <= milliseconds { lower = middle + 1 } else { upper = middle }
         }
         let completedEnd = lower > 0 ? subtitleEndTimes[lower - 1] : 0
-        if activeSubtitles != active { activeSubtitles = active }
-        if activeSubtitle != active.last { activeSubtitle = active.last }
         if completedSubtitleEndMilliseconds != completedEnd { completedSubtitleEndMilliseconds = completedEnd }
     }
 

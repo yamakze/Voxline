@@ -13,13 +13,14 @@ struct SubtitleImportSessionTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let file = directory.appendingPathComponent("source.vtt")
-        try "WEBVTT\n\n00:00.000 --> 00:00.800\nImported\n\n00:00.200 --> 00:00.600\nConcurrent".write(to: file, atomically: true, encoding: .utf8)
+        try "WEBVTT\n\n00:00.000 --> 00:01.800\nImported\n\n00:00.200 --> 00:00.600\nConcurrent".write(to: file, atomically: true, encoding: .utf8)
         let media = try MediaIdentity(fileName: "clip.mp4", byteCount: 123, fingerprint: String(repeating: "a", count: 64), durationMilliseconds: 1000, audioTrackID: 1)
         let item = TaskMediaItem(title: "clip", kind: .video, source: .localFile(fileName: media.fileName), media: media)
         let task = ProcessingTask(items: [item])
         let importing = SubtitleImportSession(item: item, role: .original)
         await importing.readFile(file)
         #expect(importing.errorMessage == nil)
+        #expect(importing.entries.map(\.endMilliseconds) == [1000, 600])
         let library = TaskLibrary(tasksDirectory: directory.appendingPathComponent("tasks"))
         try library.save(task)
         try library.importOriginalSubtitles(importing.originalSelection(), taskID: task.id, comparedTo: item)
@@ -28,11 +29,26 @@ struct SubtitleImportSessionTests {
         #expect(reopened == library.task(for: task.id))
         #expect(reopened.items[0].status == .completed && reopened.items[0].checkpoint?.chunks.isEmpty == true)
         #expect(reopened.items[0].cues.map(\.sourceText) == ["Imported", "Concurrent"])
-        #expect(reopened.items[0].cues.map(\.endMilliseconds) == [800, 600])
+        #expect(reopened.items[0].cues.map(\.endMilliseconds) == [1000, 600])
+        var deferred = reopened.items[0]
+        let translated = SubtitleImportEntry(startMilliseconds: 0, endMilliseconds: 180, text: "导入译文")
+        var assignments = SubtitleTranslationImport.assignments(entries: [translated], cues: deferred.cues)
+        assignments[0].cueID = nil // Keep a valid match for a later editing session.
+        try deferred.importTranslations(assignments, comparedTo: deferred.cues)
+        try library.updateItem(deferred, taskID: task.id, comparedTo: reopened.items[0])
+        let resuming = SubtitleImportSession(item: deferred, role: .translation, resumingUnmatched: true)
+        #expect(resuming.matchedCount == 1 && resuming.cueAssignmentCounts[deferred.cues[0].id] == 1)
+        var matched = deferred
+        try matched.importTranslations(resuming.assignments, comparedTo: deferred.cues)
+        try library.updateItem(matched, taskID: task.id, comparedTo: deferred)
+        #expect(TaskLibrary(tasksDirectory: directory.appendingPathComponent("tasks")).task(for: task.id)?.items[0].cues[0].translation
+            == .succeeded(text: "导入译文", sourceRevision: 1))
+        #expect(matched.unmatchedTranslationEntries == nil)
+        let savedAfterMatching = library.task(for: task.id)
         try "1\n00:00:01,000 --> 00:00:00,500\nInvalid".write(to: file, atomically: true, encoding: .utf8)
         await importing.readFile(file)
         #expect(importing.errorMessage != nil && importing.entries.isEmpty && importing.origin == nil)
-        #expect(library.task(for: task.id) == reopened)
+        #expect(library.task(for: task.id) == savedAfterMatching)
     }
 
     @Test func addingVideoAutomaticallyImportsTextAndVideoWithoutSubtitlesKeepsASR() async throws {
