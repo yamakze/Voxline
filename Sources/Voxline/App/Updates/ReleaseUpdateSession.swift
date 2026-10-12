@@ -29,7 +29,7 @@ enum ReleaseUpdateError: LocalizedError {
         switch self {
         case .invalidVersion: String(localized: "版本信息无效。", bundle: appLocalizationBundle)
         case .invalidResponse: String(localized: "更新服务响应无效。", bundle: appLocalizationBundle)
-        case .unpublishedRelease: String(localized: "未找到正式发布版本。", bundle: appLocalizationBundle)
+        case .unpublishedRelease: String(localized: "暂无可用更新", bundle: appLocalizationBundle)
         case .missingIPA: String(localized: "此版本未提供 IPA。", bundle: appLocalizationBundle)
         case .httpStatus(let status): String(localized: "更新检查失败（HTTP \(status)）。", bundle: appLocalizationBundle)
         }

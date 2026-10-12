@@ -26,7 +26,7 @@ final class MacUpdater: NSObject, ObservableObject, SPUUpdaterDelegate {
     func start() {
         guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         guard Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String != nil else {
-            errorMessage = String(localized: "此版本未配置自动更新。", bundle: appLocalizationBundle)
+            isConfigured = false
             return
         }
         do { try controller.updater.start(); isConfigured = true; errorMessage = nil }

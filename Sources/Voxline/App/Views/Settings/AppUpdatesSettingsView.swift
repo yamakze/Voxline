@@ -2,7 +2,82 @@ import SwiftUI
 import VoxlineCore
 #if os(macOS)
 import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
+private struct AppIconView: View {
+    var size: CGFloat = 40
+
+    var body: some View {
+        #if os(macOS)
+        if let icon = NSApp?.applicationIconImage {
+            Image(nsImage: icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22))
+        } else {
+            fallbackIcon
+        }
+        #elseif os(iOS)
+        if let uiImage = loadIOSAppIcon() {
+            Image(uiImage: uiImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22))
+        } else {
+            fallbackIcon
+        }
+        #else
+        fallbackIcon
+        #endif
+    }
+
+    #if os(iOS)
+    private func loadIOSAppIcon() -> UIImage? {
+        if let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
+           let primaryIcon = icons["CFBundlePrimaryIcon"] as? [String: Any],
+           let iconFiles = primaryIcon["CFBundleIconFiles"] as? [String],
+           let lastIcon = iconFiles.last,
+           let image = UIImage(named: lastIcon) {
+            return image
+        }
+        if let icons = Bundle.main.infoDictionary?["CFBundleIcons~ipad"] as? [String: Any],
+           let primaryIcon = icons["CFBundlePrimaryIcon"] as? [String: Any],
+           let iconFiles = primaryIcon["CFBundleIconFiles"] as? [String],
+           let lastIcon = iconFiles.last,
+           let image = UIImage(named: lastIcon) {
+            return image
+        }
+        for name in ["AppIcon60x60", "AppIcon76x76", "AppIcon"] {
+            if let image = UIImage(named: name) {
+                return image
+            }
+        }
+        if let path = Bundle.main.path(forResource: "AppIcon60x60@2x", ofType: "png") ??
+                      Bundle.main.path(forResource: "AppIcon76x76@2x~ipad", ofType: "png"),
+           let image = UIImage(contentsOfFile: path) {
+            return image
+        }
+        return nil
+    }
+    #endif
+
+    private var fallbackIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.22)
+                .fill(Color.voxlineAccent.gradient)
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: size * 0.46, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+#if os(macOS)
 public struct MacCheckForUpdatesButton: View {
     @ObservedObject private var updater = MacUpdater.shared
 
@@ -44,6 +119,14 @@ private struct MacAppUpdatesSettingsView: View {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
     }
 
+    private var versionText: String {
+        if let build = currentBuild {
+            String(format: String(localized: "版本 %@ (%@)", bundle: appLocalizationBundle), currentVersion, build)
+        } else {
+            String(format: String(localized: "版本 %@", bundle: appLocalizationBundle), currentVersion)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -55,30 +138,23 @@ private struct MacAppUpdatesSettingsView: View {
                     errorBanner(error)
                 }
             }
+            .frame(maxWidth: 540)
             .padding(24)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
     }
 
     private var versionCard: some View {
-        HStack(alignment: .center, spacing: 16) {
-            Image(systemName: "arrow.clockwise.circle.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(Color.voxlineAccent)
-                .accessibilityHidden(true)
+        HStack(alignment: .center, spacing: 14) {
+            AppIconView(size: 42)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Voxline")
                     .font(.headline)
 
-                if let build = currentBuild {
-                    Text(String(format: String(localized: "当前版本：%@ (%@)", bundle: appLocalizationBundle), currentVersion, build))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(String(format: String(localized: "当前版本：%@", bundle: appLocalizationBundle), currentVersion))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                Text(versionText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -88,7 +164,7 @@ private struct MacAppUpdatesSettingsView: View {
             } label: {
                 Label(String(localized: "检查更新…", bundle: appLocalizationBundle), systemImage: "arrow.clockwise")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.bordered)
             .controlSize(.regular)
             .disabled(!updater.canCheckForUpdates)
             .accessibilityLabel(String(localized: "检查更新", bundle: appLocalizationBundle))
@@ -112,12 +188,22 @@ private struct MacAppUpdatesSettingsView: View {
 
             Divider()
 
-            Toggle(String(localized: "自动下载并安装更新", bundle: appLocalizationBundle), isOn: Binding(
+            Toggle(String(localized: "自动下载更新", bundle: appLocalizationBundle), isOn: Binding(
                 get: { updater.automaticallyDownloadsUpdates },
                 set: { updater.setAutomaticDownloads($0) }
             ))
             .disabled(!updater.isConfigured || !updater.automaticallyChecksForUpdates)
-            .accessibilityLabel(String(localized: "自动下载并安装更新", bundle: appLocalizationBundle))
+            .accessibilityLabel(String(localized: "自动下载更新", bundle: appLocalizationBundle))
+
+            if !updater.isConfigured {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                    Text(String(localized: "此版本未配置自动更新通道", bundle: appLocalizationBundle))
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+            }
         }
         .padding(16)
         .liquidGlassSurface(cornerRadius: 14)
@@ -126,14 +212,13 @@ private struct MacAppUpdatesSettingsView: View {
     private func errorBanner(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
-                .font(.headline)
+                .foregroundStyle(.orange)
+                .font(.subheadline)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "更新异常", bundle: appLocalizationBundle))
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.red)
+                Text(String(localized: "更新检查失败", bundle: appLocalizationBundle))
+                    .font(.subheadline.weight(.medium))
 
                 Text(message)
                     .font(.caption)
@@ -144,7 +229,7 @@ private struct MacAppUpdatesSettingsView: View {
             Spacer()
         }
         .padding(14)
-        .background(Color.red.opacity(0.08), in: .rect(cornerRadius: 12))
+        .background(Color.orange.opacity(0.08), in: .rect(cornerRadius: 12))
         .accessibilityElement(children: .combine)
     }
 }
@@ -157,49 +242,40 @@ private struct IOSAppUpdatesSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(spacing: 16) {
                 versionHeaderCard
 
                 statusCard
             }
-            .padding(20)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 20)
+        }
+        .task {
+            if session.state == .idle {
+                await session.check()
+            }
         }
         .navigationTitle(String(localized: "检查更新", bundle: appLocalizationBundle))
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private var versionHeaderCard: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: "arrow.clockwise.circle.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(Color.voxlineAccent)
-                .accessibilityHidden(true)
+        HStack(alignment: .center, spacing: 12) {
+            AppIconView(size: 40)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Voxline")
-                    .font(.headline)
-
-                Text(String(format: String(localized: "当前版本：%@", bundle: appLocalizationBundle), session.currentVersion ?? "—"))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+            Text("Voxline")
+                .font(.headline)
 
             Spacer()
 
-            Button {
-                Task { await session.check() }
-            } label: {
-                if session.state == .checking {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text(String(localized: "检查更新", bundle: appLocalizationBundle))
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .disabled(session.state == .checking)
-            .accessibilityLabel(String(localized: "检查更新", bundle: appLocalizationBundle))
+//            if session.state == .checking {
+//                ProgressView()
+//                    .controlSize(.small)
+//            }
+
+            Text(String(format: String(localized: "版本 %@", bundle: appLocalizationBundle), session.currentVersion ?? "—"))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
         .padding(16)
         .liquidGlassSurface(cornerRadius: 14)
@@ -209,17 +285,7 @@ private struct IOSAppUpdatesSettingsView: View {
     private var statusCard: some View {
         switch session.state {
         case .idle:
-            HStack(spacing: 12) {
-                Image(systemName: "info.circle")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-                Text(String(localized: "尚未检查更新", bundle: appLocalizationBundle))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .padding(16)
-            .liquidGlassSurface(cornerRadius: 14)
+            EmptyView()
 
         case .checking:
             HStack(spacing: 12) {
@@ -239,14 +305,8 @@ private struct IOSAppUpdatesSettingsView: View {
                     .foregroundStyle(.green)
                     .font(.title3)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(localized: "当前已是最新版本", bundle: appLocalizationBundle))
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    Text(String(format: String(localized: "当前版本：%@", bundle: appLocalizationBundle), session.currentVersion ?? "—"))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                Text(String(localized: "当前已是最新版本", bundle: appLocalizationBundle))
+                    .font(.subheadline.weight(.medium))
                 Spacer()
             }
             .padding(16)
@@ -259,19 +319,18 @@ private struct IOSAppUpdatesSettingsView: View {
                         .foregroundStyle(.secondary)
                         .font(.title3)
                         .accessibilityHidden(true)
-                    Text(String(localized: "未找到正式发布版本。", bundle: appLocalizationBundle))
-                        .font(.headline)
+                    Text(String(localized: "暂无可用更新", bundle: appLocalizationBundle))
+                        .font(.subheadline.weight(.medium))
                 }
                 HStack {
                     Spacer()
                     Button {
                         openURL(session.releasesURL)
                     } label: {
-                        Label(String(localized: "在 GitHub 中查看", bundle: appLocalizationBundle), systemImage: "safari")
+                        Label(String(localized: "前往 GitHub", bundle: appLocalizationBundle), systemImage: "arrow.up.right.square")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .accessibilityLabel(String(localized: "在浏览器中查看 GitHub 发行页", bundle: appLocalizationBundle))
                 }
             }
             .padding(16)
@@ -281,13 +340,12 @@ private struct IOSAppUpdatesSettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
-                        .font(.title3)
+                        .foregroundStyle(.orange)
+                        .font(.subheadline)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(String(localized: "更新检查失败", bundle: appLocalizationBundle))
-                            .font(.subheadline.bold())
-                            .foregroundStyle(.red)
+                            .font(.subheadline.weight(.medium))
                         Text(error)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -304,11 +362,10 @@ private struct IOSAppUpdatesSettingsView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .accessibilityLabel(String(localized: "重试检查更新", bundle: appLocalizationBundle))
                 }
             }
             .padding(14)
-            .background(Color.red.opacity(0.08), in: .rect(cornerRadius: 12))
+            .background(Color.orange.opacity(0.08), in: .rect(cornerRadius: 12))
 
         case .available(let release):
             VStack(alignment: .leading, spacing: 14) {
@@ -317,15 +374,8 @@ private struct IOSAppUpdatesSettingsView: View {
                         .foregroundStyle(Color.voxlineAccent)
                         .font(.title3)
                         .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(format: String(localized: "发现新版本：%@", bundle: appLocalizationBundle), release.version))
-                            .font(.headline)
-                        if let current = session.currentVersion {
-                            Text(String(format: String(localized: "当前安装版本：%@", bundle: appLocalizationBundle), current))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    Text(String(format: String(localized: "发现新版本：%@", bundle: appLocalizationBundle), release.version))
+                        .font(.headline)
                     Spacer()
                 }
 
@@ -355,8 +405,7 @@ private struct IOSAppUpdatesSettingsView: View {
                             Label(String(localized: "下载 IPA", bundle: appLocalizationBundle), systemImage: "arrow.down.circle")
                         }
                         .buttonStyle(.borderedProminent)
-                        .controlSize(.regular)
-                        .accessibilityLabel(String(localized: "下载 IPA 文件", bundle: appLocalizationBundle))
+                        .controlSize(.small)
                     }
 
                     Button {
@@ -365,10 +414,8 @@ private struct IOSAppUpdatesSettingsView: View {
                         Label(String(localized: "版本详情", bundle: appLocalizationBundle), systemImage: "safari")
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.regular)
-                    .accessibilityLabel(String(localized: "查看版本详情", bundle: appLocalizationBundle))
+                    .controlSize(.small)
                 }
-                .padding(.top, 4)
             }
             .padding(16)
             .liquidGlassSurface(cornerRadius: 14)
