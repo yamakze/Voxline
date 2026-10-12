@@ -5,14 +5,14 @@ import Testing
 @Suite("Imported subtitles and overlapping timelines")
 struct SubtitleImportTests {
     @Test func srtAndVttKeepTextTimingOverlapAndIgnorePresentationMetadata() throws {
-        let srt = "\u{feff}9\r\n00:00:01,000 --> 00:00:03,000\r\n<b>Hello</b> &amp; world\r\nSecond line\r\n\r\n42\r\n00:00:02,000 --> 00:00:04,000\r\n你好\r\n"
+        let srt = "\u{feff}9\r\n00:00:01,000 --> 00:00:03,000\r\n<b>Hello</b> &amp; world&#39;s\r\nSecond line\r\n\r\n42\r\n00:00:02,000 --> 00:00:04,000\r\n你好\r\n"
         let parsed = try SubtitleImporter.parse(Data(srt.utf8), format: .srt)
-        #expect(parsed.map(\.text) == ["Hello & world\nSecond line", "你好"])
+        #expect(parsed.map(\.text) == ["Hello & world's\nSecond line", "你好"])
         #expect(parsed.map(\.startMilliseconds) == [1000, 2000])
         #expect(parsed.map(\.endMilliseconds) == [3000, 4000])
         let utf16 = Data([0xff, 0xfe]) + (try #require(srt.data(using: .utf16LittleEndian)))
         #expect(try SubtitleImporter.parse(utf16, format: .srt).map(\.text) == parsed.map(\.text))
-        let vtt = "WEBVTT\n\nNOTE diagnostic\nnot dialogue\n\nSTYLE\n::cue { color: red; }\n\nintro\n00:01.000 --> 00:03.000 align:start\n<v Speaker>Hello &amp; world</v>\nSecond line\n\n42\n00:00:02.000 --> 00:00:04.000\n你好\n"
+        let vtt = "WEBVTT\n\nNOTE diagnostic\nnot dialogue\n\nSTYLE\n::cue { color: red; }\n\nintro\n00:01.000 --> 00:03.000 align:start\n<v Speaker>Hello &amp; world&#x27;s</v>\nSecond line\n\n42\n00:00:02.000 --> 00:00:04.000\n你好\n"
         let web = try SubtitleImporter.parse(vtt, format: .vtt)
         #expect(web.map(\.text) == parsed.map(\.text))
         #expect(web.map(\.startMilliseconds) == parsed.map(\.startMilliseconds))

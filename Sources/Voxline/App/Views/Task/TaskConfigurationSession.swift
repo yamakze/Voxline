@@ -88,7 +88,8 @@ final class TaskConfigurationSession {
     func cancelImport() { importTask?.cancel() }
 
     var requiresSpeechRecognition: Bool {
-        existingItems.contains { speechRecognitionSelections.contains($0.id) || (subtitleImports[$0.id] == nil && !$0.hasSourceSubtitles) } ||
+        if existingItems.isEmpty && candidates.isEmpty { return true }
+        return existingItems.contains { speechRecognitionSelections.contains($0.id) || (subtitleImports[$0.id] == nil && $0.importedSubtitleOrigin == nil) } ||
         candidates.contains { $0.error == nil && subtitleImports[$0.id] == nil }
     }
 

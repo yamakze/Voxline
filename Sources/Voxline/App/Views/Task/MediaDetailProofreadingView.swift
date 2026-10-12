@@ -23,6 +23,10 @@ public struct MediaDetailProofreadingView: View {
     @State private var showEmbeddingSheet = false
     @State private var showBurnInSheet = false
     @State private var showRelinkSheet = false
+    @State private var showImportOriginalSheet = false
+    @State private var showImportTranslationSheet = false
+    @State private var showResumingUnmatchedSheet = false
+    @State private var showConfirmResetASR = false
     @State private var structureState = SubtitleStructureState()
 
     public var onBack: (() -> Void)?
@@ -94,6 +98,42 @@ public struct MediaDetailProofreadingView: View {
                 .help(String(localized: "撤销最近一次编辑 (⌘Z)", bundle: appLocalizationBundle))
 
                 Menu {
+                    Section(String(localized: "字幕导入", bundle: appLocalizationBundle)) {
+                        Button {
+                            showImportOriginalSheet = true
+                        } label: {
+                            Label(item.cues.isEmpty ? String(localized: "导入原文字幕…", bundle: appLocalizationBundle) : String(localized: "替换原文字幕…", bundle: appLocalizationBundle), systemImage: "doc.text")
+                        }
+                        .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil || item.media == nil)
+
+                        Button {
+                            showImportTranslationSheet = true
+                        } label: {
+                            Label(String(localized: "导入译文字幕…", bundle: appLocalizationBundle), systemImage: "character.book.closed")
+                        }
+                        .disabled(item.cues.isEmpty || queue.taskID != nil || session.editingSnapshot?.id != nil)
+
+                        if let unmatched = item.unmatchedTranslationEntries, !unmatched.isEmpty {
+                            Button {
+                                showResumingUnmatchedSheet = true
+                            } label: {
+                                Label(String(localized: "继续匹配未分配译文 (\(unmatched.count))…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge")
+                            }
+                            .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
+                        }
+
+                        if item.importedSubtitleOrigin != nil {
+                            Button(role: .destructive) {
+                                showConfirmResetASR = true
+                            } label: {
+                                Label(String(localized: "改用语音识别…", bundle: appLocalizationBundle), systemImage: "waveform")
+                            }
+                            .disabled(queue.taskID != nil || session.editingSnapshot?.id != nil)
+                        }
+                    }
+
+                    Divider()
+
                     Button(String(localized: "整体时间偏移…", bundle: appLocalizationBundle), systemImage: "clock") {
                         showTimeOffsetSheet = true
                     }
@@ -186,6 +226,41 @@ public struct MediaDetailProofreadingView: View {
             Task { await playbackController.loadMedia(for: item) }
         }) {
             MediaRelinkSheet(item: item, onCommit: onCommit)
+        }
+        .sheet(isPresented: $showImportOriginalSheet) {
+            SubtitleImportSheet(item: item) { selection, replacesExisting, snapshot in
+                try TaskLibrary.shared.importOriginalSubtitles(selection, taskID: taskID, comparedTo: snapshot, replacingExisting: replacesExisting)
+            }
+        }
+        .sheet(isPresented: $showImportTranslationSheet) {
+            SubtitleImportSheet(item: item) { assignments, replacesExisting, snapshot in
+                var updated = snapshot
+                try updated.importTranslations(assignments, comparedTo: snapshot.cues, replacingExisting: replacesExisting)
+                try session.saveChanges(updated, comparedTo: snapshot, onCommit: onCommit)
+            }
+        }
+        .sheet(isPresented: $showResumingUnmatchedSheet) {
+            SubtitleImportSheet(resumingItem: item) { assignments, replacesExisting, snapshot in
+                var updated = snapshot
+                try updated.importTranslations(assignments, comparedTo: snapshot.cues, replacingExisting: replacesExisting)
+                try session.saveChanges(updated, comparedTo: snapshot, onCommit: onCommit)
+            }
+        }
+        .confirmationDialog(
+            String(localized: "清除已有字幕并改用语音识别？", bundle: appLocalizationBundle),
+            isPresented: $showConfirmResetASR,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "改用语音识别", bundle: appLocalizationBundle), role: .destructive) {
+                do {
+                    try TaskLibrary.shared.useSpeechRecognition(taskID: taskID, comparedTo: item)
+                } catch {
+                    session.errorMessage = error.localizedDescription
+                }
+            }
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
+        } message: {
+            Text(String(localized: "将清除当前媒体的原文和译文。", bundle: appLocalizationBundle))
         }
         .subtitleStructureSheets(state: structureState, item: item, session: session, onCommit: onCommit)
         .confirmationDialog(String(localized: "重新翻译全部字幕？", bundle: appLocalizationBundle),
@@ -297,33 +372,37 @@ public struct MediaDetailProofreadingView: View {
             }
 
             // Active Subtitle HUD Overlay (QuickTime cinema subtitle overlay)
-            if playbackController.isReady, let activeCue = activeCue {
-                VStack(spacing: 4) {
-                    switch session.previewKind {
-                    case .source:
-                        Text(activeCue.sourceText)
-                            .font(.system(size: 17, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.white)
-                    case .translation:
-                        if case .succeeded(let trans, _) = activeCue.translation {
-                            Text(trans)
-                                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.white)
-                        } else {
-                            Text(translationStatus(for: activeCue))
-                                .font(.caption).foregroundStyle(.orange)
-                        }
-                    case .bilingual:
-                        Text(activeCue.sourceText)
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.85))
-                        if case .succeeded(let trans, _) = activeCue.translation {
-                            Text(trans)
-                                .font(.system(size: 17, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color(red: 1.0, green: 0.82, blue: 0.35))
-                        } else {
-                            Text(translationStatus(for: activeCue))
-                                .font(.caption).foregroundStyle(.orange)
+            if playbackController.isReady, !playbackController.activeSubtitles.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(playbackController.activeSubtitles) { activeCue in
+                        VStack(spacing: 3) {
+                            switch session.previewKind {
+                            case .source:
+                                Text(activeCue.sourceText)
+                                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.white)
+                            case .translation:
+                                if case .succeeded(let trans, _) = activeCue.translation {
+                                    Text(trans)
+                                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(.white)
+                                } else {
+                                    Text(translationStatus(for: activeCue))
+                                        .font(.caption).foregroundStyle(.orange)
+                                }
+                            case .bilingual:
+                                Text(activeCue.sourceText)
+                                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                if case .succeeded(let trans, _) = activeCue.translation {
+                                    Text(trans)
+                                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                                        .foregroundStyle(Color(red: 1.0, green: 0.82, blue: 0.35))
+                                } else {
+                                    Text(translationStatus(for: activeCue))
+                                        .font(.caption).foregroundStyle(.orange)
+                                }
+                            }
                         }
                     }
                 }
@@ -334,7 +413,6 @@ public struct MediaDetailProofreadingView: View {
                 .padding(.bottom, 78) // Positioned above floating capsule
                 .padding(.horizontal, 24)
                 .transition(reduceMotion ? .identity : .opacity)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: activeCue.id)
             }
 
             // QuickTime Floating Glass Capsule Controls Bar
@@ -393,19 +471,26 @@ public struct MediaDetailProofreadingView: View {
 
             // Lyrics / Transcript Stream with Focus Centering
             if item.cues.isEmpty {
-                ContentUnavailableView(
-                    String(localized: "暂无逐句字幕", bundle: appLocalizationBundle),
-                    systemImage: "quote.bubble",
-                    description: Text(String(localized: "当前媒体条目尚未转写生成字幕。", bundle: appLocalizationBundle))
-                )
+                ContentUnavailableView {
+                    Label(String(localized: "暂无逐句字幕", bundle: appLocalizationBundle), systemImage: "quote.bubble")
+                } description: {
+                    Text(String(localized: "原文字幕未就绪", bundle: appLocalizationBundle))
+                } actions: {
+                    Button(String(localized: "导入原文字幕…", bundle: appLocalizationBundle)) {
+                        showImportOriginalSheet = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(queue.taskID != nil || item.media == nil)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
+                    let activeIDs = Set(playbackController.activeSubtitles.map(\.id))
                     ScrollView {
                         LazyVStack(spacing: 16) {
                             ForEach(session.transcriptRows) { row in
                                 let cue = row.cue
-                                let isActive = cue.id == activeCueID
+                                let isActive = activeIDs.contains(cue.id)
                                 let isPast = cue.endMilliseconds <= playbackController.completedSubtitleEndMilliseconds
 
                                 ProofreadingCueRow(

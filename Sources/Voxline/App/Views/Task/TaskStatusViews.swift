@@ -131,6 +131,8 @@ public struct MediaProcessingStepsView: View {
         }
     }
 
+    private var isImported: Bool { item.importedSubtitleOrigin != nil }
+
     public var body: some View {
         if isCompleted {
             HStack(spacing: 4) {
@@ -145,6 +147,19 @@ public struct MediaProcessingStepsView: View {
             .background(Color.green.opacity(0.12), in: .capsule)
             .foregroundStyle(.green)
             .help(completedSummaryTooltip)
+        } else if isImported {
+            HStack(spacing: 4) {
+                stepChip(title: String(localized: "导入原文", bundle: appLocalizationBundle), state: .completed)
+
+                if hasTranslation {
+                    connectorLine(isActive: item.translationState != .waiting)
+                    stepChip(title: status.isTranslationPaused ? String(localized: "翻译暂停", bundle: appLocalizationBundle) : String(localized: "字幕翻译", bundle: appLocalizationBundle), state: item.translationState)
+                }
+
+                connectorLine(isActive: isCompleted)
+                stepChip(title: String(localized: "就绪", bundle: appLocalizationBundle), state: isCompleted ? .completed : (isFailed ? .failed : (isCancelled ? .cancelled : .waiting)))
+            }
+            .font(.caption2)
         } else {
             HStack(spacing: 4) {
                 stepChip(title: String(localized: "提取音频", bundle: appLocalizationBundle), state: item.extractionState)
@@ -164,6 +179,13 @@ public struct MediaProcessingStepsView: View {
     }
 
     private var completedSummaryTooltip: String {
+        if isImported {
+            if hasTranslation {
+                return String(localized: "导入原文 · 字幕翻译已就绪", bundle: appLocalizationBundle)
+            } else {
+                return String(localized: "导入原文已就绪", bundle: appLocalizationBundle)
+            }
+        }
         if hasTranslation {
             return String(localized: "提取音频 · \(transcriptionTitle) · 字幕翻译已就绪", bundle: appLocalizationBundle)
         } else {

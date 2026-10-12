@@ -113,6 +113,13 @@ public enum SubtitleImporter {
 
     public static func plainText(_ text: String) -> String {
         var result = text.replacingOccurrences(of: #"</?(?:b|i|u|font|c|v|lang|ruby|rt)(?:[.\s][^>]*)?>|<\d{2}:\d{2}(?::\d{2})?\.\d{3}>"#, with: "", options: [.regularExpression, .caseInsensitive])
+        for match in result.matches(of: /&#(x[0-9a-fA-F]+|[0-9]+);/).reversed() {
+            let reference = match.output.1
+            let value = reference.hasPrefix("x") ? UInt32(reference.dropFirst(), radix: 16) : UInt32(reference)
+            if let value, let scalar = UnicodeScalar(value) {
+                result.replaceSubrange(match.range, with: String(scalar))
+            }
+        }
         for (entity, value) in [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&nbsp;", " "), ("&amp;", "&")] {
             result = result.replacingOccurrences(of: entity, with: value)
         }

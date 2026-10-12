@@ -21,6 +21,9 @@ public struct TaskConfigurationView: View {
     @State private var showTranslationSettings = false
     @State private var showCloudTranscriptionSettings = false
     @State private var isDropTargeted = false
+    @State private var activeImportItem: TaskMediaItem?
+    @State private var activeImportCandidateURL: URL?
+    @State private var confirmResetASRItemID: UUID?
 
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -87,6 +90,33 @@ public struct TaskConfigurationView: View {
                         }
                     }
             }
+        }
+        .sheet(item: $activeImportItem) { item in
+            SubtitleImportSheet(item: item, mediaURL: activeImportCandidateURL) { selection, _, snapshot in
+                session.subtitleImports[snapshot.id] = selection
+                session.speechRecognitionSelections.remove(snapshot.id)
+            }
+        }
+        .confirmationDialog(
+            String(localized: "改用语音识别？", bundle: appLocalizationBundle),
+            isPresented: Binding(
+                get: { confirmResetASRItemID != nil },
+                set: { if !$0 { confirmResetASRItemID = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let id = confirmResetASRItemID {
+                Button(String(localized: "清除已有字幕并改用语音识别", bundle: appLocalizationBundle), role: .destructive) {
+                    session.subtitleImports.removeValue(forKey: id)
+                    session.speechRecognitionSelections.insert(id)
+                    confirmResetASRItemID = nil
+                }
+            }
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {
+                confirmResetASRItemID = nil
+            }
+        } message: {
+            Text(String(localized: "将清除该媒体的原文和译文。", bundle: appLocalizationBundle))
         }
         .fileImporter(isPresented: $showMediaImporter, allowedContentTypes: [
             .mpeg4Movie, .quickTimeMovie, UTType(importedAs: "com.apple.m4v-video"),
@@ -306,10 +336,13 @@ public struct TaskConfigurationView: View {
                                 .font(.title3)
                                 .foregroundStyle(item.kind == .video ? .blue : .purple)
 
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 3) {
                                 Text(item.title).font(.system(size: 13, weight: .semibold))
-                                Text(item.media == nil ? String(localized: "未关联", bundle: appLocalizationBundle) : item.status.label)
-                                    .font(.caption2).foregroundStyle(.secondary)
+                                HStack(spacing: 6) {
+                                    Text(item.media == nil ? String(localized: "未关联", bundle: appLocalizationBundle) : item.status.label)
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                    subtitleSourceMenu(for: item.id, canImport: item.media != nil)
+                                }
                             }
                             Spacer()
 
@@ -377,6 +410,8 @@ public struct TaskConfigurationView: View {
                         }
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+
+                        subtitleSourceMenu(for: cand.id, canImport: cand.inspection != nil && cand.trackID != nil)
                     } else if let error = cand.error {
                         Text(error).font(.caption2).foregroundStyle(.red)
                     } else {
@@ -473,114 +508,125 @@ public struct TaskConfigurationView: View {
             }
 
             Section(String(localized: "语音转写", bundle: appLocalizationBundle)) {
-                Picker(String(localized: "转写方式", bundle: appLocalizationBundle), selection: $session.transcriptionProvider) {
-                    Text(String(localized: "本地 WhisperKit", bundle: appLocalizationBundle)).tag(TranscriptionSettings.Provider.whisperKit)
-                    Text(String(localized: "云端 OpenAI 兼容", bundle: appLocalizationBundle)).tag(TranscriptionSettings.Provider.openAICompatible)
-                }
-
-                if session.transcriptionProvider == .whisperKit {
-                    Picker(String(localized: "转写模型", bundle: appLocalizationBundle), selection: $session.modelID) {
-                        if !ModelManager.availableModels.contains(where: { $0.id == session.modelID }) {
-                            Text(String(localized: "未收录：\(session.modelID)", bundle: appLocalizationBundle)).tag(session.modelID)
-                        }
-                        ForEach(ModelManager.availableModels) { model in
-                            Text(model.name).tag(model.id)
-                        }
-                    }
-
-                    HStack {
-                        let status = modelManager.status(for: session.modelID)
-                        HStack(spacing: 5) {
-                            switch status {
-                            case .ready:
-                                Circle().fill(Color.green).frame(width: 7, height: 7)
-                                Text(String(localized: "已就绪", bundle: appLocalizationBundle)).foregroundStyle(.green)
-                            case .downloading, .checking:
-                                ProgressView().controlSize(.mini)
-                                Text(String(localized: "下载中…", bundle: appLocalizationBundle)).foregroundStyle(.blue)
-                            case .notDownloaded, .cancelled:
-                                Text(String(localized: "未下载", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
-                                Button(String(localized: "下载", bundle: appLocalizationBundle)) { modelManager.download(modelID: session.modelID) }
-                                    .buttonStyle(.borderless)
-                            case .failed, .corrupted:
-                                Text(String(localized: "异常", bundle: appLocalizationBundle)).foregroundStyle(.red)
-                            case .cancelling:
-                                ProgressView().controlSize(.mini)
-                            }
-                        }
-                        .font(.caption)
-
-                        Spacer()
-
-                        Button(String(localized: "管理模型", bundle: appLocalizationBundle)) {
-                            showModelManager = true
-                        }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                    }
-
-                    Picker(String(localized: "原文语言", bundle: appLocalizationBundle), selection: $session.languageMode) {
-                        Text(String(localized: "自动识别", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.automatic)
-                        Text(String(localized: "指定语言", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.specified)
-                    }
-
-                    if session.languageMode == .specified {
-                        LanguagePicker(title: String(localized: "语言", bundle: appLocalizationBundle), selection: $session.languageCode, identifiers: WhisperKitLanguages.codes)
-                    }
-                } else {
-                    // 云端 OpenAI 兼容
-                    if cloudStore.services.isEmpty {
-                        HStack {
-                            Text(String(localized: "尚未配置云端转写服务", bundle: appLocalizationBundle))
-                                .font(.caption).foregroundStyle(.orange)
-                            Spacer()
-                            Button(String(localized: "去配置…", bundle: appLocalizationBundle)) {
-                                showCloudTranscriptionSettings = true
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    } else {
-                        Picker(String(localized: "转写服务", bundle: appLocalizationBundle), selection: $session.selectedCloudServiceID) {
-                            Text(String(localized: "请选择服务", bundle: appLocalizationBundle)).tag(nil as UUID?)
-                            ForEach(cloudStore.services) { service in
-                                Text(service.name).tag(Optional(service.id))
-                            }
-                        }
-
-                        if let serviceID = session.selectedCloudServiceID, let service = cloudStore.services.first(where: { $0.id == serviceID }) {
-                            HStack {
-                                Text(String(localized: "API 地址", bundle: appLocalizationBundle))
-                                Spacer()
-                                Text((session.selectedCloudServiceID == session.originalTask.parameters.transcription.cloud?.serviceID
-                                      ? session.originalTask.parameters.transcription.cloud?.baseURL ?? service.baseURL : service.baseURL).absoluteString)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .font(.caption)
-                        }
-                    }
-
-                    HStack {
-                        Text(String(localized: "服务模型", bundle: appLocalizationBundle))
-                        Spacer()
-                        let serviceModel = session.selectedCloudServiceID != nil && session.selectedCloudServiceID == session.originalTask.parameters.transcription.cloud?.serviceID
-                            ? session.originalTask.parameters.transcription.modelID
-                            : cloudStore.services.first(where: { $0.id == session.selectedCloudServiceID })?.modelID
-                        Text(serviceModel ?? String(localized: "未选择", bundle: appLocalizationBundle))
+                if !session.requiresSpeechRecognition {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text(String(localized: "原文字幕已就绪", bundle: appLocalizationBundle))
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-
-                    Picker(String(localized: "原文语言", bundle: appLocalizationBundle), selection: $session.languageMode) {
-                        Text(String(localized: "自动识别", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.automatic)
-                        Text(String(localized: "指定语言", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.specified)
+                    .padding(.vertical, 4)
+                } else {
+                    Picker(String(localized: "转写方式", bundle: appLocalizationBundle), selection: $session.transcriptionProvider) {
+                        Text(String(localized: "本地 WhisperKit", bundle: appLocalizationBundle)).tag(TranscriptionSettings.Provider.whisperKit)
+                        Text(String(localized: "云端 OpenAI 兼容", bundle: appLocalizationBundle)).tag(TranscriptionSettings.Provider.openAICompatible)
                     }
 
-                    if session.languageMode == .specified {
-                        let selectedProtocol = session.selectedCloudServiceID == session.originalTask.parameters.transcription.cloud?.serviceID
-                            ? session.originalTask.parameters.transcription.cloud?.protocolKind ?? .audioTranscriptions
-                            : session.selectedCloudServiceID.flatMap { id in cloudStore.services.first(where: { $0.id == id })?.protocolKind } ?? .audioTranscriptions
-                        LanguagePicker(title: String(localized: "语言代码", bundle: appLocalizationBundle), selection: $session.languageCode, identifiers: cloudLanguageIdentifiers(for: selectedProtocol))
+                    if session.transcriptionProvider == .whisperKit {
+                        Picker(String(localized: "转写模型", bundle: appLocalizationBundle), selection: $session.modelID) {
+                            if !ModelManager.availableModels.contains(where: { $0.id == session.modelID }) {
+                                Text(String(localized: "未收录：\(session.modelID)", bundle: appLocalizationBundle)).tag(session.modelID)
+                            }
+                            ForEach(ModelManager.availableModels) { model in
+                                Text(model.name).tag(model.id)
+                            }
+                        }
+
+                        HStack {
+                            let status = modelManager.status(for: session.modelID)
+                            HStack(spacing: 5) {
+                                switch status {
+                                case .ready:
+                                    Circle().fill(Color.green).frame(width: 7, height: 7)
+                                    Text(String(localized: "已就绪", bundle: appLocalizationBundle)).foregroundStyle(.green)
+                                case .downloading, .checking:
+                                    ProgressView().controlSize(.mini)
+                                    Text(String(localized: "下载中…", bundle: appLocalizationBundle)).foregroundStyle(.blue)
+                                case .notDownloaded, .cancelled:
+                                    Text(String(localized: "未下载", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
+                                    Button(String(localized: "下载", bundle: appLocalizationBundle)) { modelManager.download(modelID: session.modelID) }
+                                        .buttonStyle(.borderless)
+                                case .failed, .corrupted:
+                                    Text(String(localized: "异常", bundle: appLocalizationBundle)).foregroundStyle(.red)
+                                case .cancelling:
+                                    ProgressView().controlSize(.mini)
+                                }
+                            }
+                            .font(.caption)
+
+                            Spacer()
+
+                            Button(String(localized: "管理模型", bundle: appLocalizationBundle)) {
+                                showModelManager = true
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.caption)
+                        }
+
+                        Picker(String(localized: "原文语言", bundle: appLocalizationBundle), selection: $session.languageMode) {
+                            Text(String(localized: "自动识别", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.automatic)
+                            Text(String(localized: "指定语言", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.specified)
+                        }
+
+                        if session.languageMode == .specified {
+                            LanguagePicker(title: String(localized: "语言", bundle: appLocalizationBundle), selection: $session.languageCode, identifiers: WhisperKitLanguages.codes)
+                        }
+                    } else {
+                        // 云端 OpenAI 兼容
+                        if cloudStore.services.isEmpty {
+                            HStack {
+                                Text(String(localized: "尚未配置云端转写服务", bundle: appLocalizationBundle))
+                                    .font(.caption).foregroundStyle(.orange)
+                                Spacer()
+                                Button(String(localized: "去配置…", bundle: appLocalizationBundle)) {
+                                    showCloudTranscriptionSettings = true
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        } else {
+                            Picker(String(localized: "转写服务", bundle: appLocalizationBundle), selection: $session.selectedCloudServiceID) {
+                                Text(String(localized: "请选择服务", bundle: appLocalizationBundle)).tag(nil as UUID?)
+                                ForEach(cloudStore.services) { service in
+                                    Text(service.name).tag(Optional(service.id))
+                                }
+                            }
+
+                            if let serviceID = session.selectedCloudServiceID, let service = cloudStore.services.first(where: { $0.id == serviceID }) {
+                                HStack {
+                                    Text(String(localized: "API 地址", bundle: appLocalizationBundle))
+                                    Spacer()
+                                    Text((session.selectedCloudServiceID == session.originalTask.parameters.transcription.cloud?.serviceID
+                                          ? session.originalTask.parameters.transcription.cloud?.baseURL ?? service.baseURL : service.baseURL).absoluteString)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                .font(.caption)
+                            }
+                        }
+
+                        HStack {
+                            Text(String(localized: "服务模型", bundle: appLocalizationBundle))
+                            Spacer()
+                            let serviceModel = session.selectedCloudServiceID != nil && session.selectedCloudServiceID == session.originalTask.parameters.transcription.cloud?.serviceID
+                                ? session.originalTask.parameters.transcription.modelID
+                                : cloudStore.services.first(where: { $0.id == session.selectedCloudServiceID })?.modelID
+                            Text(serviceModel ?? String(localized: "未选择", bundle: appLocalizationBundle))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Picker(String(localized: "原文语言", bundle: appLocalizationBundle), selection: $session.languageMode) {
+                            Text(String(localized: "自动识别", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.automatic)
+                            Text(String(localized: "指定语言", bundle: appLocalizationBundle)).tag(TranscriptionSettings.LanguageMode.specified)
+                        }
+
+                        if session.languageMode == .specified {
+                            let selectedProtocol = session.selectedCloudServiceID == session.originalTask.parameters.transcription.cloud?.serviceID
+                                ? session.originalTask.parameters.transcription.cloud?.protocolKind ?? .audioTranscriptions
+                                : session.selectedCloudServiceID.flatMap { id in cloudStore.services.first(where: { $0.id == id })?.protocolKind } ?? .audioTranscriptions
+                            LanguagePicker(title: String(localized: "语言代码", bundle: appLocalizationBundle), selection: $session.languageCode, identifiers: cloudLanguageIdentifiers(for: selectedProtocol))
+                        }
                     }
                 }
             }
@@ -824,5 +870,95 @@ public struct TaskConfigurationView: View {
             if !failures.isEmpty { session.errorMessage = failures.joined(separator: "\n") }
         }
         return true
+    }
+
+    private func isImported(_ id: UUID) -> Bool {
+        if session.subtitleImports[id] != nil { return true }
+        if let existing = session.existingItems.first(where: { $0.id == id }) {
+            return existing.importedSubtitleOrigin != nil && !session.speechRecognitionSelections.contains(id)
+        }
+        return false
+    }
+
+    private func subtitleOriginLabel(for id: UUID) -> String {
+        if let selection = session.subtitleImports[id] {
+            switch selection.origin {
+            case .file(let name):
+                return String(localized: "已导入：\(name)", bundle: appLocalizationBundle)
+            case .embedded(let trackID, let lang):
+                let langStr = lang.map { " (\($0))" } ?? ""
+                return String(localized: "已导入：内嵌轨 \(trackID)\(langStr)", bundle: appLocalizationBundle)
+            }
+        }
+        if let existing = session.existingItems.first(where: { $0.id == id }) {
+            if session.speechRecognitionSelections.contains(id) {
+                return String(localized: "语音识别", bundle: appLocalizationBundle)
+            }
+            if existing.hasSourceSubtitles {
+                if let origin = existing.importedSubtitleOrigin {
+                    switch origin {
+                    case .file(let name):
+                        return String(localized: "已导入：\(name)", bundle: appLocalizationBundle)
+                    case .embedded(let trackID, let lang):
+                        let langStr = lang.map { " (\($0))" } ?? ""
+                        return String(localized: "已导入：内嵌轨 \(trackID)\(langStr)", bundle: appLocalizationBundle)
+                    }
+                }
+                return String(localized: "已有字幕", bundle: appLocalizationBundle)
+            }
+        }
+        return String(localized: "语音识别", bundle: appLocalizationBundle)
+    }
+
+    @ViewBuilder
+    private func subtitleSourceMenu(for id: UUID, canImport: Bool) -> some View {
+        let imported = isImported(id)
+        Menu {
+            Button {
+                openSubtitleImport(for: id)
+            } label: {
+                Label(imported ? String(localized: "替换原文字幕…", bundle: appLocalizationBundle) : String(localized: "导入原文字幕…", bundle: appLocalizationBundle), systemImage: "doc.text")
+            }
+            .disabled(!canImport)
+
+            if imported {
+                Button(role: .destructive) {
+                    if session.existingItems.contains(where: { $0.id == id }) {
+                        confirmResetASRItemID = id
+                    } else {
+                        session.subtitleImports.removeValue(forKey: id)
+                    }
+                } label: {
+                    Label(String(localized: "改用语音识别", bundle: appLocalizationBundle), systemImage: "waveform")
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: imported ? "doc.text.fill" : "waveform")
+                    .font(.caption2)
+                Text(subtitleOriginLabel(for: id))
+                    .font(.caption2)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8))
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(imported ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.1), in: .capsule)
+            .foregroundStyle(imported ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "选择媒体字幕来源", bundle: appLocalizationBundle))
+    }
+
+    private func openSubtitleImport(for id: UUID) {
+        do {
+            let item = try session.subtitleImportItem(for: id)
+            let candidateURL = session.candidates.first(where: { $0.id == id })?.url
+            activeImportItem = item
+            activeImportCandidateURL = candidateURL
+        } catch {
+            session.errorMessage = error.localizedDescription
+        }
     }
 }

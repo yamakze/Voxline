@@ -25,6 +25,10 @@ struct IOSMediaDetailView: View {
     @State private var showingEmbedding = false
     @State private var showingBurnIn = false
     @State private var editingParameters = false
+    @State private var showingImportOriginal = false
+    @State private var showingImportTranslation = false
+    @State private var showingResumingUnmatched = false
+    @State private var showingConfirmResetASR = false
 
     init(library: IOSTaskLibrary, taskID: UUID, mediaID: UUID) {
         self.library = library
@@ -174,6 +178,60 @@ struct IOSMediaDetailView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showingImportOriginal) {
+                if let current = self.item {
+                    SubtitleImportSheet(item: current) { selection, replacesExisting, snapshot in
+                        try library.storage.importOriginalSubtitles(selection, taskID: taskID, comparedTo: snapshot, replacingExisting: replacesExisting)
+                        if let updated = self.item {
+                            session.updateSubtitles(updated.cues)
+                            playback.updateSubtitles(updated.cues)
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingImportTranslation) {
+                if let current = self.item {
+                    SubtitleImportSheet(item: current) { assignments, replacesExisting, snapshot in
+                        var updated = snapshot
+                        try updated.importTranslations(assignments, comparedTo: snapshot.cues, replacingExisting: replacesExisting)
+                        try library.storage.updateItem(updated, taskID: taskID, comparedTo: snapshot)
+                        session.updateSubtitles(updated.cues)
+                        playback.updateSubtitles(updated.cues)
+                    }
+                }
+            }
+            .sheet(isPresented: $showingResumingUnmatched) {
+                if let current = self.item {
+                    SubtitleImportSheet(resumingItem: current) { assignments, replacesExisting, snapshot in
+                        var updated = snapshot
+                        try updated.importTranslations(assignments, comparedTo: snapshot.cues, replacingExisting: replacesExisting)
+                        try library.storage.updateItem(updated, taskID: taskID, comparedTo: snapshot)
+                        session.updateSubtitles(updated.cues)
+                        playback.updateSubtitles(updated.cues)
+                    }
+                }
+            }
+            .confirmationDialog(
+                String(localized: "清除已有字幕并改用语音识别？", bundle: appLocalizationBundle),
+                isPresented: $showingConfirmResetASR,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "改用语音识别", bundle: appLocalizationBundle), role: .destructive) {
+                    guard let current = self.item else { return }
+                    do {
+                        try library.storage.useSpeechRecognition(taskID: taskID, comparedTo: current)
+                        if let updated = self.item {
+                            session.updateSubtitles(updated.cues)
+                            playback.updateSubtitles(updated.cues)
+                        }
+                    } catch {
+                        session.errorMessage = error.localizedDescription
+                    }
+                }
+                Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
+            } message: {
+                Text(String(localized: "将清除当前媒体的原文和译文。", bundle: appLocalizationBundle))
+            }
             .alert(String(localized: "操作异常", bundle: appLocalizationBundle), isPresented: Binding(
                 get: { session.errorMessage != nil }, set: { if !$0 { session.errorMessage = nil } })) {
                 Button(String(localized: "好", bundle: appLocalizationBundle)) { session.errorMessage = nil }
@@ -219,22 +277,26 @@ struct IOSMediaDetailView: View {
                     .frame(height: min(150, height))
                 }
 
-                // 悬浮字幕预览
-                if let cue = activeCue {
-                    VStack(spacing: 3) {
-                        if session.previewKind != .translation {
-                            Text(cue.sourceText)
-                                .font(.subheadline.weight(.medium))
-                        }
-                        if session.previewKind != .source {
-                            if case .succeeded(let text, _) = cue.translation, cue.hasTranslation {
-                                Text(text)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text(String(localized: "待更新", bundle: appLocalizationBundle))
-                                    .font(.caption2)
-                                    .foregroundStyle(.orange)
+                // 悬浮字幕预览（支持重叠字幕同时展示）
+                if !playback.activeSubtitles.isEmpty {
+                    VStack(spacing: 6) {
+                        ForEach(playback.activeSubtitles) { cue in
+                            VStack(spacing: 2) {
+                                if session.previewKind != .translation {
+                                    Text(cue.sourceText)
+                                        .font(.subheadline.weight(.medium))
+                                }
+                                if session.previewKind != .source {
+                                    if case .succeeded(let text, _) = cue.translation, cue.hasTranslation {
+                                        Text(text)
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        Text(String(localized: "待更新", bundle: appLocalizationBundle))
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                    }
+                                }
                             }
                         }
                     }
@@ -327,17 +389,26 @@ struct IOSMediaDetailView: View {
                 }
 
                 if item.cues.isEmpty {
-                    ContentUnavailableView(String(localized: "暂无字幕内容", bundle: appLocalizationBundle), systemImage: "character.bubble")
-                        .padding(.vertical, 30)
+                    VStack(spacing: 12) {
+                        ContentUnavailableView(String(localized: "暂无字幕内容", bundle: appLocalizationBundle), systemImage: "character.bubble")
+                        Button(String(localized: "导入原文字幕…", bundle: appLocalizationBundle)) {
+                            showingImportOriginal = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(library.queue.taskID != nil || item.media == nil)
+                    }
+                    .padding(.vertical, 30)
                 }
 
+                let activeIDs = Set(playback.activeSubtitles.map(\.id))
                 ForEach(session.transcriptRows) { row in
                     let cue = row.cue
                     ProofreadingCueRow(
                         cue: cue,
                         nextCue: row.nextCue,
                         session: session,
-                        isActive: activeCue?.id == cue.id,
+                        isActive: activeIDs.contains(cue.id),
                         canRetranslate: task?.parameters.translation != nil,
                         isTaskRunning: library.queue.taskID != nil,
                         onSeek: { playback.seek(toMilliseconds: $0) },
@@ -441,6 +512,42 @@ struct IOSMediaDetailView: View {
 
             Divider()
 
+            Section(String(localized: "字幕导入", bundle: appLocalizationBundle)) {
+                Button {
+                    showingImportOriginal = true
+                } label: {
+                    Label(item.cues.isEmpty ? String(localized: "导入原文字幕…", bundle: appLocalizationBundle) : String(localized: "替换原文字幕…", bundle: appLocalizationBundle), systemImage: "doc.text")
+                }
+                .disabled(library.queue.taskID != nil || item.media == nil)
+
+                Button {
+                    showingImportTranslation = true
+                } label: {
+                    Label(String(localized: "导入译文字幕…", bundle: appLocalizationBundle), systemImage: "character.book.closed")
+                }
+                .disabled(item.cues.isEmpty || library.queue.taskID != nil)
+
+                if let unmatched = item.unmatchedTranslationEntries, !unmatched.isEmpty {
+                    Button {
+                        showingResumingUnmatched = true
+                    } label: {
+                        Label(String(localized: "继续匹配未分配译文 (\(unmatched.count))…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge")
+                    }
+                    .disabled(library.queue.taskID != nil)
+                }
+
+                if item.importedSubtitleOrigin != nil {
+                    Button(role: .destructive) {
+                        showingConfirmResetASR = true
+                    } label: {
+                        Label(String(localized: "改用语音识别…", bundle: appLocalizationBundle), systemImage: "waveform")
+                    }
+                    .disabled(library.queue.taskID != nil)
+                }
+            }
+
+            Divider()
+
             // 导出与分享子菜单
             Menu {
                 Button {
@@ -493,7 +600,7 @@ struct IOSMediaDetailView: View {
                         do { try library.startTranslation(taskID: taskID, mediaID: mediaID) }
                         catch { session.errorMessage = error.localizedDescription }
                     }
-                    .disabled(library.queue.taskID != nil || !item.hasCompletedTranscription)
+                    .disabled(library.queue.taskID != nil || !item.hasSourceSubtitles)
                 }
 
                 if !item.cues.isEmpty {

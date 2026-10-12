@@ -9,6 +9,7 @@ final class SubtitleImportSession {
     enum Role { case original, translation }
     let item: TaskMediaItem
     let role: Role
+    let cuesByID: [UUID: SubtitleCue]
     private(set) var entries: [SubtitleImportEntry] = []
     private(set) var origin: ImportedSubtitleOrigin?
     private(set) var tracks: [EmbeddedSubtitleTrack] = []
@@ -24,6 +25,7 @@ final class SubtitleImportSession {
          reader: SubtitleImportReader = .shared, mediaStore: LocalMediaStore = .shared,
          resumingUnmatched: Bool = false) {
         self.item = item; self.role = role; self.mediaURL = mediaURL
+        cuesByID = Dictionary(item.cues.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         self.reader = reader; self.mediaStore = mediaStore
         if resumingUnmatched {
             entries = item.unmatchedTranslationEntries ?? []
@@ -39,6 +41,7 @@ final class SubtitleImportSession {
     }
 
     func readFile(_ url: URL) async {
+        clearSelection()
         isReading = true; errorMessage = nil
         defer { isReading = false }
         do {
@@ -50,17 +53,21 @@ final class SubtitleImportSession {
     }
 
     func loadEmbeddedTracks() async {
+        clearSelection()
+        tracks = []; selectedTrackID = nil
         isReading = true; errorMessage = nil
         defer { isReading = false }
         do {
             let url = try await sourceURL()
             tracks = try await reader.tracks(in: url)
             selectedTrackID = tracks.count == 1 ? tracks[0].id : nil
+            if tracks.count == 1 { await readSelectedTrack() }
         } catch is CancellationError { }
         catch { errorMessage = error.localizedDescription }
     }
 
     func readSelectedTrack() async {
+        clearSelection()
         guard let track = tracks.first(where: { $0.id == selectedTrackID }) else { return }
         isReading = true; errorMessage = nil
         defer { isReading = false }
@@ -76,6 +83,10 @@ final class SubtitleImportSession {
     func originalSelection() throws -> SubtitleImportSelection {
         guard let origin, !entries.isEmpty else { throw SubtitleImportError.emptyFile }
         return .init(entries: entries, origin: origin)
+    }
+
+    func clearSelection() {
+        entries = []; assignments = []; origin = nil
     }
 
     private func accept(_ result: [SubtitleImportEntry], origin: ImportedSubtitleOrigin) throws {
