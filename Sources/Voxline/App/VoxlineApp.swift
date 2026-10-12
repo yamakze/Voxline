@@ -43,7 +43,7 @@ struct VoxlineApp: App {
         }
         #elseif os(iOS)
         WindowGroup {
-            IOSTaskLibraryView()
+            IOSRootView()
                 .background(AppleTranslationSessionHost())
                 .task { TaskSyncCoordinator.shared.restore() }
         }

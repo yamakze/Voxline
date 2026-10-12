@@ -224,10 +224,39 @@ private struct CloudTranscriptionServiceEditorModal: View {
         }
     }
 
+    private var titleText: String {
+        original == nil ? String(localized: "添加转写服务", bundle: appLocalizationBundle) : String(localized: "编辑转写服务", bundle: appLocalizationBundle)
+    }
+
+    private var isSaveDisabled: Bool {
+        isSaving || isLoadingKey || (keyReadFailed && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
+        #if os(iOS)
+        NavigationStack {
+            editorForm
+                .navigationTitle(titleText)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
+                            .disabled(isSaving)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(String(localized: "保存", bundle: appLocalizationBundle)) { save() }
+                            .bold()
+                            .disabled(isSaveDisabled)
+                    }
+                }
+        }
+        .interactiveDismissDisabled(isSaving)
+        .task {
+            await loadSavedKeyIfNeeded()
+        }
+        #elseif os(macOS)
         VStack(spacing: 0) {
             HStack {
-                Text(original == nil ? String(localized: "添加转写服务", bundle: appLocalizationBundle) : String(localized: "编辑转写服务", bundle: appLocalizationBundle))
+                Text(titleText)
                     .font(.headline)
                 Spacer()
             }
@@ -237,65 +266,7 @@ private struct CloudTranscriptionServiceEditorModal: View {
 
             Divider()
 
-            Form {
-                Section(String(localized: "服务接入", bundle: appLocalizationBundle)) {
-                    Picker(String(localized: "预设协议", bundle: appLocalizationBundle), selection: $protocolKind) {
-                        ForEach(CloudTranscriptionProtocol.allCases, id: \.self) { proto in
-                            Text(proto.label).tag(proto)
-                        }
-                    }
-                    .onChange(of: protocolKind) { oldProto, newProto in
-                        guard oldProto != newProto else { return }
-                        switch newProto {
-                        case .audioTranscriptions:
-                            if modelID.isEmpty || modelID == Self.defaultModel(for: .geminiAudioChat) || modelID == Self.defaultModel(for: .qwenAudioChat) {
-                                modelID = Self.defaultModel(for: .audioTranscriptions)
-                            }
-                            if baseURLString.isEmpty || baseURLString == Self.defaultURL(for: .geminiAudioChat) || baseURLString == Self.defaultURL(for: .qwenAudioChat) {
-                                baseURLString = Self.defaultURL(for: .audioTranscriptions)
-                            }
-                        case .geminiAudioChat:
-                            if modelID == "whisper-1" || modelID.isEmpty || modelID == Self.defaultModel(for: .qwenAudioChat) {
-                                modelID = Self.defaultModel(for: .geminiAudioChat)
-                            }
-                            if baseURLString.isEmpty || baseURLString == Self.defaultURL(for: .audioTranscriptions) || baseURLString == Self.defaultURL(for: .qwenAudioChat) {
-                                baseURLString = Self.defaultURL(for: .geminiAudioChat)
-                            }
-                        case .qwenAudioChat:
-                            if modelID == "whisper-1" || modelID.isEmpty || modelID == Self.defaultModel(for: .geminiAudioChat) {
-                                modelID = Self.defaultModel(for: .qwenAudioChat)
-                            }
-                            if baseURLString.isEmpty || baseURLString == Self.defaultURL(for: .audioTranscriptions) || baseURLString == Self.defaultURL(for: .geminiAudioChat) {
-                                baseURLString = Self.defaultURL(for: .qwenAudioChat)
-                            }
-                        }
-                    }
-
-                    TextField(String(localized: "名称", bundle: appLocalizationBundle), text: $name, prompt: Text(placeholderName))
-                    TextField(String(localized: "API 根地址", bundle: appLocalizationBundle), text: $baseURLString, prompt: Text(Self.defaultURL(for: protocolKind)))
-                    TextField(String(localized: "转写模型", bundle: appLocalizationBundle), text: $modelID, prompt: Text(placeholderModel))
-
-                    if isLoadingKey {
-                        ProgressView(String(localized: "正在从钥匙串安全读取密钥…", bundle: appLocalizationBundle))
-                            .font(.caption)
-                    } else {
-                        PasswordVisibilityField(String(localized: "API 密钥（选填）", bundle: appLocalizationBundle), text: $apiKey)
-                    }
-                    if keyReadFailed {
-                        Text(String(localized: "未能读取已存密钥，可重新输入更新。", bundle: appLocalizationBundle))
-                            .font(.caption2).foregroundStyle(.orange)
-                    }
-                }
-
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
-            }
-            .formStyle(.grouped)
+            editorForm
 
             Divider()
 
@@ -307,7 +278,7 @@ private struct CloudTranscriptionServiceEditorModal: View {
                 Button(String(localized: "保存", bundle: appLocalizationBundle)) { save() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(isSaving || isLoadingKey || (keyReadFailed && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSaveDisabled)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -315,16 +286,92 @@ private struct CloudTranscriptionServiceEditorModal: View {
         }
         .frame(minWidth: 480, minHeight: 400)
         .task {
-            if let original, isLoadingKey {
-                do {
-                    apiKey = try await store.editingAPIKey(serviceID: original.id)
-                    isLoadingKey = false
-                } catch {
-                    keyReadFailed = true
-                    isLoadingKey = false
+            await loadSavedKeyIfNeeded()
+        }
+        #endif
+    }
+
+    private func loadSavedKeyIfNeeded() async {
+        guard let original, isLoadingKey else { return }
+        do {
+            apiKey = try await store.editingAPIKey(serviceID: original.id)
+            isLoadingKey = false
+        } catch {
+            keyReadFailed = true
+            isLoadingKey = false
+        }
+    }
+
+    private var editorForm: some View {
+        Form {
+            Section(String(localized: "服务接入", bundle: appLocalizationBundle)) {
+                Picker(String(localized: "预设协议", bundle: appLocalizationBundle), selection: $protocolKind) {
+                    ForEach(CloudTranscriptionProtocol.allCases, id: \.self) { proto in
+                        Text(proto.label).tag(proto)
+                    }
+                }
+                .onChange(of: protocolKind) { oldProto, newProto in
+                    guard oldProto != newProto else { return }
+                    switch newProto {
+                    case .audioTranscriptions:
+                        if modelID.isEmpty || modelID == Self.defaultModel(for: .geminiAudioChat) || modelID == Self.defaultModel(for: .qwenAudioChat) {
+                            modelID = Self.defaultModel(for: .audioTranscriptions)
+                        }
+                        if baseURLString.isEmpty || baseURLString == Self.defaultURL(for: .geminiAudioChat) || baseURLString == Self.defaultURL(for: .qwenAudioChat) {
+                            baseURLString = Self.defaultURL(for: .audioTranscriptions)
+                        }
+                    case .geminiAudioChat:
+                        if modelID == "whisper-1" || modelID.isEmpty || modelID == Self.defaultModel(for: .qwenAudioChat) {
+                            modelID = Self.defaultModel(for: .geminiAudioChat)
+                        }
+                        if baseURLString.isEmpty || baseURLString == Self.defaultURL(for: .audioTranscriptions) || baseURLString == Self.defaultURL(for: .qwenAudioChat) {
+                            baseURLString = Self.defaultURL(for: .geminiAudioChat)
+                        }
+                    case .qwenAudioChat:
+                        if modelID == "whisper-1" || modelID.isEmpty || modelID == Self.defaultModel(for: .geminiAudioChat) {
+                            modelID = Self.defaultModel(for: .qwenAudioChat)
+                        }
+                        if baseURLString.isEmpty || baseURLString == Self.defaultURL(for: .audioTranscriptions) || baseURLString == Self.defaultURL(for: .geminiAudioChat) {
+                            baseURLString = Self.defaultURL(for: .qwenAudioChat)
+                        }
+                    }
+                }
+
+                TextField(String(localized: "名称", bundle: appLocalizationBundle), text: $name, prompt: Text(placeholderName))
+                TextField(String(localized: "API 根地址", bundle: appLocalizationBundle), text: $baseURLString, prompt: Text(Self.defaultURL(for: protocolKind)))
+                #if os(iOS)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                #endif
+
+                TextField(String(localized: "转写模型", bundle: appLocalizationBundle), text: $modelID, prompt: Text(placeholderModel))
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                #endif
+
+                if isLoadingKey {
+                    ProgressView(String(localized: "正在从钥匙串安全读取密钥…", bundle: appLocalizationBundle))
+                        .font(.caption)
+                } else {
+                    PasswordVisibilityField(String(localized: "API 密钥（选填）", bundle: appLocalizationBundle), text: $apiKey)
+                }
+                if keyReadFailed {
+                    Text(String(localized: "未能读取已存密钥，可重新输入更新。", bundle: appLocalizationBundle))
+                        .font(.caption2).foregroundStyle(.orange)
+                }
+            }
+
+            if let errorMessage {
+                Section {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }
         }
+        .formStyle(.grouped)
     }
 
     private var placeholderName: String {

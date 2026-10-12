@@ -24,6 +24,8 @@ while read -r process_id executable; do
         kill -KILL "$process_id"
     fi
 done < <(ps -axo pid=,comm=)
+touch "$app_bundle"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app_bundle" 2>/dev/null || true
 
 open -n "$app_bundle"
 echo "已启动：$app_bundle"

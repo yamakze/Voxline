@@ -126,8 +126,7 @@ public struct TaskLibraryView: View {
 
     @ViewBuilder
     private func taskEntryRow(entry: TaskLibrary.Entry) -> some View {
-        let fileState = entry.url.flatMap { syncSettings.fileStates[$0.standardizedFileURL] }
-        let isPlaceholder = entry.task == nil || fileState == .notDownloaded
+        let isPlaceholder = entry.task == nil
 
         HStack(alignment: .center, spacing: 14) {
             Image(systemName: isPlaceholder ? "icloud.and.arrow.down" : "film.stack")
@@ -141,10 +140,6 @@ public struct TaskLibraryView: View {
                     Text(entry.title)
                         .font(.headline)
                         .foregroundStyle(.primary)
-
-                    if let fileState {
-                        SyncFileStatusBadge(state: fileState)
-                    }
                 }
 
                 if let task = entry.task {
@@ -185,13 +180,7 @@ public struct TaskLibraryView: View {
 
             Spacer()
 
-            if fileState == .conflict {
-                Button(String(localized: "解决冲突", bundle: appLocalizationBundle)) {
-                    conflictResolutionTaskID = entry.taskID
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            } else if isPlaceholder, let url = entry.url {
+            if isPlaceholder, let url = entry.url {
                 Button(String(localized: "下载", bundle: appLocalizationBundle), systemImage: "arrow.down.circle") {
                     do {
                         try syncSettings.requestDownload(url)
@@ -257,11 +246,6 @@ public struct TaskLibraryView: View {
             }
         }
         .contextMenu {
-            if fileState == .conflict {
-                Button(String(localized: "解决版本冲突…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge") {
-                    conflictResolutionTaskID = entry.taskID
-                }
-            }
             if isPlaceholder, let url = entry.url {
                 Button(String(localized: "请求下载云端任务", bundle: appLocalizationBundle), systemImage: "icloud.and.arrow.down") {
                     do {

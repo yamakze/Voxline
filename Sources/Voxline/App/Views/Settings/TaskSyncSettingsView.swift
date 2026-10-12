@@ -361,7 +361,32 @@ public struct TaskSyncSettingsView: View {
         }
     }
 
+    @ViewBuilder
     private func migrationConfirmationSheet(folder: URL, summary: TaskSyncCoordinator.MigrationSummary) -> some View {
+        #if os(iOS)
+        NavigationStack {
+            migrationForm(folder: folder, summary: summary)
+                .navigationTitle(String(localized: "启用 iCloud 文件夹同步", bundle: appLocalizationBundle))
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                            showMigrationSheet = false
+                            pendingFolderURL = nil
+                            pendingSummary = nil
+                        }
+                        .disabled(isProcessing)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(String(localized: "迁移并启用", bundle: appLocalizationBundle)) {
+                            commitEnable(folder: folder, originals: syncOriginalsInMigration)
+                        }
+                        .bold()
+                        .disabled(isProcessing)
+                    }
+                }
+        }
+        .interactiveDismissDisabled(isProcessing)
+        #elseif os(macOS)
         VStack(spacing: 0) {
             HStack {
                 Text(String(localized: "启用 iCloud 文件夹同步", bundle: appLocalizationBundle))
@@ -374,42 +399,7 @@ public struct TaskSyncSettingsView: View {
 
             Divider()
 
-            Form {
-                Section(String(localized: "目标同步文件夹", bundle: appLocalizationBundle)) {
-                    HStack {
-                        Image(systemName: "folder.fill")
-                            .foregroundStyle(.blue)
-                        Text(folder.lastPathComponent)
-                            .font(.headline)
-                    }
-                    Text(folder.path)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section(String(localized: "本地成果迁移", bundle: appLocalizationBundle)) {
-                    HStack {
-                        Text(String(localized: "任务文档数", bundle: appLocalizationBundle))
-                        Spacer()
-                        Text(String(localized: "\(summary.taskCount) 个", bundle: appLocalizationBundle))
-                            .bold()
-                    }
-                    HStack {
-                        Text(String(localized: "关联原媒体文件", bundle: appLocalizationBundle))
-                        Spacer()
-                        Text(String(localized: "\(summary.mediaCount) 个 (\(ByteCountFormatter.string(fromByteCount: summary.mediaBytes, countStyle: .file)))", bundle: appLocalizationBundle))
-                            .bold()
-                    }
-                }
-
-                Section(String(localized: "原媒体同步选项", bundle: appLocalizationBundle)) {
-                    Toggle(String(localized: "同时复制并同步原音视频文件", bundle: appLocalizationBundle), isOn: $syncOriginalsInMigration)
-                    Text(String(localized: "同时将源音视频上传至云端供其他设备直接下载（需要较多存储与网络带宽）。", bundle: appLocalizationBundle))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .formStyle(.grouped)
+            migrationForm(folder: folder, summary: summary)
 
             Divider()
 
@@ -435,6 +425,46 @@ public struct TaskSyncSettingsView: View {
             .background(.regularMaterial)
         }
         .frame(minWidth: 460, minHeight: 380)
+        #endif
+    }
+
+    private func migrationForm(folder: URL, summary: TaskSyncCoordinator.MigrationSummary) -> some View {
+        Form {
+            Section(String(localized: "目标同步文件夹", bundle: appLocalizationBundle)) {
+                HStack {
+                    Image(systemName: "folder.fill")
+                        .foregroundStyle(.blue)
+                    Text(folder.lastPathComponent)
+                        .font(.headline)
+                }
+                Text(folder.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section(String(localized: "本地成果迁移", bundle: appLocalizationBundle)) {
+                HStack {
+                    Text(String(localized: "任务文档数", bundle: appLocalizationBundle))
+                    Spacer()
+                    Text(String(localized: "\(summary.taskCount) 个", bundle: appLocalizationBundle))
+                        .bold()
+                }
+                HStack {
+                    Text(String(localized: "关联原媒体文件", bundle: appLocalizationBundle))
+                    Spacer()
+                    Text(String(localized: "\(summary.mediaCount) 个 (\(ByteCountFormatter.string(fromByteCount: summary.mediaBytes, countStyle: .file)))", bundle: appLocalizationBundle))
+                        .bold()
+                }
+            }
+
+            Section(String(localized: "原媒体同步选项", bundle: appLocalizationBundle)) {
+                Toggle(String(localized: "同时复制并同步原音视频文件", bundle: appLocalizationBundle), isOn: $syncOriginalsInMigration)
+                Text(String(localized: "同时将源音视频上传至云端供其他设备直接下载（需要较多存储与网络带宽）。", bundle: appLocalizationBundle))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
     }
 
     private func commitEnable(folder: URL, originals: Bool) {

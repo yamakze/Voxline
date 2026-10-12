@@ -244,10 +244,41 @@ private struct ServiceEditorModal: View {
         _isLoadingKey = State(initialValue: service.map { s in store.services.contains(where: { $0.id == s.id }) } ?? false)
     }
 
+    private var titleText: String {
+        original == nil ? String(localized: "添加翻译服务", bundle: appLocalizationBundle) : String(localized: "编辑翻译服务", bundle: appLocalizationBundle)
+    }
+
     var body: some View {
+        #if os(iOS)
+        NavigationStack {
+            editorForm
+                .navigationTitle(titleText)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                            connectionTask?.cancel()
+                            dismiss()
+                        }
+                        .disabled(isSaving)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(String(localized: "保存", bundle: appLocalizationBundle)) {
+                            saveService()
+                        }
+                        .bold()
+                        .disabled(isSaving || isLoadingKey || isTesting)
+                    }
+                }
+        }
+        .autocorrectionDisabled()
+        .textInputAutocapitalization(.never)
+        .interactiveDismissDisabled(isSaving || isTesting)
+        .onDisappear { connectionTask?.cancel() }
+        .task { await loadCredential() }
+        #elseif os(macOS)
         VStack(spacing: 0) {
             HStack {
-                Text(original == nil ? String(localized: "添加翻译服务", bundle: appLocalizationBundle) : String(localized: "编辑翻译服务", bundle: appLocalizationBundle))
+                Text(titleText)
                     .font(.headline)
                 Spacer()
             }
@@ -257,98 +288,7 @@ private struct ServiceEditorModal: View {
 
             Divider()
 
-            Form {
-                Section(String(localized: "服务接入", bundle: appLocalizationBundle)) {
-                    TextField(String(localized: "名称", bundle: appLocalizationBundle), text: $name, prompt: Text(String(localized: "例如 OpenAI / DeepSeek", bundle: appLocalizationBundle)))
-                    TextField(String(localized: "接口地址", bundle: appLocalizationBundle), text: $baseURLString, prompt: Text("https://api.openai.com/v1"))
-                    TextField(String(localized: "模型", bundle: appLocalizationBundle), text: $modelID, prompt: Text("gpt-4o-mini"))
-                    PasswordVisibilityField(String(localized: "API 密钥（选填）", bundle: appLocalizationBundle), text: $apiKey)
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            isAdvancedExpanded.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: isAdvancedExpanded ? "chevron.down" : "chevron.right")
-                                .font(.caption2.bold())
-                            Text(String(localized: "高级选项", bundle: appLocalizationBundle))
-                                .font(.subheadline)
-                        }
-                        .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.vertical, 2)
-
-                    if isAdvancedExpanded {
-                        LabeledContent(String(localized: "每批字幕数", bundle: appLocalizationBundle)) {
-                            TextField("", text: $batchSizeText)
-                                .multilineTextAlignment(.trailing)
-                                #if os(iOS)
-                                .keyboardType(.numberPad)
-                                #endif
-                        }
-
-                        LabeledContent {
-                            VStack(alignment: .trailing, spacing: 4) {
-                                TextEditor(text: $systemPrompt)
-                                    .font(.callout)
-                                    .frame(minHeight: 75)
-                                    .padding(4)
-                                    .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                                    )
-
-                                Button(String(localized: "恢复默认", bundle: appLocalizationBundle)) {
-                                    systemPrompt = TranslationSettings.defaultSystemPrompt
-                                }
-                                .buttonStyle(.borderless)
-                                .font(.caption)
-                                .foregroundStyle(.tint)
-                            }
-                        } label: {
-                            Text(String(localized: "系统提示词", bundle: appLocalizationBundle))
-                        }
-                    }
-                }
-            }
-            .formStyle(.grouped)
-            .disabled(isLoadingKey || isSaving)
-
-            if isLoadingKey {
-                ProgressView(String(localized: "正在读取密钥…", bundle: appLocalizationBundle))
-                    .padding(.vertical, 8)
-            }
-            if keyReadFailed {
-                Button(String(localized: "重新读取密钥", bundle: appLocalizationBundle)) { Task { await loadCredential() } }
-                    .padding(.vertical, 4)
-            }
-
-            if let errorMessage {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.circle")
-                        .foregroundStyle(.red)
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 4)
-            }
-            if let testSuccessMessage {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle")
-                        .foregroundStyle(.green)
-                    Text(testSuccessMessage)
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 4)
-            }
+            editorForm
 
             Divider()
 
@@ -385,15 +325,125 @@ private struct ServiceEditorModal: View {
             .padding(.vertical, 12)
             .background(.regularMaterial)
         }
-        #if os(macOS)
         .frame(width: 500, height: 480)
-        #else
-        .autocorrectionDisabled()
-        .textInputAutocapitalization(.never)
-        #endif
         .interactiveDismissDisabled(isSaving || isTesting)
         .onDisappear { connectionTask?.cancel() }
         .task { await loadCredential() }
+        #endif
+    }
+
+    private var editorForm: some View {
+        Form {
+            Section(String(localized: "服务接入", bundle: appLocalizationBundle)) {
+                TextField(String(localized: "名称", bundle: appLocalizationBundle), text: $name, prompt: Text(String(localized: "例如 OpenAI / DeepSeek", bundle: appLocalizationBundle)))
+                TextField(String(localized: "接口地址", bundle: appLocalizationBundle), text: $baseURLString, prompt: Text("https://api.openai.com/v1"))
+                TextField(String(localized: "模型", bundle: appLocalizationBundle), text: $modelID, prompt: Text("gpt-4o-mini"))
+                PasswordVisibilityField(String(localized: "API 密钥（选填）", bundle: appLocalizationBundle), text: $apiKey)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isAdvancedExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isAdvancedExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption2.bold())
+                        Text(String(localized: "高级选项", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, 2)
+
+                if isAdvancedExpanded {
+                    LabeledContent(String(localized: "每批字幕数", bundle: appLocalizationBundle)) {
+                        TextField("", text: $batchSizeText)
+                            .multilineTextAlignment(.trailing)
+                            #if os(iOS)
+                            .keyboardType(.numberPad)
+                            #endif
+                    }
+
+                    LabeledContent {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            TextEditor(text: $systemPrompt)
+                                .font(.callout)
+                                .frame(minHeight: 75)
+                                .padding(4)
+                                .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                                    )
+
+                            Button(String(localized: "恢复默认", bundle: appLocalizationBundle)) {
+                                systemPrompt = TranslationSettings.defaultSystemPrompt
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.caption)
+                            .foregroundStyle(.tint)
+                        }
+                    } label: {
+                        Text(String(localized: "系统提示词", bundle: appLocalizationBundle))
+                    }
+                }
+            }
+
+            #if os(iOS)
+            Section {
+                HStack {
+                    Button(String(localized: "测试连接", bundle: appLocalizationBundle)) {
+                        testConnection()
+                    }
+                    .disabled(isTesting || isLoadingKey || isSaving)
+
+                    if isTesting {
+                        Spacer()
+                        ProgressView().controlSize(.small)
+                        Button(String(localized: "取消测试", bundle: appLocalizationBundle)) { connectionTask?.cancel() }
+                            .buttonStyle(.borderless)
+                            .font(.caption)
+                    }
+                }
+            }
+            #endif
+
+            if isLoadingKey {
+                Section {
+                    ProgressView(String(localized: "正在读取密钥…", bundle: appLocalizationBundle))
+                }
+            }
+            if keyReadFailed {
+                Section {
+                    Button(String(localized: "重新读取密钥", bundle: appLocalizationBundle)) { Task { await loadCredential() } }
+                }
+            }
+
+            if let errorMessage {
+                Section {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.circle")
+                            .foregroundStyle(.red)
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            if let testSuccessMessage {
+                Section {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle")
+                            .foregroundStyle(.green)
+                        Text(testSuccessMessage)
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .disabled(isLoadingKey || isSaving)
     }
 
     private func buildConfig() throws -> TranslationServiceConfig {

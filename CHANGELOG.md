@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.0 - 2026-10-12
+
+### Added
+
+- Import SRT and VTT subtitles for associated audio or video on macOS and iOS. Adding MP4, MOV or M4V videos automatically imports an available tx3g text track.
+- Import translations with time-based matching and a preview; save unmatched entries and assign them later. Imported source subtitles use the existing translation, proofreading and export workflow without speech recognition.
+- Preserve overlapping subtitles in playback, proofreading and SRT output; display all simultaneous text in embedded and burned-in video exports.
+- Check for Mac updates with Sparkle and signed update feeds. iOS supports version checks and IPA downloads for manual installation.
+- Refreshed application icon and update settings.
+
+### Fixed
+
+- Resume update checks after leaving and reopening the update page.
+- Keep subtitle import drafts consistent when reading fails or the task changes during preview.
+
+---
+
+### 新增
+
+- macOS 与 iOS 支持为关联的音视频导入 SRT、VTT 字幕；添加 MP4、MOV、M4V 视频时自动导入可用的 tx3g 文本字幕轨。
+- 译文导入支持按时间匹配与结果预览；未匹配内容可保存并稍后分配。导入原文后沿用翻译、校对与导出流程，无需语音识别。
+- 播放、校对与 SRT 保留重叠字幕；软字幕与硬字幕视频同时呈现重叠区的完整文本。
+- Mac 接入 Sparkle 更新检查及签名更新源；iOS 支持版本检查和 IPA 下载，安装由用户自行完成。
+- 更新应用图标和更新设置。
+
+### 修复
+
+- 离开更新页面后重新进入，可继续检查更新。
+- 字幕读取失败或预览期间任务发生变化时，导入草稿保持一致。
+
 ## 1.0.0 - 2026-10-10
 
 ### Added

@@ -31,14 +31,6 @@ struct IOSTaskLibraryView: View {
                 IOSTaskDetailView(library: library, taskID: taskID)
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        IOSSettingsView()
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                }
-
                 ToolbarItemGroup(placement: .primaryAction) {
                     Menu {
                         Button {
