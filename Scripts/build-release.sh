@@ -17,6 +17,7 @@ VOXLINE_BUILD_VERSION=$(python3 Scripts/lib/build-metadata.py version)
 output="$PWD/build/release"
 mkdir -p "$output"
 if [[ "$platform" != ios ]]; then
+    rm -f "$output/appcast.xml"
     export VOXLINE_MAC_ARCHS="${VOXLINE_MAC_ARCHS:-arm64 x86_64}"
     export VOXLINE_MAC_OUTPUT_DIRECTORY="$output/work/mac"
     if [[ "$mode" == notarized ]]; then

@@ -7,6 +7,7 @@ public struct AppSettingsView: View {
         case translation = "翻译服务"
         case cloudTranscription = "云端转写"
         case sync = "iCloud 同步"
+        case updates = "更新"
 
         public var id: String { rawValue }
         public var icon: String {
@@ -15,6 +16,7 @@ public struct AppSettingsView: View {
             case .translation: return "character.book.closed"
             case .cloudTranscription: return "waveform.badge.mic"
             case .sync: return "arrow.triangle.2.circlepath"
+            case .updates: return "arrow.clockwise.circle"
             }
         }
     }
@@ -36,6 +38,8 @@ public struct AppSettingsView: View {
                 CloudTranscriptionServicesSettingsView()
             case .sync:
                 TaskSyncSettingsView()
+            case .updates:
+                AppUpdatesSettingsView()
             }
         }
         #if os(macOS)
@@ -48,7 +52,7 @@ public struct AppSettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 380)
+                .frame(width: 480)
             }
         }
         #elseif os(iOS)

@@ -6,6 +6,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         VoxlineIconManager.shared.ensureDockIconIsSet()
+        MacUpdater.shared.start()
     }
 }
 #endif
@@ -31,6 +32,9 @@ struct VoxlineApp: App {
         .defaultSize(width: 1140, height: 740)
         .commands {
             TaskNavigationCommands()
+            CommandGroup(after: .appInfo) {
+                MacCheckForUpdatesButton()
+            }
         }
 
         Settings {

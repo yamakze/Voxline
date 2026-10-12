@@ -676,3 +676,34 @@
 "全部媒体已处理完成" = "All media processing complete";
 
 "正在读取媒体，请稍后再试。" = "Reading media. Please try again shortly.";
+"版本信息无效。" = "Invalid version information.";
+"更新服务响应无效。" = "Invalid update service response.";
+"未找到正式发布版本。" = "No public release is available.";
+"此版本未提供 IPA。" = "This release does not include an IPA.";
+"更新检查失败（HTTP %lld）。" = "Update check failed (HTTP %lld).";
+"此版本未配置自动更新。" = "Automatic updates are not configured in this build.";
+"更新" = "Updates";
+"检查更新" = "Check for Updates";
+"检查更新…" = "Check for Updates…";
+"自动检查更新" = "Automatically check for updates";
+"当前版本：%@" = "Current version: %@";
+"当前版本：%@ (%@)" = "Current version: %1$@ (%2$@)";
+"更新选项" = "Update Options";
+"更新异常" = "Update Error";
+"正在检查更新…" = "Checking for updates…";
+"当前已是最新版本" = "You're up to date";
+"在 GitHub 中查看" = "View on GitHub";
+"在浏览器中查看 GitHub 发行页" = "View GitHub releases page in browser";
+"更新检查失败" = "Update check failed";
+"重试检查更新" = "Retry update check";
+"发现新版本：%@" = "New version available: %@";
+"当前安装版本：%@" = "Installed version: %@";
+"更新内容" = "Release Notes";
+"下载 IPA" = "Download IPA";
+"下载 IPA 文件" = "Download IPA file";
+"版本详情" = "Release Details";
+"查看版本详情" = "View release details";
+
+"尚未检查更新" = "Not checked yet";
+
+"自动下载并安装更新" = "Automatically download and install updates";

@@ -7,7 +7,8 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [.executable(name: "Voxline", targets: ["VoxlineApp"])],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/argmax-oss-swift", revision: "1e2a163736dfa5a198e637ae44c114e1c6d5cc2d")
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift", revision: "1e2a163736dfa5a198e637ae44c114e1c6d5cc2d"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")
     ],
     targets: [
         .target(name: "VoxlineCore", path: "Sources/Voxline/Core", resources: [.process("Resources")]),
@@ -15,7 +16,7 @@ let package = Package(
         .target(name: "VoxlineTranslation", dependencies: ["VoxlineCore"], path: "Sources/Voxline/Translation", resources: [.process("Resources")]),
         .target(name: "VoxlineWhisperKit", dependencies: ["VoxlineCore", .product(name: "WhisperKit", package: "argmax-oss-swift")], path: "Sources/Voxline/WhisperKit", resources: [.process("Resources")]),
         .target(name: "VoxlineWorkflow", dependencies: ["VoxlineCore", "VoxlineMedia", "VoxlineWhisperKit", "VoxlineTranslation"], path: "Sources/Voxline/Workflow", resources: [.process("Resources")]),
-        .executableTarget(name: "VoxlineApp", dependencies: ["VoxlineCore", "VoxlineMedia", "VoxlineWhisperKit", "VoxlineTranslation", "VoxlineWorkflow"], path: "Sources/Voxline/App", resources: [.process("Resources")]),
+        .executableTarget(name: "VoxlineApp", dependencies: ["VoxlineCore", "VoxlineMedia", "VoxlineWhisperKit", "VoxlineTranslation", "VoxlineWorkflow", .product(name: "Sparkle", package: "Sparkle", condition: .when(platforms: [.macOS]))], path: "Sources/Voxline/App", resources: [.process("Resources")], linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"], .when(platforms: [.macOS]))]),
         .testTarget(name: "VoxlineTranslationTests", dependencies: ["VoxlineTranslation", "VoxlineCore", "VoxlineMedia"]),
         .testTarget(name: "VoxlineCoreTests", dependencies: ["VoxlineCore"]),
         .testTarget(name: "VoxlineMediaTests", dependencies: ["VoxlineMedia", "VoxlineCore"], resources: [.copy("Fixtures")]),

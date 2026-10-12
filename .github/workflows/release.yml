@@ -66,6 +66,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
       VOXLINE_BUILD_VERSION: ${{ needs.notes.outputs.build-version }}
+      VOXLINE_SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -111,10 +112,40 @@ jobs:
           echo 'VOXLINE_NOTARY_PROFILE=voxline-release' >> "$GITHUB_ENV"
           echo "VOXLINE_NOTARY_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
           echo 'mode=notarized' >> "$GITHUB_OUTPUT"
+      - name: Check automatic update signing configuration
+        id: updates
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          RELEASE_MODE: ${{ steps.signing.outputs.mode }}
+        run: |
+          if [[ -z "$VOXLINE_SPARKLE_PUBLIC_KEY$SPARKLE_PRIVATE_KEY" ]]; then
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'Sparkle signing is not configured; this draft has no automatic update feed.'
+            exit 0
+          fi
+          : "${VOXLINE_SPARKLE_PUBLIC_KEY:?Missing SPARKLE_PUBLIC_KEY repository variable}"
+          : "${SPARKLE_PRIVATE_KEY:?Missing SPARKLE_PRIVATE_KEY repository secret}"
+          if [[ "$RELEASE_MODE" != notarized ]]; then
+            echo 'Automatic update releases require Developer ID signing and notarization.' >&2
+            exit 1
+          fi
+          echo 'enabled=true' >> "$GITHUB_OUTPUT"
       - name: Build Universal Mac archive and unsigned iOS IPA
         env:
           RELEASE_MODE: ${{ steps.signing.outputs.mode }}
         run: Scripts/build-release.sh all "$RELEASE_MODE"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.updates.outputs.enabled == 'true'
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes
+      - name: Generate signed Sparkle appcast
+        if: steps.updates.outputs.enabled == 'true'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          python3 Scripts/lib/release-assets.py appcast "$RELEASE_TAG" "$RUNNER_TEMP/release-notes/RELEASE_NOTES.md"
+          python3 Scripts/lib/release-assets.py checksums
       - name: Check localization
         run: python3 Scripts/check-localization.py build/ios/device/DerivedData/Build/Intermediates.noindex/Voxline.build/Release-iphoneos
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -125,6 +156,7 @@ jobs:
             build/release/Voxline-iOS-*.ipa
             build/release/SHA256SUMS.txt
             build/release/PACKAGE_NOTES.md
+            build/release/appcast.xml
           if-no-files-found: error
       - name: Remove signing credentials
         if: always()
@@ -164,6 +196,7 @@ jobs:
             }' -f owner="$owner" -f repo="$repo" -f tag="$RELEASE_TAG" \
             --jq '.data.repository.release | if . == null then "missing" elif .isDraft then "draft" else "published" end')
           assets=(Voxline-*.zip Voxline-iOS-*.ipa SHA256SUMS.txt CHANGELOG.md)
+          if [[ -f appcast.xml ]]; then assets+=(appcast.xml); fi
           case "$state" in
             missing)
               gh release create "$RELEASE_TAG" "${assets[@]}" --draft --verify-tag \

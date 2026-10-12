@@ -95,7 +95,7 @@ public final class TaskProcessingQueue {
         }
     }
 
-    func waitUntilIdle() async { await worker?.value }
+    public func waitUntilIdle() async { await worker?.value }
 
     public func startRetranslation(taskID: UUID, mediaID: UUID, cueIDs: [UUID]) throws {
         guard worker == nil else { throw QueueError.busy }

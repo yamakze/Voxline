@@ -1,4 +1,5 @@
 import plistlib
+import base64
 import os
 import json
 import shutil
@@ -29,6 +30,9 @@ else:
     subprocess.run(["lipo", "-create", *executables, "-output", str(contents / "MacOS" / "Voxline")], check=True)
 for resource_bundle in binary_directories[0].glob("Voxline_*.bundle"):
     shutil.copytree(resource_bundle, contents / "Resources" / resource_bundle.name)
+sparkle_distribution = root / ".build/artifacts/sparkle/Sparkle"
+framework = contents / "Frameworks" / "Sparkle.framework"
+shutil.copytree(sparkle_distribution / "Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework", framework, symlinks=True)
 shutil.copytree(root / "Licenses", contents / "Resources" / "Licenses", dirs_exist_ok=True)
 shutil.copy2(root / "LICENSE", contents / "Resources" / "LICENSE")
 for language in ("zh-Hans", "en"):
@@ -54,6 +58,9 @@ metadata = {
     "LSMinimumSystemVersion": "15.0",
     "NSHighResolutionCapable": True,
     "NSPrincipalClass": "NSApplication",
+    "SUFeedURL": "https://github.com/yamakze/Voxline/releases/latest/download/appcast.xml",
+    "SUEnableInstallerLauncherService": True,
+    "SUAutomaticallyUpdate": False,
     "CFBundleDocumentTypes": [{
         "CFBundleTypeName": "Voxline Task", "CFBundleTypeRole": "Editor",
         "LSHandlerRank": "Owner", "LSItemContentTypes": ["dev.voxline.project"],
@@ -65,12 +72,25 @@ metadata = {
                                    "public.mime-type": "application/vnd.voxline.project+json"},
     }],
 }
+public_key = os.environ.get("VOXLINE_SPARKLE_PUBLIC_KEY", "").strip()
+metadata["SUEnableAutomaticChecks"] = bool(public_key)
+if public_key:
+    if len(base64.b64decode(public_key, validate=True)) != 32:
+        raise SystemExit("VOXLINE_SPARKLE_PUBLIC_KEY must be a base64 Ed25519 public key")
+    metadata["SUPublicEDKey"] = public_key
 with (contents / "Info.plist").open("wb") as file:
     plistlib.dump(metadata, file)
-signing_options = ["--options", "runtime", "--timestamp"] if os.environ.get("VOXLINE_MAC_DISTRIBUTION") == "1" else ["--timestamp=none"]
+distribution = os.environ.get("VOXLINE_MAC_DISTRIBUTION") == "1"
+timestamp_options = ["--timestamp"] if distribution else ["--timestamp=none"]
+signing_options = ["--options", "runtime", *timestamp_options] if distribution else timestamp_options
+framework_version = framework / "Versions/B"
+for component in (framework_version / "XPCServices/Installer.xpc", framework_version / "XPCServices/Downloader.xpc",
+                  framework_version / "Autoupdate", framework_version / "Updater.app", framework):
+    subprocess.run(["codesign", "--force", "--sign", identity, "--options", "runtime", *timestamp_options,
+                    "--preserve-metadata=entitlements", str(component)], check=True)
 subprocess.run(["codesign", "--force", "--sign", identity, *signing_options, "--entitlements",
                 str(root / "Scripts" / "Voxline.entitlements"), str(bundle)], check=True)
-subprocess.run(["codesign", "--verify", "--strict", str(bundle)], check=True)
+subprocess.run(["codesign", "--verify", "--deep", "--strict", str(bundle)], check=True)
 requirement = subprocess.run(["codesign", "-d", "-r-", str(bundle)],
                              check=True, capture_output=True, text=True).stdout.strip()
 # codesign prefixes the generated cdhash requirement of an ad-hoc signature with '# '.

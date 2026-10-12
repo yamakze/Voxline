@@ -16,6 +16,9 @@ struct IOSSettingsView: View {
                 NavigationLink { CloudTranscriptionServicesSettingsView() } label: { Label(String(localized: "云端转写服务", bundle: appLocalizationBundle), systemImage: "waveform.badge.mic") }
                 NavigationLink { TranslationServicesSettingsView() } label: { Label(String(localized: "翻译服务", bundle: appLocalizationBundle), systemImage: "character.book.closed") }
             }
+            Section(String(localized: "更新", bundle: appLocalizationBundle)) {
+                NavigationLink { AppUpdatesSettingsView() } label: { Label(String(localized: "检查更新", bundle: appLocalizationBundle), systemImage: "arrow.clockwise.circle") }
+            }
         }
         .navigationTitle(String(localized: "设置", bundle: appLocalizationBundle))
     }

@@ -89,6 +89,7 @@ Voxline 的产品灵感源自优秀开源项目 [妙幕 (SmartSub)](https://gith
 - **翻译服务**：配置 OpenAI 兼容服务（服务名称、Base URL、模型 ID、API Key、每批字幕数、系统提示词），支持连通性测试。
 - **云端转写**：配置 OpenAI Audio Transcriptions、Gemini 或百炼 Qwen 协议及对应凭据。
 - **iCloud 同步**：用户指定授权的 iCloud Drive 共享文件夹，支持任务文档与字幕跨设备同步，源媒体同步单独按需开启。
+- **应用更新**：Mac 菜单与设置提供 Sparkle 检查更新、自动检查及自动下载／安装开关；重启安装等待处理队列空闲。iOS 设置按需检查正式 Release，展示当前版本、双语说明与 IPA／版本详情入口；无发布、已是最新版及请求失败分别显示，失败可重试。安装由现有签名工具完成，不生成或维护 AltStore／SideStore source。
 
 ---
 
