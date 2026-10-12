@@ -60,8 +60,8 @@ final class IOSTaskLibrary {
     func startTranslation(taskID: UUID, mediaID: UUID) throws {
         guard let task = storage.task(for: taskID), task.parameters.translation != nil,
               let item = task.items.first(where: { $0.id == mediaID }),
-              item.hasCompletedTranscription else {
-            throw QueueError.unavailable(String(localized: "本机翻译需要启用翻译且已完成转写的任务成果。", bundle: appLocalizationBundle))
+              item.hasSourceSubtitles else {
+            throw QueueError.unavailable(String(localized: "请先准备原文字幕并启用翻译。", bundle: appLocalizationBundle))
         }
         try queue.start(taskID: taskID, mediaID: mediaID)
     }

@@ -58,7 +58,7 @@ struct SubtitleExporterTests {
         invalid.startMilliseconds = -1
         #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [invalid], kind: .source) }
         let first = try cue(start: 0, end: 1000), overlapping = try cue(start: 500, end: 1500)
-        #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [first, overlapping], kind: .bilingual) }
+        #expect(try SubtitleExporter.generateSRT(cues: [first, overlapping], kind: .bilingual).contains("00:00:00,500 --> 00:00:01,500"))
         #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [first, first], kind: .source) }
         let media = try MediaIdentity(fileName: "clip.mp4", byteCount: 1, fingerprint: String(repeating: "a", count: 64), durationMilliseconds: 500, audioTrackID: 1)
         #expect(try SubtitleExporter.generateSRT(cues: [first], kind: .source, media: media).contains("00:00:00,000 --> 00:00:00,500"))

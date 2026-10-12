@@ -67,7 +67,7 @@ struct MediaPlaybackControllerTests {
 
         controller.seek(toMilliseconds: 400)
         try await waitFor { abs(controller.currentTimeSeconds - 0.4) < 0.01 }
-        #expect(controller.activeCue(in: item.cues)?.id == item.cues[1].id)
+        #expect(controller.activeSubtitle?.id == item.cues[1].id)
         #expect(controller.activeSubtitle?.id == item.cues[1].id)
         #expect(controller.completedSubtitleEndMilliseconds == 400)
         controller.seek(to: .nan)
@@ -85,7 +85,7 @@ struct MediaPlaybackControllerTests {
         controller.togglePlayPause()
         #expect(player.rate == 2)
         try await waitFor { controller.currentTimeSeconds >= 0.99 && !controller.isPlaying }
-        #expect(controller.activeCue(in: item.cues) == nil)
+        #expect(controller.activeSubtitle == nil)
         #expect(controller.activeSubtitle == nil && controller.completedSubtitleEndMilliseconds == 1000)
         controller.togglePlayPause()
         #expect(controller.playbackRate == 2)
@@ -98,8 +98,7 @@ struct MediaPlaybackControllerTests {
         let shifted = try SubtitleTimeOffset.shifted([item.cues[1]], by: -100, withinDuration: 1000)
         controller.seek(to: 0.35)
         try await waitFor { abs(controller.currentTimeSeconds - 0.35) < 0.01 }
-        #expect(controller.activeCue(in: item.cues)?.id == item.cues[0].id)
-        #expect(controller.activeCue(in: shifted)?.id == item.cues[1].id)
+        #expect(controller.activeSubtitle?.id == item.cues[0].id)
         controller.updateSubtitles(shifted)
         #expect(controller.activeSubtitle?.id == item.cues[1].id)
         #expect(controller.completedSubtitleEndMilliseconds == 0)

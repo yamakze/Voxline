@@ -68,7 +68,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
             checkpoint.parameters = parameters
             if translationChanged { checkpoint.translationBatches = [] }
             updated.items[index].checkpoint = checkpoint
-            if translationChanged && checkpoint.chunks.allSatisfy(\.isCompleted) {
+            if translationChanged && updated.items[index].hasSourceSubtitles {
                 let item = updated.items[index]
                 updated.items[index].status = parameters.translation == nil || item.cues.allSatisfy(\.hasTranslation)
                     ? .completed : .needsTranslation
@@ -128,9 +128,6 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
             throw TaskValidationError.emptyTitle
         }
         try parameters.validate()
-        if startedAt != nil, let translation = parameters.translation, case .openAICompatible(let api) = translation.engine, api.serviceID == nil {
-            throw TaskValidationError.unconfiguredTranslationService
-        }
         var identities = Set<UUID>()
         for item in items {
             guard identities.insert(item.id).inserted else { throw TaskValidationError.duplicateMedia(item.id) }
@@ -179,6 +176,9 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
     public var status: TaskMediaStatus
     public var cues: [SubtitleCue]
     public internal(set) var checkpoint: MediaProcessingCheckpoint?
+    /// Absent in 1.0 documents: their subtitle source is speech recognition.
+    public internal(set) var importedSubtitleOrigin: ImportedSubtitleOrigin?
+    public internal(set) var unmatchedTranslationEntries: [SubtitleImportEntry]?
 
     public init(id: UUID = UUID(), title: String, kind: TaskMediaKind, source: TaskMediaSource,
                 media: MediaIdentity? = nil, status: TaskMediaStatus = .pending, cues: [SubtitleCue] = []) {
@@ -203,12 +203,16 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
 
     /// Existing subtitles remain available for playback and editing.
     public var canResumeProcessing: Bool {
-        media != nil && status != .completed && !(checkpoint == nil && !cues.isEmpty)
+        media != nil && status != .completed && !(checkpoint == nil && !cues.isEmpty && importedSubtitleOrigin == nil)
     }
 
     public var hasCompletedTranscription: Bool {
         guard let checkpoint else { return false }
         return !checkpoint.chunks.isEmpty && checkpoint.chunks.allSatisfy(\.isCompleted)
+    }
+
+    public var hasSourceSubtitles: Bool {
+        checkpoint != nil && (importedSubtitleOrigin != nil || hasCompletedTranscription)
     }
 
     public mutating func editSubtitle(comparedTo original: SubtitleCue, sourceText: String, translationText: String) throws {
@@ -232,7 +236,7 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
 
     internal mutating func updateProofreadingStatus() {
         guard status == .completed || status == .needsTranslation,
-              let checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted) else { return }
+              let checkpoint, hasSourceSubtitles else { return }
         status = checkpoint.parameters.translation == nil || cues.allSatisfy(\.hasTranslation)
             ? .completed : .needsTranslation
     }
@@ -257,8 +261,9 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
             }
         }
         try media?.validate()
+        if importedSubtitleOrigin != nil, checkpoint == nil { throw CheckpointError.missingCheckpoint }
         try SubtitleCue.validateTimeline(cues, within: nil)
-        try checkpoint?.validate(media: media, cues: cues, status: status)
+        try checkpoint?.validate(media: media, cues: cues, status: status, imported: importedSubtitleOrigin != nil)
         switch status {
         case .failed(let reason), .translationPaused(let reason):
             if reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -313,5 +318,41 @@ public enum TaskValidationError: Error, LocalizedError, Equatable {
         case .workBeforeStart: String(localized: "未开始任务不能包含运行或已完成状态。", bundle: voxlineLocalizationBundle)
         case .emptyFailureReason: String(localized: "处理失败必须保留实际原因。", bundle: voxlineLocalizationBundle)
         }
+    }
+}
+
+public extension ProcessingTask {
+    mutating func useSpeechRecognition(mediaID: UUID, comparedTo original: TaskMediaItem) throws {
+        guard let index = items.firstIndex(where: { $0.id == mediaID }), items[index] == original else { throw CheckpointError.editedCue }
+        guard !items.contains(where: { if case .running = $0.status { true } else { false } }) else { throw CheckpointError.workRunning }
+        var updated = self
+        updated.items[index].cues = []
+        updated.items[index].checkpoint = nil
+        updated.items[index].importedSubtitleOrigin = nil
+        updated.items[index].unmatchedTranslationEntries = nil
+        updated.items[index].status = .pending
+        try updated.validate()
+        self = updated
+    }
+
+    mutating func importOriginalSubtitles(mediaID: UUID, entries: [SubtitleImportEntry], origin: ImportedSubtitleOrigin,
+                                         comparedTo original: TaskMediaItem, replacingExisting: Bool = false) throws {
+        guard let index = items.firstIndex(where: { $0.id == mediaID }), items[index] == original else { throw CheckpointError.editedCue }
+        guard !items.contains(where: { if case .running = $0.status { true } else { false } }) else { throw CheckpointError.workRunning }
+        guard original.cues.isEmpty || replacingExisting else { throw SubtitleImportError.replacementRequired }
+        guard let media = original.media else { throw TaskValidationError.unassociatedMedia(mediaID) }
+        guard !entries.isEmpty else { throw SubtitleImportError.emptyFile }
+        var updated = self
+        let sorted = entries.enumerated().sorted {
+            $0.element.startMilliseconds == $1.element.startMilliseconds ? $0.offset < $1.offset : $0.element.startMilliseconds < $1.element.startMilliseconds
+        }.map(\.element)
+        updated.items[index].cues = try SubtitleCue.clampedToMedia(sorted.map { try $0.cue() }, media: media)
+        updated.items[index].importedSubtitleOrigin = origin
+        updated.items[index].unmatchedTranslationEntries = nil
+        updated.items[index].checkpoint = .init(media: media, parameters: parameters, chunks: [], translationBatches: [])
+        updated.items[index].status = parameters.translation == nil ? .completed : .needsTranslation
+        updated.startedAt = updated.startedAt ?? Date()
+        try updated.validate()
+        self = updated
     }
 }

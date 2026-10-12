@@ -432,7 +432,7 @@ struct TaskProcessingQueueTests {
         #expect(library.task(for: configured.id)?.items.allSatisfy { $0.status == .failed(reason: TranslationServiceError.unknownService.localizedDescription) } == true)
     }
 
-    @Test func manualTimingConflictKeepsEditAndRawEvidenceWhileOtherMediaContinue() async throws {
+    @Test func manualTimingOverlapKeepsEditAndCompletesRecognitionWhileOtherMediaContinue() async throws {
         let (directory, library, task) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
         let pipeline = ControlledPipeline(holdStartMilliseconds: 2000)
@@ -445,12 +445,11 @@ struct TaskProcessingQueueTests {
         await pipeline.releaseDecode()
         await queue.waitUntilIdle()
         let result = try #require(library.task(for: task.id))
-        #expect(result.status == .partiallyFailed)
+        #expect(result.status == .completed)
         #expect(result.items[0].cues[0].endMilliseconds == 2500)
+        #expect(result.items[0].cues[1].sourceText == "Keep.")
+        #expect(result.items[0].checkpoint?.chunks[1].isCompleted == true)
         #expect(result.items[1].status == .completed)
-        if case .failed(_, let evidence) = result.items[0].checkpoint?.chunks[1].state {
-            #expect(evidence?.segments.first?.text == "Keep.")
-        } else { Issue.record("Timing conflict did not preserve the failed range") }
         #expect(queue.errorMessage == nil)
     }
 

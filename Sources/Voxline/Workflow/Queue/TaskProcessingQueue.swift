@@ -104,7 +104,7 @@ public final class TaskProcessingQueue {
               let settings = task.parameters.translation else {
             throw QueueError.unavailable(String(localized: "本次任务未配置翻译服务，请使用启用翻译的任务。", bundle: voxlineLocalizationBundle))
         }
-        guard let checkpoint = item.checkpoint, checkpoint.chunks.allSatisfy(\.isCompleted) else {
+        guard let checkpoint = item.checkpoint, item.hasSourceSubtitles else {
             throw QueueError.unavailable(String(localized: "请先完成本次任务的转写，再重译字幕。", bundle: voxlineLocalizationBundle))
         }
         let recovery = try item.recoveryPlan(media: checkpoint.media, parameters: task.parameters, ranges: checkpoint.chunks.map(\.range))
@@ -191,7 +191,7 @@ public final class TaskProcessingQueue {
     private func transcribeMedia(taskID: UUID, mediaID: UUID, parameters: TaskParameters) async throws {
         guard let item = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }),
               let media = item.media else { throw CheckpointError.taskUnavailable }
-        if item.hasCompletedTranscription {
+        if item.hasSourceSubtitles {
             if let translation = parameters.translation {
                 try await translateMedia(taskID: taskID, mediaID: mediaID, settings: translation)
             } else {

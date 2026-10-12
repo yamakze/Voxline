@@ -257,32 +257,28 @@ public enum SubtitleBurnInExporter {
     }
 }
 
-/// Core Text does offscreen layout on the video render thread. Only the active cue image is retained.
+/// Core Text lays out the active interval on the render thread; one overlay is retained.
 fileprivate final class BurnInTextRenderer: @unchecked Sendable {
     private let cues: [SubtitleCue]
+    private let timeline: SubtitleTimeline
     private let options: BurnInOptions
     private let lock = NSLock()
-    private var cachedID: UUID?
+    private var cachedIndices: [Int] = []
     private var cachedSize: CGSize = .zero
     private var cachedOverlay: CIImage?
 
-    init(cues: [SubtitleCue], options: BurnInOptions) { self.cues = cues; self.options = options }
+    init(cues: [SubtitleCue], options: BurnInOptions) {
+        self.cues = cues; self.options = options; timeline = SubtitleTimeline(cues: cues)
+    }
 
     func frame(source: CIImage, time: Double) throws -> CIImage {
-        let milliseconds = time * 1000
-        var lower = 0, upper = cues.count
-        while lower < upper {
-            let middle = lower + (upper - lower) / 2
-            if Double(cues[middle].startMilliseconds) <= milliseconds { lower = middle + 1 }
-            else { upper = middle }
-        }
-        guard lower > 0, milliseconds < Double(cues[lower - 1].endMilliseconds) else { return source }
-        let cue = cues[lower - 1]
+        guard let interval = timeline.interval(atMilliseconds: Int64((time * 1000).rounded(.down))) else { return source }
         lock.lock()
         defer { lock.unlock() }
         let size = source.extent.size
-        if cachedID != cue.id || cachedSize != size {
-            let (frame, width, height, padding) = try layout(cue: cue, size: size)
+        if cachedIndices != interval.cueIndices || cachedSize != size {
+            let text = try interval.cueIndices.map { try SubtitleExporter.subtitleText(for: cues[$0], kind: options.kind) }.joined(separator: "\n")
+            let (frame, width, height, padding) = try layout(text: text, size: size)
             guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
                                           bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
@@ -296,22 +292,16 @@ fileprivate final class BurnInTextRenderer: @unchecked Sendable {
             cachedOverlay = CIImage(cgImage: image).transformed(by: CGAffineTransform(
                 translationX: source.extent.midX - Double(width) / 2,
                 y: source.extent.minY + size.height * 0.05))
-            cachedID = cue.id
+            cachedIndices = interval.cueIndices
             cachedSize = size
         }
         guard let overlay = cachedOverlay else { throw BurnInError.failure(String(localized: "字幕图像未生成。", bundle: voxlineLocalizationBundle)) }
         return overlay.composited(over: source).cropped(to: source.extent)
     }
 
-    private func layout(cue: SubtitleCue, size: CGSize) throws -> (CTFrame, Int, Int, Double) {
+    private func layout(text: String, size: CGSize) throws -> (CTFrame, Int, Int, Double) {
         guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0,
               size.width < Double(Int.max), size.height < Double(Int.max) else { throw BurnInError.invalidGeometry }
-        let sourceText = cue.sourceText.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: "\n")
-        var text = options.kind == .translation ? "" : sourceText
-        if options.kind != .source, case .succeeded(let translation, _) = cue.translation {
-            if !text.isEmpty { text += "\n" }
-            text += translation.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: "\n")
-        }
         var fontSize = options.fontSize * size.height / 1080
         let width = Int((size.width * 0.9).rounded(.down))
         var alignment = CTTextAlignment.center

@@ -26,6 +26,8 @@ final class TaskConfigurationSession {
 
     var existingItems: [TaskMediaItem]
     var candidates: [ImportCandidate] = []
+    var subtitleImports: [UUID: SubtitleImportSelection] = [:]
+    var speechRecognitionSelections = Set<UUID>()
     private(set) var isInspecting = false
     private(set) var isSaving = false
     var errorMessage: String?
@@ -85,6 +87,22 @@ final class TaskConfigurationSession {
 
     func cancelImport() { importTask?.cancel() }
 
+    var requiresSpeechRecognition: Bool {
+        existingItems.contains { speechRecognitionSelections.contains($0.id) || (subtitleImports[$0.id] == nil && !$0.hasSourceSubtitles) } ||
+        candidates.contains { $0.error == nil && subtitleImports[$0.id] == nil }
+    }
+
+    func subtitleImportItem(for id: UUID) throws -> TaskMediaItem {
+        if let item = existingItems.first(where: { $0.id == id }) { return item }
+        guard let candidate = candidates.first(where: { $0.id == id }),
+              let inspection = candidate.inspection, let trackID = candidate.trackID else {
+            throw TaskConfigurationError.missingTrack(candidates.first(where: { $0.id == id })?.url.lastPathComponent ?? "")
+        }
+        let media = try inspection.identity(audioTrackID: trackID)
+        return TaskMediaItem(id: id, title: candidate.url.deletingPathExtension().lastPathComponent,
+            kind: candidate.kind, source: .localFile(fileName: media.fileName), media: media)
+    }
+
     var preflightBlockReason: String? {
         let totalCount = existingItems.count + candidates.filter({ $0.error == nil }).count
         if totalCount == 0 {
@@ -95,7 +113,7 @@ final class TaskConfigurationSession {
                 return String(localized: "媒体“\(candidate.url.lastPathComponent)”尚未选择音轨。", bundle: appLocalizationBundle)
             }
         }
-        if transcriptionProvider == .openAICompatible, selectedCloudServiceID == nil || selectedCloudServiceID != originalTask.parameters.transcription.cloud?.serviceID {
+        if requiresSpeechRecognition && transcriptionProvider == .openAICompatible, selectedCloudServiceID == nil || selectedCloudServiceID != originalTask.parameters.transcription.cloud?.serviceID {
             if cloudStore.isLoading || cloudStore.isSaving { return String(localized: "云端转写服务配置正在读取或保存。", bundle: appLocalizationBundle) }
             if let error = cloudStore.errorMessage { return error }
             if !cloudStore.services.contains(where: { $0.id == selectedCloudServiceID }) {
@@ -130,7 +148,9 @@ final class TaskConfigurationSession {
         defer { isSaving = false }
 
         let transcription: TranscriptionSettings
-        if transcriptionProvider == .whisperKit {
+        if !requiresSpeechRecognition {
+            transcription = originalTask.parameters.transcription
+        } else if transcriptionProvider == .whisperKit {
             transcription = TranscriptionSettings(
                 provider: .whisperKit,
                 modelID: modelID,
@@ -228,6 +248,14 @@ final class TaskConfigurationSession {
             }
         }
         try Task.checkCancellation()
+        for item in updated.items {
+            if let selection = subtitleImports[item.id] {
+                try updated.importOriginalSubtitles(mediaID: item.id, entries: selection.entries,
+                    origin: selection.origin, comparedTo: item, replacingExisting: true)
+            } else if speechRecognitionSelections.contains(item.id) {
+                try updated.useSpeechRecognition(mediaID: item.id, comparedTo: item)
+            }
+        }
         guard currentTask() == originalTask else { throw TaskValidationError.taskChanged }
         try updated.validate()
         try onCommit(updated)

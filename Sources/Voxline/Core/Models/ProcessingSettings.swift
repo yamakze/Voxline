@@ -156,7 +156,7 @@ public enum DomainValidationError: Error, LocalizedError, Equatable {
     case invalidTranslation(UUID)
     case sourceRevisionOverflow(UUID)
     case duplicateCue(UUID)
-    case overlappingOrUnorderedCue(UUID)
+    case unorderedCue(UUID)
     case cueOutsideMedia(UUID)
     case differentMedia
 
@@ -173,7 +173,7 @@ public enum DomainValidationError: Error, LocalizedError, Equatable {
         case .invalidTranslation: String(localized: "译文内容、原文版本或错误原因无效。", bundle: voxlineLocalizationBundle)
         case .sourceRevisionOverflow: String(localized: "原文版本已达到上限，无法继续修改。", bundle: voxlineLocalizationBundle)
         case .duplicateCue: String(localized: "项目包含重复的字幕 ID。", bundle: voxlineLocalizationBundle)
-        case .overlappingOrUnorderedCue: String(localized: "字幕时间重叠或顺序错误，请校正后保存。", bundle: voxlineLocalizationBundle)
+        case .unorderedCue: String(localized: "字幕开始时间顺序错误。", bundle: voxlineLocalizationBundle)
         case .cueOutsideMedia: String(localized: "字幕时间超出媒体范围。", bundle: voxlineLocalizationBundle)
         case .differentMedia: String(localized: "媒体文件已更改，请重新关联。", bundle: voxlineLocalizationBundle)
         }

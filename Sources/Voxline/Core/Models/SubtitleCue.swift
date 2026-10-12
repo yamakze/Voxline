@@ -46,22 +46,22 @@ public struct SubtitleCue: Codable, Equatable, Identifiable, Sendable {
 
     public static func validateTimeline(_ cues: [SubtitleCue], within media: MediaIdentity?) throws {
         var identities = Set<UUID>()
-        var previousEnd: Int64 = 0
+        var previousStart: Int64 = 0
         for cue in cues {
             try cue.validate()
             guard identities.insert(cue.id).inserted else { throw DomainValidationError.duplicateCue(cue.id) }
-            guard cue.startMilliseconds >= previousEnd else {
-                throw DomainValidationError.overlappingOrUnorderedCue(cue.id)
+            guard cue.startMilliseconds >= previousStart else {
+                throw DomainValidationError.unorderedCue(cue.id)
             }
             if let media, cue.endMilliseconds > media.durationMilliseconds {
                 throw DomainValidationError.cueOutsideMedia(cue.id)
             }
-            previousEnd = cue.endMilliseconds
+            previousStart = cue.startMilliseconds
         }
     }
 
     /// Export/edit boundaries clip a cue ending past the media, preserving its text and start.
-    /// A cue starting outside the media, zero duration, duplicate ID or overlap remains an error.
+    /// A cue starting outside the media, zero duration, duplicate ID or unordered start remains an error.
     public static func clampedToMedia(_ cues: [SubtitleCue], media: MediaIdentity?) throws -> [SubtitleCue] {
         guard let media else {
             try validateTimeline(cues, within: nil)

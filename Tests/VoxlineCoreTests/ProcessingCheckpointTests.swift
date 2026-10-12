@@ -211,8 +211,8 @@ struct ProcessingCheckpointTests {
         _ = try complete(&value, index: 1)
         let original = value.items[0].cues[0]
         let before = value
-        #expect(throws: DomainValidationError.overlappingOrUnorderedCue(value.items[0].cues[1].id)) {
-            try value.items[0].setSubtitleTiming(comparedTo: original, startMilliseconds: 0, endMilliseconds: 4000)
+        #expect(throws: DomainValidationError.invalidCue(original.id)) {
+            try value.items[0].setSubtitleTiming(comparedTo: original, startMilliseconds: -1, endMilliseconds: 4000)
         }
         #expect(value == before)
         try value.items[0].setSubtitleTiming(comparedTo: original,
@@ -678,14 +678,14 @@ struct ProcessingCheckpointTests {
         task.items[0].cues[0].endMilliseconds += 2000
         let candidate = try SubtitleSegmenter.segment(evidence(range: next.range), sourceID: sourceID, mediaDurationMilliseconds: 5000)
         let edited = task
-        #expect(throws: DomainValidationError.overlappingOrUnorderedCue(candidate.cues[0].id)) {
-            try task.items[0].commitTranscriptionChunk(next.id, result: candidate)
-        }
-        #expect(task == edited)
         let invalid = SubtitleSegmentationResult(sourceID: sourceID, evidence: candidate.evidence,
             policy: candidate.policy, entries: [], excludedEmptySegmentIndices: [])
         #expect(throws: CheckpointError.invalidRecord) { try task.items[0].commitTranscriptionChunk(next.id, result: invalid) }
         #expect(task == edited)
+        try task.items[0].commitTranscriptionChunk(next.id, result: candidate)
+        #expect(task.items[0].cues[0] == edited.items[0].cues[0])
+        #expect(task.items[0].cues[1] == candidate.cues[0])
+        #expect(try TaskDocumentCodec.decode(TaskDocumentCodec.encode(task)) == task)
     }
 
 

@@ -109,6 +109,22 @@ public final class TaskLibrary {
         try save(task)
     }
 
+    public func importOriginalSubtitles(_ selection: SubtitleImportSelection, taskID: UUID, comparedTo original: TaskMediaItem,
+                                        replacingExisting: Bool = false) throws {
+        guard protectedTaskID != taskID else { throw CheckpointError.workRunning }
+        try commitCheckpoint(taskID: taskID, publishingImmediately: true) { task in
+            try task.importOriginalSubtitles(mediaID: original.id, entries: selection.entries, origin: selection.origin,
+                comparedTo: original, replacingExisting: replacingExisting)
+        }
+    }
+
+    public func useSpeechRecognition(taskID: UUID, comparedTo original: TaskMediaItem) throws {
+        guard protectedTaskID != taskID else { throw CheckpointError.workRunning }
+        try commitCheckpoint(taskID: taskID, publishingImmediately: true) { task in
+            try task.useSpeechRecognition(mediaID: original.id, comparedTo: original)
+        }
+    }
+
     /// Apply worker results to the latest published edits; publish only after the whole document is saved.
     @discardableResult
     public func commitCheckpoint<Result>(taskID: UUID, publishingImmediately: Bool = false, mutation: (inout ProcessingTask) throws -> Result) throws -> Result {

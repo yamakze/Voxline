@@ -22,9 +22,12 @@ public final class MediaPlaybackController {
     public private(set) var durationSeconds: Double = 0
     public private(set) var playbackRate: Float = 1
     public private(set) var activeSubtitle: SubtitleCue?
+    public private(set) var activeSubtitles: [SubtitleCue] = []
     public private(set) var completedSubtitleEndMilliseconds: Int64 = 0
 
     @ObservationIgnored private var subtitles: [SubtitleCue] = []
+    @ObservationIgnored private var subtitleTimeline = SubtitleTimeline(cues: [])
+    @ObservationIgnored private var subtitleEndTimes: [Int64] = []
 
     private let mediaStore: LocalMediaStore
     private let inspector: MediaInspector
@@ -197,6 +200,9 @@ public final class MediaPlaybackController {
         currentTimeSeconds = 0
         subtitles = []
         activeSubtitle = nil
+        activeSubtitles = []
+        subtitleTimeline = SubtitleTimeline(cues: [])
+        subtitleEndTimes = []
         completedSubtitleEndMilliseconds = 0
         durationSeconds = 0
         playbackRate = 1
@@ -236,38 +242,27 @@ public final class MediaPlaybackController {
         if let player, player.timeControlStatus != .paused { player.rate = rate }
     }
 
-    public func activeCue(in cues: [SubtitleCue]) -> SubtitleCue? {
-        guard let index = Self.subtitleIndex(at: currentTimeSeconds * 1000, in: cues),
-              currentTimeSeconds * 1000 < Double(cues[index].endMilliseconds) else { return nil }
-        return cues[index]
-    }
-
     public func updateSubtitles(_ cues: [SubtitleCue]) {
         subtitles = cues
+        subtitleTimeline = SubtitleTimeline(cues: cues)
+        subtitleEndTimes = cues.map(\.endMilliseconds).sorted()
         updatePlaybackTime(currentTimeSeconds)
     }
 
     /// Transport time drives only controls; subtitle consumers observe boundary changes.
     private func updatePlaybackTime(_ seconds: Double) {
         currentTimeSeconds = seconds
-        let milliseconds = seconds * 1000
-        let index = Self.subtitleIndex(at: milliseconds, in: subtitles)
-        let active = index.flatMap { milliseconds < Double(subtitles[$0].endMilliseconds) ? subtitles[$0] : nil }
-        let completedIndex = index.map { active == nil ? $0 : $0 - 1 } ?? -1
-        let completedEnd = completedIndex >= 0 ? subtitles[completedIndex].endMilliseconds : 0
-        if activeSubtitle != active { activeSubtitle = active }
+        let milliseconds = Int64((seconds * 1000).rounded(.down))
+        let active = subtitleTimeline.interval(atMilliseconds: milliseconds)?.cueIndices.map { subtitles[$0] } ?? []
+        var lower = 0, upper = subtitleEndTimes.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if subtitleEndTimes[middle] <= milliseconds { lower = middle + 1 } else { upper = middle }
+        }
+        let completedEnd = lower > 0 ? subtitleEndTimes[lower - 1] : 0
+        if activeSubtitles != active { activeSubtitles = active }
+        if activeSubtitle != active.last { activeSubtitle = active.last }
         if completedSubtitleEndMilliseconds != completedEnd { completedSubtitleEndMilliseconds = completedEnd }
     }
 
-    /// Validated subtitles are ordered and nonoverlapping; lookup remains logarithmic after seeks.
-    private static func subtitleIndex(at milliseconds: Double, in cues: [SubtitleCue]) -> Int? {
-        var lower = 0
-        var upper = cues.count
-        while lower < upper {
-            let middle = lower + (upper - lower) / 2
-            if Double(cues[middle].startMilliseconds) <= milliseconds { lower = middle + 1 }
-            else { upper = middle }
-        }
-        return lower > 0 ? lower - 1 : nil
-    }
 }

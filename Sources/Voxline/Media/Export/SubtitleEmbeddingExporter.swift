@@ -100,12 +100,13 @@ public enum SubtitleEmbeddingExporter {
         // Explicit empty samples clear captions in gaps and before the first cue.
         var samples: [CMSampleBuffer] = []
         var previousEnd: Int64 = 0
-        for (cue, text) in zip(cues, texts) {
-            if cue.startMilliseconds > previousEnd {
-                samples.append(try textSample("", start: previousEnd, end: cue.startMilliseconds, format: format))
+        for interval in SubtitleTimeline(cues: cues).intervals {
+            if interval.startMilliseconds > previousEnd {
+                samples.append(try textSample("", start: previousEnd, end: interval.startMilliseconds, format: format))
             }
-            samples.append(try textSample(text, start: cue.startMilliseconds, end: cue.endMilliseconds, format: format))
-            previousEnd = cue.endMilliseconds
+            let text = interval.cueIndices.map { texts[$0] }.joined(separator: "\n")
+            samples.append(try textSample(text, start: interval.startMilliseconds, end: interval.endMilliseconds, format: format))
+            previousEnd = interval.endMilliseconds
         }
         if previousEnd < identity.durationMilliseconds {
             samples.append(try textSample("", start: previousEnd, end: identity.durationMilliseconds, format: format))
