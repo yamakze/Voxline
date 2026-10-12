@@ -72,12 +72,11 @@ metadata = {
                                    "public.mime-type": "application/vnd.voxline.project+json"},
     }],
 }
-public_key = os.environ.get("VOXLINE_SPARKLE_PUBLIC_KEY", "").strip()
-metadata["SUEnableAutomaticChecks"] = bool(public_key)
-if public_key:
-    if len(base64.b64decode(public_key, validate=True)) != 32:
-        raise SystemExit("VOXLINE_SPARKLE_PUBLIC_KEY must be a base64 Ed25519 public key")
-    metadata["SUPublicEDKey"] = public_key
+public_key = (root / "Resources" / "SparklePublicKey.txt").read_text().strip()
+if len(base64.b64decode(public_key, validate=True)) != 32:
+    raise SystemExit("Resources/SparklePublicKey.txt must contain a base64 Ed25519 public key")
+metadata["SUEnableAutomaticChecks"] = True
+metadata["SUPublicEDKey"] = public_key
 with (contents / "Info.plist").open("wb") as file:
     plistlib.dump(metadata, file)
 distribution = os.environ.get("VOXLINE_MAC_DISTRIBUTION") == "1"
