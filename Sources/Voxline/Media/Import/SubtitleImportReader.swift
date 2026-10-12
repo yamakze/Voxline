@@ -58,6 +58,7 @@ public actor SubtitleImportReader {
             if CMSampleBufferGetNumSamples(sample) == 0 { continue }
             guard let buffer = CMSampleBufferGetDataBuffer(sample) else { throw SubtitleTrackError.invalidSample }
             let dataLength = CMBlockBufferGetDataLength(buffer)
+            guard dataLength >= 2 else { throw SubtitleTrackError.invalidSample }
             var data = Data(count: dataLength)
             let status = data.withUnsafeMutableBytes {
                 CMBlockBufferCopyDataBytes(buffer, atOffset: 0, dataLength: dataLength, destination: $0.baseAddress!)

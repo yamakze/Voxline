@@ -10,25 +10,16 @@ public struct SubtitleTranslationAssignment: Identifiable, Equatable, Sendable {
 public enum SubtitleTranslationImport {
     /// Match by temporal intersection. Ties and many-to-one suggestions require user selection.
     public static func assignments(entries: [SubtitleImportEntry], cues: [SubtitleCue]) -> [SubtitleTranslationAssignment] {
-        var prefixEnds: [Int64] = []
-        var lastEnd: Int64 = 0
-        for cue in cues { lastEnd = max(lastEnd, cue.endMilliseconds); prefixEnds.append(lastEnd) }
+        let timeline = SubtitleTimeline(cues: cues)
         var result = entries.map { entry -> SubtitleTranslationAssignment in
-            var lower = 0, upper = cues.count
-            while lower < upper {
-                let middle = (lower + upper) / 2
-                if prefixEnds[middle] <= entry.startMilliseconds { lower = middle + 1 } else { upper = middle }
-            }
             var candidates: [(id: UUID, score: Double)] = []
-            var index = lower
-            while index < cues.count, cues[index].startMilliseconds < entry.endMilliseconds {
+            for index in timeline.cueIndices(overlappingStart: entry.startMilliseconds, end: entry.endMilliseconds) {
                 let cue = cues[index]
                 let overlap = min(entry.endMilliseconds, cue.endMilliseconds) - max(entry.startMilliseconds, cue.startMilliseconds)
                 if overlap > 0 {
                     let span = max(entry.endMilliseconds, cue.endMilliseconds) - min(entry.startMilliseconds, cue.startMilliseconds)
                     candidates.append((cue.id, Double(overlap) / Double(span)))
                 }
-                index += 1
             }
             candidates.sort { $0.score > $1.score }
             let uniqueBest = candidates.count == 1 || (candidates.count > 1 && candidates[0].score > candidates[1].score)

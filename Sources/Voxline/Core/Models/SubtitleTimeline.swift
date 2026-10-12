@@ -43,4 +43,18 @@ public struct SubtitleTimeline: Sendable {
         guard lower > 0, time < intervals[lower - 1].endMilliseconds else { return nil }
         return intervals[lower - 1]
     }
+
+    public func cueIndices(overlappingStart start: Int64, end: Int64) -> [Int] {
+        var lower = 0, upper = intervals.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if intervals[middle].endMilliseconds <= start { lower = middle + 1 } else { upper = middle }
+        }
+        var indices = Set<Int>()
+        while lower < intervals.count, intervals[lower].startMilliseconds < end {
+            indices.formUnion(intervals[lower].cueIndices)
+            lower += 1
+        }
+        return indices.sorted()
+    }
 }
