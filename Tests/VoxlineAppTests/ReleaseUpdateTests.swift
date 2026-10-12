@@ -45,6 +45,38 @@ struct ReleaseUpdateTests {
         guard case .failed = unknown.state else { Issue.record("Missing installed version cannot default to zero"); return }
     }
 
+    @Test(.timeLimit(.minutes(1))) func returningToPageAfterCancellationRestartsTheCheck() async throws {
+        let session = client(version: "1.0.0")
+        let (started, continuation) = AsyncStream<Void>.makeStream()
+        ReleaseStub.started.withLock { $0 = continuation }
+        ReleaseStub.delayResponse.withLock { $0 = true }
+        ReleaseStub.response.withLock { $0 = (200, release(version: "1.0.0")) }
+        defer {
+            continuation.finish()
+            ReleaseStub.started.withLock { $0 = nil }
+            ReleaseStub.delayResponse.withLock { $0 = false }
+            ReleaseStub.failure.withLock { $0 = nil }
+        }
+        let leavingPage = Task { await session.check() }
+        var events = started.makeAsyncIterator()
+        _ = try #require(await events.next())
+        #expect(session.state == .checking)
+        leavingPage.cancel()
+        ReleaseStub.delayResponse.withLock { $0 = false }
+        // Re-enter before the cancelled request has finished updating its state.
+        await session.check()
+        await leavingPage.value
+        #expect(session.state == .upToDate)
+
+        // Transport cancellation without a cancelled page task is an actual failure.
+        ReleaseStub.failure.withLock { $0 = URLError(.cancelled) }
+        await session.check()
+        guard case .failed = session.state else { Issue.record("Active checks must expose transport failure"); return }
+        ReleaseStub.failure.withLock { $0 = nil }
+        await session.check()
+        #expect(session.state == .upToDate)
+    }
+
     private func client(version: String?) -> ReleaseUpdateSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ReleaseStub.self]
@@ -64,9 +96,18 @@ struct ReleaseUpdateTests {
 
 private final class ReleaseStub: URLProtocol, @unchecked Sendable {
     static let response = Mutex<(Int, Data)>((200, Data()))
+    static let delayResponse = Mutex(false)
+    static let started = Mutex<AsyncStream<Void>.Continuation?>(nil)
+    static let failure = Mutex<URLError?>(nil)
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        Self.started.withLock { $0?.yield(()) }
+        if Self.delayResponse.withLock({ $0 }) { return }
+        if let failure = Self.failure.withLock({ $0 }) {
+            client?.urlProtocol(self, didFailWithError: failure)
+            return
+        }
         let (status, data) = Self.response.withLock { $0 }
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

@@ -251,9 +251,7 @@ private struct IOSAppUpdatesSettingsView: View {
             .padding(.vertical, 20)
         }
         .task {
-            if session.state == .idle {
-                await session.check()
-            }
+            await session.check()
         }
         .navigationTitle(String(localized: "检查更新", bundle: appLocalizationBundle))
         .navigationBarTitleDisplayMode(.inline)
@@ -267,11 +265,6 @@ private struct IOSAppUpdatesSettingsView: View {
                 .font(.headline)
 
             Spacer()
-
-//            if session.state == .checking {
-//                ProgressView()
-//                    .controlSize(.small)
-//            }
 
             Text(String(format: String(localized: "版本 %@", bundle: appLocalizationBundle), session.currentVersion ?? "—"))
                 .font(.subheadline)

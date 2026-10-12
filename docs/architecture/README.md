@@ -81,7 +81,6 @@ graph TD
 - **跨平台适配**：`Platform/macOS` 与 `Platform/iOS` 分别处理窗口/标签页导航、原生文件选择器与触摸手势。
 - **共享视图**：任务列表、参数配置会话（`TaskConfigurationSession`）、双语校对播放器（`MediaDetailProofreadingView`）、字幕结构编辑器（`SubtitleStructureEditor`）与设置面板。
 - **视觉风格**：系统 26+ 使用 Liquid Glass 流体玻璃，旧系统使用原生 Material，全面适配深色模式与 VoiceOver 辅助功能。
-- **应用更新**：Mac 平台适配直接持有 Sparkle 标准更新器，开关由 SDK 持久化，安装重启等待处理队列空闲；Sparkle 仅链接 Mac App，不进入底层模块或 iOS 工程。iOS 的 `ReleaseUpdateSession` 在 App 层读取正式 GitHub Release、比较语义版本并提供 IPA／版本详情入口，明确空发布与请求失败；不维护 AltStore／SideStore 订阅源。
 
 ---
 

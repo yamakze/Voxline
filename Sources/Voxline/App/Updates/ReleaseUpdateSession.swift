@@ -47,6 +47,7 @@ final class ReleaseUpdateSession {
     let releasesURL = URL(string: "https://github.com/yamakze/Voxline/releases/latest")!
     private let session: URLSession
     private let endpoint: URL
+    private var requestTask: Task<Void, Never>?
 
     init(currentVersion: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
          session: URLSession = .shared,
@@ -57,9 +58,26 @@ final class ReleaseUpdateSession {
     }
 
     func check() async {
-        guard state != .checking else { return }
+        if let requestTask {
+            await requestTask.value
+            if state == .idle, !Task.isCancelled { await check() }
+            return
+        }
+        guard !Task.isCancelled else { return }
         state = .checking
+        let request = Task { await fetchLatestRelease() }
+        requestTask = request
+        await withTaskCancellationHandler {
+            await request.value
+        } onCancel: {
+            request.cancel()
+        }
+    }
+
+    private func fetchLatestRelease() async {
+        defer { requestTask = nil }
         do {
+            try Task.checkCancellation()
             guard let currentVersion else { throw ReleaseUpdateError.invalidVersion }
             let installed = try ReleaseVersion(currentVersion)
             var request = URLRequest(url: endpoint)
@@ -75,12 +93,8 @@ final class ReleaseUpdateSession {
             if try ReleaseVersion(release.tagName) <= installed { state = .upToDate; return }
             guard release.ipaURL != nil else { throw ReleaseUpdateError.missingIPA }
             state = .available(release)
-        } catch is CancellationError {
-            state = .idle
-        } catch let error as URLError where error.code == .cancelled {
-            state = .idle
         } catch {
-            state = .failed(error.localizedDescription)
+            state = Task.isCancelled ? .idle : .failed(error.localizedDescription)
         }
     }
 }
