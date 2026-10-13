@@ -42,10 +42,11 @@ SwiftUI 原生构建 · WhisperKit · Apple Translation · 软硬字幕导出 ·
 - 📂 **批量媒体流水线** — 多选导入本地音视频文件（MP4、MOV、M4V、M4A、MP3、WAV），自动解析封装格式、时长、体积及多音轨信息。
 - 🎙️ **WhisperKit 本地转写** — 原生集成 WhisperKit 引擎与 Core ML 硬件加速，支持 Tiny、Base、Small、Large v3 与 Turbo 全系列模型
 - ☁️ **云端音频转写** — 提供云端转写补充，支持 OpenAI Audio Transcriptions、Google Gemini 与阿里云百炼 Qwen 音频协议。
+- 📄 **已有字幕导入** — 导入 SRT、VTT 原文与译文；添加 MP4、MOV、M4V 视频时自动读取文本字幕轨。译文支持按时间匹配与预览，未匹配内容可保留并稍后分配。
 - 🌐 **双引擎翻译** —
   - **Apple 本机翻译**：系统原生离线翻译，已下载语言包即可完全离线运行，免配置 API Key；
   - **OpenAI 兼容 LLM 翻译**：LLM 批量翻译，支持自定义单批字幕数量、模型 ID 与系统提示词。
-- 🎧 **双语校对播放器** — 基于原生 AVPlayer 构建，支持原文、译文与双语对照三种视图，毫秒级字幕定位跳转，支持纯音频声波视图播放。
+- 🎧 **双语校对播放器** — 基于原生 AVPlayer 构建，支持原文、译文与双语对照三种视图、重叠字幕与毫秒级字幕定位跳转，支持纯音频声波视图播放。
 - ✂️ **时间轴与结构编辑** — 完备的字幕轴时间线操作：单句插入、逐句起止时间微调、自然断句拆分、相邻字幕一键合并、时间轴全局平移。
 - 🎞️ **字幕导出与视频封装** —
   - **SRT 导出**：导出原文、译文或双语 SRT 外挂字幕文件；
@@ -53,6 +54,7 @@ SwiftUI 原生构建 · WhisperKit · Apple Translation · 软硬字幕导出 ·
   - **硬字幕压制**：基于 Core Image 与 AVAssetExportSession 原生 GPU 烧录，支持自定义字体、尺寸与排版边距。
 - 🛡️ **原子检查点与断点续做** — 转写分段与翻译批次持久化落地;保证应用退出、崩溃或手动取消不损坏成果
 - 📲 **跨设备协同与存储** — 支持通过 `.voxline` 文档在 macOS 与 iOS 之间导入导出；支持用户 iCloud Drive 共享文件夹同步任务与字幕进度；
+- 🔄 **应用更新** — Mac 通过 Sparkle 检查更新、验证更新包签名并安装，正在处理任务时等待队列停止后重启；iOS 支持版本检查与 IPA 下载，安装由用户自行完成。
 - 🎨 **Apple 原生质感与交互** — 适配 Liquid Glass 流体玻璃材质、深色模式、VoiceOver 辅助功能标签与符合 HIG 规范的键盘快捷键导航。
 
 ## 安装与使用
@@ -93,7 +95,7 @@ brew upgrade --cask yamakze/voxline/voxline
 
 ```bash
 # macOS
-make build            # 编译 Mac 应用包（.build/app/Voxline.app）
+make build            # 编译 Mac 应用包（build/Voxline.app）
 make run              # 重新编译并直接启动 Mac 应用
 make test             # 运行核心工作流与领域测试套件
 

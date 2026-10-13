@@ -42,10 +42,11 @@ It supports a complete end-to-end on-device processing workflow: local media imp
 - 📂 **Batch Media Pipeline** — Multi-file local media queue (MP4, MOV, M4V, M4A, MP3, WAV); automatically inspects container formats, durations, file sizes, and audio tracks.
 - 🎙️ **On-Device WhisperKit Transcription** — Native integration of WhisperKit with Core ML hardware acceleration, supporting Tiny, Base, Small, Large v3, and Turbo models.
 - ☁️ **Cloud Audio Transcription** — Cloud transcription fallback supporting OpenAI Audio Transcriptions, Google Gemini, and Alibaba Cloud DashScope / Qwen audio protocols.
+- 📄 **Existing Subtitle Import** — Import SRT and VTT source subtitles and translations; MP4, MOV and M4V text subtitle tracks are imported automatically. Preview time-based translation matching and assign unmatched entries later.
 - 🌐 **Dual Translation Engines** —
   - **Apple Translation**: Native offline translation powered by installed language models, zero configuration, and no API key required;
   - **OpenAI-Compatible LLM Translation**: Batch LLM translation with customizable batch sizes, model IDs, and system prompts.
-- 🎧 **Bilingual Proofreading Player** — AVPlayer-backed player with Source, Translation, and Bilingual views, millisecond-accurate subtitle timeline alignment, and waveform visualization for audio files.
+- 🎧 **Bilingual Proofreading Player** — AVPlayer-backed player with Source, Translation, and Bilingual views, overlapping subtitles, millisecond-accurate subtitle timeline alignment, and waveform visualization for audio files.
 - ✂️ **Timeline & Structure Editing** — Complete subtitle timeline operations: insert cues, fine-tune timing, natural sentence split, merge adjacent subtitles, and global timecode offsets.
 - 🎞️ **Subtitle Export & Video Packaging** —
   - **SRT Export**: Export source, translated, or bilingual SRT subtitle files;
@@ -53,6 +54,7 @@ It supports a complete end-to-end on-device processing workflow: local media imp
   - **Hard Subtitle Burn-in**: Native GPU rendering via Core Image and AVAssetExportSession with customizable typography, sizing, and padding.
 - 🛡️ **Atomic Checkpoints & Recovery** — Transcription segments and translation batches persist atomically, ensuring crashes, app quits, or cancellations never destroy finished work.
 - 📲 **Multi-Device Continuity & Storage** — Export and import portable `.voxline` documents between macOS and iOS; sync tasks and subtitle progress via user-selected iCloud Drive folders.
+- 🔄 **App Updates** — Sparkle checks and installs signature-verified Mac updates, waiting for active processing to stop before restarting. iOS provides version checks and IPA downloads for manual installation.
 - 🎨 **Apple Native Texture & Interaction** — Fluid Liquid Glass materials, dark mode, VoiceOver accessibility labels, and HIG-compliant keyboard navigation.
 
 ## Installation
@@ -93,7 +95,7 @@ Requires macOS 15+ and Xcode 26.2+ (Swift 6.2).
 
 ```bash
 # macOS
-make build            # Build the Mac app bundle (.build/app/Voxline.app)
+make build            # Build the Mac app bundle (build/Voxline.app)
 make run              # Rebuild and launch the Mac app
 make test             # Run core test suites
 
