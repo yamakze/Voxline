@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 - 2026-10-12
+## 1.1.0 - 2026-10-13
 
 ### Added
 
@@ -14,6 +14,8 @@
 
 - Resume update checks after leaving and reopening the update page.
 - Keep subtitle import drafts consistent when reading fails or the task changes during preview.
+- Undo subtitle imports and speech-recognition switches with their complete source and checkpoint state.
+- Restore the Mac task menu's sync conflict recovery entry and keep unselected versions as separate tasks.
 
 ---
 
@@ -29,6 +31,8 @@
 
 - 离开更新页面后重新进入，可继续检查更新。
 - 字幕读取失败或预览期间任务发生变化时，导入草稿保持一致。
+- 撤销字幕导入或切换语音识别时，完整恢复字幕来源与检查点状态。
+- 恢复 Mac 任务菜单的同步冲突恢复入口，未选版本另存为独立任务。
 
 ## 1.0.0 - 2026-10-10
 
