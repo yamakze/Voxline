@@ -6,14 +6,14 @@
 
 ```bash
 # macOS
-make build            # 使用 SwiftPM 编译 Mac 应用包（产物：.build/app/Voxline.app）
+make build            # 使用 SwiftPM 编译 Mac 应用包（产物：dist/macos/Voxline.app）
 make run              # 编译并在停止旧实例后启动 Mac 应用
 make test             # 运行核心单元测试与工作流测试套件
 
 # iOS
 make ios              # 使用 xcodebuild 编译 iOS 模拟器版本
 make ios-run          # 启动 iPhone 17 Pro 模拟器、安装并启动 Voxline
-make ipa              # 构建未签名的 Release IPA（产物：build/ios/Voxline-unsigned.ipa）
+make ipa              # 构建未签名的 Release IPA（产物：dist/ios/Voxline-unsigned.ipa）
 ```
 
 查看所有可用参数：
@@ -23,9 +23,21 @@ make help
 
 ---
 
-## 构建脚本体系
+## 构建目录
 
-所有构建与运行脚本集中在 `Scripts/` 目录：
+| 目录 | 职责 |
+| --- | --- |
+| `.build/` | SwiftPM 依赖、编译产物与增量缓存 |
+| `.build/ios/{device,simulator}/` | iOS DerivedData 与构建日志 |
+| `.build/packaging/` | App／IPA 组装、发布签名与归档的中间文件 |
+| `.build/localization/` | 编译器提取的本地化检查材料 |
+| `dist/macos/` | 可运行的 `Voxline.app` 及身份信息 |
+| `dist/ios/` | 未签名 `Voxline-unsigned.ipa` 及身份信息 |
+| `dist/release/` | 带版本号的 ZIP／IPA、更新 feed、说明与校验和 |
+
+清除 `.build/` 后，后续构建需重新准备依赖并编译。
+
+构建与运行脚本集中在 `Scripts/` 目录：
 
 | 脚本 | 职责与产物说明 |
 | --- | --- |
@@ -54,7 +66,7 @@ make help
 
 ### iOS 签名与侧载
 - 模拟器构建采用本地临时 ad-hoc 签名，系统提供完整的 Keychain 与模拟文件沙盒支持。
-- `build-ios-ipa.sh` 生成的未签名 IPA（`build/ios/Voxline-unsigned.ipa`）专供个人侧载使用。可通过 [AltStore](https://altstore.io)、[SideStore](https://sidestore.io)、[Sideloadly](https://sideloadly.io) 或 Xcode 使用个人 Apple ID 签名安装。
+- `build-ios-ipa.sh` 生成的未签名 IPA（`dist/ios/Voxline-unsigned.ipa`）专供个人侧载使用。可通过 [AltStore](https://altstore.io)、[SideStore](https://sidestore.io)、[Sideloadly](https://sideloadly.io) 或 Xcode 使用个人 Apple ID 签名安装。
 - **Bundle ID 约定**：Mac Bundle ID 固定为 `dev.voxline.app`，iOS 固定为 `dev.voxline.ios`。版本号在根目录 `Version.xcconfig` 中统一维护。
 
 ---
@@ -81,7 +93,7 @@ swift test --filter TaskProcessingQueueTests  # 顺序执行队列生命周期�
 ```bash
 xcodebuild -project Voxline.xcodeproj -scheme VoxlineIOS \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -derivedDataPath build/ios/simulator/DerivedData \
+  -derivedDataPath .build/ios/simulator/DerivedData \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- test
 ```
 
@@ -89,7 +101,7 @@ xcodebuild -project Voxline.xcodeproj -scheme VoxlineIOS \
 通过编译器提取当前源码中调用的本地化 Key，并校验中英文资源完整性：
 ```bash
 swift build --product Voxline -Xswiftc -emit-localized-strings \
-  -Xswiftc -emit-localized-strings-path -Xswiftc "$PWD/build/localization/mac"
-python3 Scripts/check-localization.py build/localization/mac \
-  build/ios/device/DerivedData/Build/Intermediates.noindex/Voxline.build/Debug-iphoneos
+  -Xswiftc -emit-localized-strings-path -Xswiftc "$PWD/.build/localization/mac"
+python3 Scripts/check-localization.py .build/localization/mac \
+  .build/ios/device/DerivedData/Build/Intermediates.noindex/Voxline.build/Debug-iphoneos
 ```

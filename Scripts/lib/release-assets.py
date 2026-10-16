@@ -10,17 +10,19 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[2]
-output = root / "build" / "release"
+output = root / "dist" / "release"
+workspace = root / ".build" / "packaging" / "release"
+workspace.mkdir(parents=True, exist_ok=True)
 output.mkdir(parents=True, exist_ok=True)
 version = (root / "Version.xcconfig").read_text().split("=", 1)[1].strip()
 command = sys.argv[1] if len(sys.argv) > 1 else ""
 if command == "macos" and len(sys.argv) == 3:
     mode = sys.argv[2]
-    app = output / "work" / "mac" / "Voxline.app"
+    app = workspace / "macos" / "Voxline.app"
     info = plistlib.loads((app / "Contents" / "Info.plist").read_bytes())
     if info["CFBundleShortVersionString"] != version:
         raise SystemExit("Mac application version does not match Version.xcconfig")
-    with tempfile.TemporaryDirectory(prefix="archive.", dir=output / "work") as directory:
+    with tempfile.TemporaryDirectory(prefix="archive.", dir=workspace) as directory:
         archive = Path(directory) / f"Voxline-{version}.zip"
         subprocess.run(["ditto", "-c", "-k", "--keepParent", str(app), str(archive)], check=True)
         archive.replace(output / archive.name)
@@ -33,13 +35,13 @@ if command == "macos" and len(sys.argv) == 3:
         "Keep the same signing account and Bundle ID when reinstalling the IPA to preserve app data.\n"
     )
 elif command == "ios" and len(sys.argv) == 2:
-    app = root / "build" / "ios" / "device" / "DerivedData" / "Build" / "Products" / "Release-iphoneos" / "Voxline.app"
+    app = root / ".build" / "ios" / "device" / "DerivedData" / "Build" / "Products" / "Release-iphoneos" / "Voxline.app"
     info = plistlib.loads((app / "Info.plist").read_bytes())
     if info["CFBundleShortVersionString"] != version:
         raise SystemExit("iOS application version does not match Version.xcconfig")
     destination = output / f"Voxline-iOS-{version}.ipa"
     temporary = destination.with_suffix(".ipa.tmp")
-    shutil.copy2(root / "build" / "ios" / "Voxline-unsigned.ipa", temporary)
+    shutil.copy2(root / "dist" / "ios" / "Voxline-unsigned.ipa", temporary)
     temporary.replace(destination)
 elif command == "appcast" and len(sys.argv) == 4:
     tag, notes = sys.argv[2], Path(sys.argv[3])
@@ -49,12 +51,12 @@ elif command == "appcast" and len(sys.argv) == 4:
     if tag != f"v{version}" and not tag.startswith(f"v{version}-"):
         raise SystemExit("Appcast tag must match Version.xcconfig")
     archive = output / f"Voxline-{version}.zip"
-    app = output / "work/mac/Voxline.app"
+    app = workspace / "macos" / "Voxline.app"
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
     if not info.get("SUPublicEDKey"):
         raise SystemExit("The application has no Sparkle public key")
     feed = output / "appcast.xml"
-    with tempfile.TemporaryDirectory(prefix="appcast.", dir=output / "work") as directory:
+    with tempfile.TemporaryDirectory(prefix="appcast.", dir=workspace) as directory:
         directory = Path(directory)
         shutil.copy2(archive, directory / archive.name)
         shutil.copy2(notes, directory / archive.with_suffix(".md").name)

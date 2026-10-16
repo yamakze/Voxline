@@ -9,7 +9,7 @@ fi
 if (( $# > 1 )); then echo "Too many arguments; use --help." >&2; exit 2; fi
 ./Scripts/build-app.sh "${1:-debug}"
 
-app_bundle="$PWD/build/Voxline.app"
+app_bundle="$PWD/dist/macos/Voxline.app"
 app_executable="$app_bundle/Contents/MacOS/Voxline"
 while read -r process_id executable; do
     if [[ "$executable" != "$app_executable" ]]; then continue; fi

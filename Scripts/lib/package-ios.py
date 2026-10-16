@@ -13,9 +13,12 @@ app = Path(sys.argv[1])
 info = plistlib.loads((app / "Info.plist").read_bytes())
 if info["CFBundleIdentifier"] != "dev.voxline.ios":
     raise SystemExit("IPA Bundle ID changed; refusing to replace the existing package")
-output = Path(__file__).resolve().parents[2] / "build" / "ios"
+root = Path(__file__).resolve().parents[2]
+output = root / "dist" / "ios"
 output.mkdir(parents=True, exist_ok=True)
-with tempfile.TemporaryDirectory(prefix="ipa.", dir=output) as directory:
+workspace = root / ".build" / "packaging" / "ios"
+workspace.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="ipa.", dir=workspace) as directory:
     stage = Path(directory)
     payload = stage / "Payload"
     payload.mkdir()

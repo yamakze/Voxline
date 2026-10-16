@@ -1,7 +1,7 @@
 # Swift and Xcode
 .build/
 .swiftpm/
-/build/
+/dist/
 xcuserdata/
 *.xcuserstate
 

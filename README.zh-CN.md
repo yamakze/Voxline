@@ -95,14 +95,14 @@ brew upgrade --cask yamakze/voxline/voxline
 
 ```bash
 # macOS
-make build            # 编译 Mac 应用包（build/Voxline.app）
+make build            # 编译 Mac 应用包（dist/macos/Voxline.app）
 make run              # 重新编译并直接启动 Mac 应用
 make test             # 运行核心工作流与领域测试套件
 
 # iOS
 make ios              # 为 iOS 模拟器构建
 make ios-run          # 在 iOS 模拟器中安装并启动
-make ipa              # 构建未签名的 Release IPA（build/ios/Voxline-unsigned.ipa）
+make ipa              # 构建未签名的 Release IPA（dist/ios/Voxline-unsigned.ipa）
 ```
 
 ## 架构设计

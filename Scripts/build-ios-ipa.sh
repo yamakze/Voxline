@@ -17,5 +17,5 @@ case "$configuration" in
     release) xcode_configuration=Release ;;
 esac
 
-app_bundle="$PWD/build/ios/device/DerivedData/Build/Products/$xcode_configuration-iphoneos/Voxline.app"
+app_bundle="$PWD/.build/ios/device/DerivedData/Build/Products/$xcode_configuration-iphoneos/Voxline.app"
 python3 Scripts/lib/package-ios.py "$app_bundle"

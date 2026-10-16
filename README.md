@@ -95,14 +95,14 @@ Requires macOS 15+ and Xcode 26.2+ (Swift 6.2).
 
 ```bash
 # macOS
-make build            # Build the Mac app bundle (build/Voxline.app)
+make build            # Build the Mac app bundle (dist/macos/Voxline.app)
 make run              # Rebuild and launch the Mac app
 make test             # Run core test suites
 
 # iOS
 make ios              # Build for iOS Simulator
 make ios-run          # Launch inside iOS Simulator
-make ipa              # Build unsigned Release IPA (build/ios/Voxline-unsigned.ipa)
+make ipa              # Build unsigned Release IPA (dist/ios/Voxline-unsigned.ipa)
 ```
 
 ## Architecture

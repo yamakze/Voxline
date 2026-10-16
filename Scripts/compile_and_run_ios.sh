@@ -43,7 +43,7 @@ case "$configuration" in
     debug) xcode_configuration=Debug ;;
     release) xcode_configuration=Release ;;
 esac
-app_bundle="$PWD/build/ios/simulator/DerivedData/Build/Products/$xcode_configuration-iphonesimulator/Voxline.app"
+app_bundle="$PWD/.build/ios/simulator/DerivedData/Build/Products/$xcode_configuration-iphonesimulator/Voxline.app"
 device_state=$(xcrun simctl list devices available --json | python3 -c '
 import json, sys
 print(next(d["state"] for group in json.load(sys.stdin)["devices"].values()

@@ -16,9 +16,11 @@ version = os.environ.get("VOXLINE_BUILD_VERSION")
 if not identity or not version:
     raise SystemExit("Use Scripts/build-app.sh to select a fixed signing identity and build version")
 binary_directories = [Path(directory) for directory in sys.argv[2:]]
-output = Path(os.environ.get("VOXLINE_MAC_OUTPUT_DIRECTORY", root / "build"))
+output = Path(os.environ.get("VOXLINE_MAC_OUTPUT_DIRECTORY", root / "dist" / "macos"))
 output.mkdir(parents=True, exist_ok=True)
-staging = tempfile.TemporaryDirectory(prefix="mac-package.", dir=output)
+workspace = root / ".build" / "packaging" / "macos"
+workspace.mkdir(parents=True, exist_ok=True)
+staging = tempfile.TemporaryDirectory(prefix="app.", dir=workspace)
 bundle = Path(staging.name) / "Voxline.app"
 contents = bundle / "Contents"
 (contents / "MacOS").mkdir(parents=True, exist_ok=True)
@@ -117,7 +119,7 @@ identity_manifest.replace(output / "Voxline.identity.json")
 staging.cleanup()
 subprocess.run(["touch", str(bundle)], check=True)
 lsregister = Path("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
-if output == root / "build" and lsregister.is_file():
+if output == root / "dist" / "macos" and lsregister.is_file():
     subprocess.run([str(lsregister), "-f", "-R", "-trusted", str(bundle)], check=True)
 print(bundle)
 print(f"Bundle ID: {metadata['CFBundleIdentifier']} · Build: {version} · Signer: {identity}")

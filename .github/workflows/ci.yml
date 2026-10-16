@@ -38,4 +38,4 @@ jobs:
       - name: Build unsigned iOS application
         run: Scripts/build-ios.sh device debug
       - name: Check localization
-        run: python3 Scripts/check-localization.py build/ios/device/DerivedData/Build/Intermediates.noindex/Voxline.build/Debug-iphoneos
+        run: python3 Scripts/check-localization.py .build/ios/device/DerivedData/Build/Intermediates.noindex/Voxline.build/Debug-iphoneos

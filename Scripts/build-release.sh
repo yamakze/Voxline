@@ -14,12 +14,13 @@ case "$mode" in adhoc|notarized) ;; *) echo "Use --help." >&2; exit 2 ;; esac
 if (( $# > 2 )); then echo "Too many arguments; use --help." >&2; exit 2; fi
 export VOXLINE_BUILD_VERSION
 VOXLINE_BUILD_VERSION=$(python3 Scripts/lib/build-metadata.py version)
-output="$PWD/build/release"
-mkdir -p "$output"
+output="$PWD/dist/release"
+work="$PWD/.build/packaging/release"
+mkdir -p "$output" "$work"
 if [[ "$platform" != ios ]]; then
     rm -f "$output/appcast.xml"
     export VOXLINE_MAC_ARCHS="${VOXLINE_MAC_ARCHS:-arm64 x86_64}"
-    export VOXLINE_MAC_OUTPUT_DIRECTORY="$output/work/mac"
+    export VOXLINE_MAC_OUTPUT_DIRECTORY="$work/macos"
     if [[ "$mode" == notarized ]]; then
         : "${VOXLINE_MAC_SIGN_IDENTITY:?Set a Developer ID Application signing identity}"
         : "${VOXLINE_NOTARY_PROFILE:?Store notarytool credentials and set their profile name}"
@@ -35,12 +36,12 @@ if [[ "$platform" != ios ]]; then
     Scripts/build-app.sh release
     app="$VOXLINE_MAC_OUTPUT_DIRECTORY/Voxline.app"
     if [[ "$mode" == notarized ]]; then
-        ditto -c -k --keepParent "$app" "$output/work/notarize.zip"
+        ditto -c -k --keepParent "$app" "$work/notarize.zip"
         notary_arguments=(--keychain-profile "$VOXLINE_NOTARY_PROFILE")
         if [[ -n "${VOXLINE_NOTARY_KEYCHAIN:-}" ]]; then
             notary_arguments+=(--keychain "$VOXLINE_NOTARY_KEYCHAIN")
         fi
-        xcrun notarytool submit "$output/work/notarize.zip" "${notary_arguments[@]}" --wait
+        xcrun notarytool submit "$work/notarize.zip" "${notary_arguments[@]}" --wait
         xcrun stapler staple "$app"
         xcrun stapler validate "$app"
         spctl --assess --type execute --verbose "$app"
