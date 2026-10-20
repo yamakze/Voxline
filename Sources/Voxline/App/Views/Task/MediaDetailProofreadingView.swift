@@ -16,6 +16,7 @@ public struct MediaDetailProofreadingView: View {
     @State private var playbackController = MediaPlaybackController()
     @State private var isScrollingTranscript = false
     @State private var queue = TaskProcessingQueue.shared
+    @FocusState private var isSearchFocused: Bool
 
     // Sheets
     @State private var showTimeOffsetSheet = false
@@ -52,6 +53,7 @@ public struct MediaDetailProofreadingView: View {
                 .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .focusedSceneValue(\.findSubtitle, { isSearchFocused = true })
         .toolbar {
             if let onBack {
                 ToolbarItem(placement: .navigation) {
@@ -379,6 +381,7 @@ public struct MediaDetailProofreadingView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextField(String(localized: "在字幕中搜索…", bundle: appLocalizationBundle), text: $session.searchQuery)
+                        .focused($isSearchFocused)
                         .textFieldStyle(.plain)
                         .font(.caption)
                     if !session.searchQuery.isEmpty {
@@ -458,7 +461,7 @@ public struct MediaDetailProofreadingView: View {
                         isScrollingTranscript = phase == .tracking || phase == .interacting || phase == .decelerating
                     }
                     .onChange(of: playbackController.activeSubtitle?.id) { _, newActiveID in
-                        if let newActiveID, !isScrollingTranscript {
+                        if let newActiveID, !isScrollingTranscript, session.editingSnapshot == nil, !session.isSelecting {
                             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                                 proxy.scrollTo(newActiveID, anchor: .center)
                             }

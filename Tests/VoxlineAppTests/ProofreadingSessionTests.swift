@@ -14,7 +14,8 @@ struct ProofreadingSessionTests {
         let task = ProcessingTask(title: "Proofreading", items: [item])
         let library = TaskLibrary(tasksDirectory: root)
         try library.save(task)
-        let session = ProofreadingSession(item: item)
+        let session = ProofreadingSession(previewKind: .source)
+        session.updateSubtitles(item.cues)
         #expect(session.hasUntranslatedCues)
         session.searchQuery = "人工译文"
         #expect(session.transcriptRows.isEmpty)
@@ -50,6 +51,16 @@ struct ProofreadingSessionTests {
         session.updateSubtitles(saved.cues) // The page receives the same successful save via observation.
         session.searchQuery = "Corrected"
         #expect(session.transcriptRows.first?.cue == saved.cues.first)
+        session.beginEditing(try #require(saved.cues.first))
+        session.sourceDraft = "Unsaved draft"
+        #expect(!session.canUndo(in: saved))
+        #expect(throws: CheckpointError.editedCue) {
+            try session.undo(in: saved) { _, _ in Issue.record("Subtitle undo interrupted text editing") }
+        }
+        #expect(session.sourceDraft == "Unsaved draft")
+        #expect(TaskLibrary(tasksDirectory: root).task(for: task.id)?.items.first == saved)
+        session.cancelEditing()
+        #expect(session.canUndo(in: saved))
         try session.undo(in: saved) { edited, original in
             try library.updateItem(edited, taskID: task.id, comparedTo: original)
         }

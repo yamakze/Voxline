@@ -654,7 +654,13 @@ public struct TaskConfigurationView: View {
                         .padding(.vertical, 2)
 
                         if showAdvancedTranslationOptions {
-                            TextField(String(localized: "每批字幕数", bundle: appLocalizationBundle), value: $session.translationBatchSize, format: .number)
+                            LabeledContent(String(localized: "每批字幕数", bundle: appLocalizationBundle)) {
+                                TextField("", value: $session.translationBatchSize, format: .number)
+                                    .multilineTextAlignment(.trailing)
+                                    #if os(iOS)
+                                    .keyboardType(.numberPad)
+                                    #endif
+                            }
 
                             LabeledContent {
                                 VStack(alignment: .trailing, spacing: 4) {

@@ -366,7 +366,8 @@ struct IOSMediaDetailView: View {
                 isScrollingTranscript = phase == .tracking || phase == .interacting || phase == .decelerating
             }
             .onChange(of: playback.activeSubtitle?.id) { _, newID in
-                if let newID, playback.isPlaying, !isScrollingTranscript {
+                if let newID, playback.isPlaying, !isScrollingTranscript,
+                   session.editingSnapshot == nil, !session.isSelecting {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
                         proxy.scrollTo(newID, anchor: .center)
                     }

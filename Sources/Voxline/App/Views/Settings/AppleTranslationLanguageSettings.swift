@@ -109,8 +109,14 @@ struct AppleTranslationLanguageSettings: View {
                 .padding(.vertical, 2)
 
                 if showAdvanced {
-                    TextField(String(localized: "每批字幕数", bundle: appLocalizationBundle), value: $batchSize, format: .number)
-                        .disabled(isPreparing)
+                    LabeledContent(String(localized: "每批字幕数", bundle: appLocalizationBundle)) {
+                        TextField("", value: $batchSize, format: .number)
+                            .multilineTextAlignment(.trailing)
+                            #if os(iOS)
+                            .keyboardType(.numberPad)
+                            #endif
+                            .disabled(isPreparing)
+                    }
                 }
             }
             if let statusMessage, status != nil {

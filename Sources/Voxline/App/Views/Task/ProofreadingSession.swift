@@ -86,11 +86,11 @@ final class ProofreadingSession {
     }
 
     func canUndo(in item: TaskMediaItem) -> Bool {
-        lastEdit?.after == item
+        editingSnapshot == nil && lastEdit?.after == item
     }
 
     func undo(in item: TaskMediaItem, onCommit: (TaskMediaItem, TaskMediaItem) throws -> Void) throws {
-        guard let edit = lastEdit, edit.after == item else { throw CheckpointError.editedCue }
+        guard editingSnapshot == nil, let edit = lastEdit, edit.after == item else { throw CheckpointError.editedCue }
         try onCommit(edit.before, item)
         updateSubtitles(edit.before.cues)
         lastEdit = nil

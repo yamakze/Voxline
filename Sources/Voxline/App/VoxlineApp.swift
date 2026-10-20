@@ -31,7 +31,7 @@ struct VoxlineApp: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1140, height: 740)
         .commands {
-            TaskNavigationCommands()
+            MacProofreadingCommands()
             CommandGroup(after: .appInfo) {
                 MacCheckForUpdatesButton()
             }
@@ -50,13 +50,3 @@ struct VoxlineApp: App {
         #endif
     }
 }
-
-#if os(macOS)
-struct TaskNavigationCommands: Commands {
-    var body: some Commands {
-        CommandGroup(after: .newItem) {
-            Divider()
-        }
-    }
-}
-#endif
