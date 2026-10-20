@@ -73,7 +73,7 @@ struct SubtitleBurnInSheet: View {
                 Button(String(localized: "选择目录…", bundle: appLocalizationBundle)) { showDirectoryPicker = true }.disabled(session.isExporting)
             }
             if let errorMessage = session.errorMessage { Text(errorMessage).foregroundStyle(.red).textSelection(.enabled) }
-            if session.isExporting { ProgressView(value: session.progress) }
+            if session.isExporting { BurnInProgressBar(session: session) }
             if let exportedURL = session.exportedURL {
                 Label(String(localized: "已导出：\(exportedURL.lastPathComponent)", bundle: appLocalizationBundle), systemImage: "checkmark.circle.fill")
                 Button(String(localized: "在 Finder 中显示", bundle: appLocalizationBundle)) { NSWorkspace.shared.activateFileViewerSelecting([exportedURL]) }
@@ -81,7 +81,7 @@ struct SubtitleBurnInSheet: View {
             HStack {
                 if session.isPreparing || session.isExporting {
                     Button(String(localized: "停止", bundle: appLocalizationBundle)) { session.cancel() }
-                    Text(session.isExporting ? String(localized: "正在烧录 \(Int(session.progress * 100))%", bundle: appLocalizationBundle) : String(localized: "正在准备画面…", bundle: appLocalizationBundle)).font(.caption)
+                    BurnInProgressText(session: session)
                 }
                 Spacer()
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
@@ -116,6 +116,25 @@ struct SubtitleBurnInSheet: View {
         session.startExport(to: directory.appendingPathComponent(session.fileName), accessDirectory: directory, allowOverwrite: allowOverwrite)
     }
 
+}
+
+private struct BurnInProgressBar: View {
+    let session: SubtitleBurnInSession
+
+    var body: some View {
+        ProgressView(value: session.progress)
+    }
+}
+
+private struct BurnInProgressText: View {
+    let session: SubtitleBurnInSession
+
+    var body: some View {
+        Text(session.isExporting
+             ? String(localized: "正在烧录 \(Int(session.progress * 100))%", bundle: appLocalizationBundle)
+             : String(localized: "正在准备画面…", bundle: appLocalizationBundle))
+            .font(.caption)
+    }
 }
 
 #endif

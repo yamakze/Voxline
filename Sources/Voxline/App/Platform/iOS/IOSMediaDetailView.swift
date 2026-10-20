@@ -30,7 +30,10 @@ struct IOSMediaDetailView: View {
         self.library = library
         self.taskID = taskID
         self.mediaID = mediaID
-        _session = State(initialValue: ProofreadingSession(item: library.task(taskID)?.items.first { $0.id == mediaID }))
+        let item = library.task(taskID)?.items.first { $0.id == mediaID }
+        _session = State(initialValue: ProofreadingSession(
+            previewKind: item?.cues.contains(where: \.hasTranslation) == true ? .bilingual : .source
+        ))
     }
 
     private var task: ProcessingTask? { library.task(taskID) }
@@ -173,6 +176,7 @@ struct IOSMediaDetailView: View {
                 session.updateSubtitles(cues)
                 playback.updateSubtitles(cues)
             }
+            .onAppear { session.updateSubtitles(item.cues) }
             .onDisappear { playback.releaseMedia() }
         } else {
             ContentUnavailableView(String(localized: "媒体不存在", bundle: appLocalizationBundle), systemImage: "film")

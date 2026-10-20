@@ -34,7 +34,9 @@ public struct MediaDetailProofreadingView: View {
         self.item = item
         self.onCommit = onCommit
         self.onBack = onBack
-        _session = State(initialValue: ProofreadingSession(item: item))
+        _session = State(initialValue: ProofreadingSession(
+            previewKind: item.cues.contains(where: \.hasTranslation) ? .bilingual : .source
+        ))
     }
 
     public var body: some View {
@@ -165,6 +167,7 @@ public struct MediaDetailProofreadingView: View {
             session.updateSubtitles(cues)
             playbackController.updateSubtitles(cues)
         }
+        .onAppear { session.updateSubtitles(item.cues) }
         .onDisappear {
             playbackController.releaseMedia()
         }

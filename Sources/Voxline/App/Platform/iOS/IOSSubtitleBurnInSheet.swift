@@ -196,18 +196,7 @@ struct IOSSubtitleBurnInSheet: View {
             }
 
             if session.isExporting {
-                VStack(spacing: 8) {
-                    ProgressView(value: session.progress)
-                    HStack {
-                        Text(String(format: String(localized: "正在导出 %.0f%%", bundle: appLocalizationBundle), locale: .current, session.progress * 100))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button(String(localized: "取消", bundle: appLocalizationBundle)) { session.cancel() }
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
+                IOSBurnInExportProgress(session: session)
                 .padding(.vertical, 4)
             } else if let exportedURL = session.exportedURL {
                 VStack(spacing: 12) {
@@ -260,6 +249,25 @@ struct IOSSubtitleBurnInSheet: View {
 
     private func formatTime(_ milliseconds: Int64) -> String {
         Duration.milliseconds(milliseconds).formatted(.time(pattern: .minuteSecond(padMinuteToLength: 2)))
+    }
+}
+
+private struct IOSBurnInExportProgress: View {
+    let session: SubtitleBurnInSession
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ProgressView(value: session.progress)
+            HStack {
+                Text(String(format: String(localized: "正在导出 %.0f%%", bundle: appLocalizationBundle), locale: .current, session.progress * 100))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) { session.cancel() }
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
     }
 }
 

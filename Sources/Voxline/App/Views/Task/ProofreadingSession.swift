@@ -27,8 +27,12 @@ final class ProofreadingSession {
     var retranslatingCues: [SubtitleCue]?
     private var lastEdit: (before: TaskMediaItem, after: TaskMediaItem)?
 
-    init(item: TaskMediaItem?) {
-        previewKind = item?.cues.contains(where: \.hasTranslation) == true ? .bilingual : .source
+    init(previewKind: SRTOutputKind) {
+        self.previewKind = previewKind
+    }
+
+    convenience init(item: TaskMediaItem?) {
+        self.init(previewKind: item?.cues.contains(where: \.hasTranslation) == true ? .bilingual : .source)
         updateSubtitles(item?.cues ?? [])
     }
 

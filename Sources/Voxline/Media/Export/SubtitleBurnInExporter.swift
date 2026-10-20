@@ -151,7 +151,7 @@ public enum SubtitleBurnInExporter {
                 // AVFoundation supplies a clamped CI image with an infinite extent.
                 let sourceFrame = request.sourceImage.cropped(to: CGRect(origin: .zero, size: request.renderSize))
                 let frame = try renderer.frame(source: sourceFrame, time: request.compositionTime.seconds)
-                request.finish(with: frame, context: nil)
+                request.finish(with: frame, context: renderer.context)
             } catch { request.finish(with: error) }
         }
         let size = videoComposition.renderSize
@@ -259,6 +259,8 @@ public enum SubtitleBurnInExporter {
 
 /// Core Text lays out the active interval on the render thread; one overlay is retained.
 fileprivate final class BurnInTextRenderer: @unchecked Sendable {
+    // One rendering context per composition; retain subtitle overlays, not intermediate video frames.
+    let context = CIContext(options: [.cacheIntermediates: false, .name: "Voxline Subtitle Burn-In"])
     private let cues: [SubtitleCue]
     private let timeline: SubtitleTimeline
     private let options: BurnInOptions
@@ -273,29 +275,30 @@ fileprivate final class BurnInTextRenderer: @unchecked Sendable {
 
     func frame(source: CIImage, time: Double) throws -> CIImage {
         guard let interval = timeline.interval(atMilliseconds: Int64((time * 1000).rounded(.down))) else { return source }
-        lock.lock()
-        defer { lock.unlock() }
-        let size = source.extent.size
-        if cachedIndices != interval.cueIndices || cachedSize != size {
-            let text = try interval.cueIndices.map { try SubtitleExporter.subtitleText(for: cues[$0], kind: options.kind) }.joined(separator: "\n")
-            let (frame, width, height, padding) = try layout(text: text, size: size)
-            guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
-                                          bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
-                throw BurnInError.failure(String(localized: "无法分配字幕绘制缓冲。", bundle: voxlineLocalizationBundle))
+        let overlay: CIImage = try lock.withLock {
+            let size = source.extent.size
+            if cachedIndices != interval.cueIndices || cachedSize != size {
+                let text = try interval.cueIndices.map { try SubtitleExporter.subtitleText(for: cues[$0], kind: options.kind) }.joined(separator: "\n")
+                let (frame, width, height, padding) = try layout(text: text, size: size)
+                guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                              bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+                    throw BurnInError.failure(String(localized: "无法分配字幕绘制缓冲。", bundle: voxlineLocalizationBundle))
+                }
+                context.setFillColor(CGColor(gray: 0, alpha: 0.72))
+                context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+                context.translateBy(x: padding, y: padding)
+                CTFrameDraw(frame, context)
+                guard let image = context.makeImage() else { throw BurnInError.failure(String(localized: "无法生成字幕图像。", bundle: voxlineLocalizationBundle)) }
+                cachedOverlay = CIImage(cgImage: image).transformed(by: CGAffineTransform(
+                    translationX: source.extent.midX - Double(width) / 2,
+                    y: source.extent.minY + size.height * 0.05))
+                cachedIndices = interval.cueIndices
+                cachedSize = size
             }
-            context.setFillColor(CGColor(gray: 0, alpha: 0.72))
-            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-            context.translateBy(x: padding, y: padding)
-            CTFrameDraw(frame, context)
-            guard let image = context.makeImage() else { throw BurnInError.failure(String(localized: "无法生成字幕图像。", bundle: voxlineLocalizationBundle)) }
-            cachedOverlay = CIImage(cgImage: image).transformed(by: CGAffineTransform(
-                translationX: source.extent.midX - Double(width) / 2,
-                y: source.extent.minY + size.height * 0.05))
-            cachedIndices = interval.cueIndices
-            cachedSize = size
+            guard let overlay = cachedOverlay else { throw BurnInError.failure(String(localized: "字幕图像未生成。", bundle: voxlineLocalizationBundle)) }
+            return overlay
         }
-        guard let overlay = cachedOverlay else { throw BurnInError.failure(String(localized: "字幕图像未生成。", bundle: voxlineLocalizationBundle)) }
         return overlay.composited(over: source).cropped(to: source.extent)
     }
 
