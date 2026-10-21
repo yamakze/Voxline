@@ -21,6 +21,8 @@ public final class MediaPlaybackController {
     public private(set) var currentTimeSeconds: Double = 0
     public private(set) var durationSeconds: Double = 0
     public private(set) var playbackRate: Float = 1
+    public private(set) var volume: Float = 1.0
+    public private(set) var isMuted: Bool = false
     public var activeSubtitle: SubtitleCue? { activeSubtitles.last }
     public private(set) var activeSubtitles: [SubtitleCue] = []
     public private(set) var completedSubtitleEndMilliseconds: Int64 = 0
@@ -29,6 +31,7 @@ public final class MediaPlaybackController {
     @ObservationIgnored private var subtitleTimeline = SubtitleTimeline(cues: [])
     @ObservationIgnored private var subtitleEndTimes: [Int64] = []
     @ObservationIgnored private var activeCueIndices: [Int]?
+    @ObservationIgnored private var previousVolume: Float = 1.0
 
     private let mediaStore: LocalMediaStore
     private let inspector: MediaInspector
@@ -108,6 +111,8 @@ public final class MediaPlaybackController {
             durationSeconds = Double(inspection.durationMilliseconds) / 1000
             let playerItem = AVPlayerItem(asset: composition)
             let newPlayer = AVPlayer(playerItem: playerItem)
+            newPlayer.volume = isMuted ? 0 : volume
+            newPlayer.isMuted = isMuted
             player = newPlayer
             mediaURL = bookmark.url
             mediaAccessStarted = accessStarted
@@ -241,6 +246,34 @@ public final class MediaPlaybackController {
         guard rate.isFinite, rate > 0 else { return }
         playbackRate = rate
         if let player, player.timeControlStatus != .paused { player.rate = rate }
+    }
+
+    public func setVolume(_ value: Float) {
+        let clamped = max(0.0, min(value, 1.0))
+        volume = clamped
+        if clamped > 0 {
+            previousVolume = clamped
+            if isMuted {
+                isMuted = false
+                player?.isMuted = false
+            }
+        }
+        player?.volume = clamped
+    }
+
+    public func toggleMute() {
+        if isMuted {
+            isMuted = false
+            if volume == 0 {
+                volume = previousVolume > 0 ? previousVolume : 0.5
+            }
+            player?.volume = volume
+            player?.isMuted = false
+        } else {
+            previousVolume = volume
+            isMuted = true
+            player?.isMuted = true
+        }
     }
 
     public func updateSubtitles(_ cues: [SubtitleCue]) {

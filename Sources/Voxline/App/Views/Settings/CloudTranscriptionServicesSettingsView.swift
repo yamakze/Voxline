@@ -91,6 +91,13 @@ public struct CloudTranscriptionServicesSettingsView: View {
         }
         #if os(iOS)
         .navigationTitle(String(localized: "云端转写服务", bundle: appLocalizationBundle))
+        #else
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Text(String(localized: "云端转写", bundle: appLocalizationBundle))
+                    .font(.headline)
+            }
+        }
         #endif
         .sheet(isPresented: $isAddingService) {
             CloudTranscriptionServiceEditorModal(service: nil, store: store)

@@ -97,6 +97,13 @@ public struct TranslationServicesSettingsView: View {
         }
         #if os(iOS)
         .navigationTitle(String(localized: "翻译服务", bundle: appLocalizationBundle))
+        #else
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Text(String(localized: "翻译服务", bundle: appLocalizationBundle))
+                    .font(.headline)
+            }
+        }
         #endif
         .onDisappear { connectionTask?.cancel() }
         .sheet(isPresented: $isAddingService) {

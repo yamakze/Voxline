@@ -9,8 +9,8 @@ public struct TaskLibraryView: View {
     @State private var deletingEntry: TaskLibrary.Entry?
     @State private var conflictResolutionTaskID: UUID?
     @State private var errorMessage: String?
-    @State private var targetedEntryID: String?
     @State private var hoveredEntryID: String?
+    @State private var isEditing = false
     var onSelectTask: ((ProcessingTask) -> Void)?
     var onNewTask: (() -> Void)?
     var onOpenFile: (() -> Void)?
@@ -68,7 +68,7 @@ public struct TaskLibraryView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Text(String(localized: "任务队列", bundle: appLocalizationBundle))
+                Text(String(localized: "全部任务", bundle: appLocalizationBundle))
                     .font(.headline)
             }
 
@@ -76,21 +76,17 @@ public struct TaskLibraryView: View {
                 Color.clear.frame(width: 1, height: 1)
             }
 
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    onOpenFile?()
-                } label: {
-                    Image(systemName: "folder")
+            ToolbarItem(placement: .primaryAction) {
+                if !library.entries.isEmpty {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isEditing.toggle()
+                        }
+                    } label: {
+                        Text(isEditing ? String(localized: "完成", bundle: appLocalizationBundle) : String(localized: "编辑", bundle: appLocalizationBundle))
+                            .fontWeight(isEditing ? .semibold : .regular)
+                    }
                 }
-                .help(String(localized: "打开已有 .voxline 任务文件", bundle: appLocalizationBundle))
-
-                Button {
-                    onNewTask?()
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .help(String(localized: "新建任务 (⌘N)", bundle: appLocalizationBundle))
-                .keyboardShortcut("n", modifiers: [.command])
             }
         }
         .task { await library.refresh() }
@@ -102,6 +98,9 @@ public struct TaskLibraryView: View {
                     guard TaskProcessingQueue.shared.taskID != entry.taskID else { throw QueueError.busy }
                     try library.delete(entryID: entry.id)
                     deletingEntry = nil
+                    if library.entries.isEmpty {
+                        isEditing = false
+                    }
                 } catch { errorMessage = error.localizedDescription }
             }
             Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) { deletingEntry = nil }
@@ -129,6 +128,20 @@ public struct TaskLibraryView: View {
         let isPlaceholder = entry.task == nil
 
         HStack(alignment: .center, spacing: 14) {
+            if isEditing {
+                Button {
+                    deletingEntry = entry
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.plain)
+                .help(String(localized: "删除任务", bundle: appLocalizationBundle))
+                .disabled(TaskProcessingQueue.shared.taskID == entry.taskID)
+                .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .scale.combined(with: .opacity)))
+            }
+
             Image(systemName: isPlaceholder ? "icloud.and.arrow.down" : "film.stack")
                 .font(.title2)
                 .foregroundStyle(Color.voxlineAccent)
@@ -197,16 +210,41 @@ public struct TaskLibraryView: View {
                 TaskStatusBadge(status: task.status)
             }
 
-            Image(systemName: "chevron.right")
-                .font(.caption.bold())
-                .foregroundStyle(.tertiary)
+            if isEditing {
+                HStack(spacing: 8) {
+                    Button {
+                        moveUp(entry: entry)
+                    } label: {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .help(String(localized: "上移", bundle: appLocalizationBundle))
+                    .disabled(library.entries.first?.id == entry.id)
+
+                    Button {
+                        moveDown(entry: entry)
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .help(String(localized: "下移", bundle: appLocalizationBundle))
+                    .disabled(library.entries.last?.id == entry.id)
+                }
+                .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .scale.combined(with: .opacity)))
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .liquidGlassSurface()
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(rowBorderColor(for: entry.id), lineWidth: targetedEntryID == entry.id ? 2 : 1)
+                .strokeBorder(rowBorderColor(for: entry.id), lineWidth: 1)
         )
         .onHover { isHovered in
             withAnimation(.easeInOut(duration: 0.15)) {
@@ -219,6 +257,7 @@ public struct TaskLibraryView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
+            guard !isEditing else { return }
             if let task = entry.task {
                 onSelectTask?(task)
             } else if let url = entry.url {
@@ -230,17 +269,18 @@ public struct TaskLibraryView: View {
                 }
             }
         }
-        .focusable(entry.task != nil, interactions: .activate)
+        .focusable(!isEditing && entry.task != nil, interactions: .activate)
         .onKeyPress(keys: [.space, .return]) { _ in
-            guard let task = entry.task else { return .ignored }
+            guard !isEditing, let task = entry.task else { return .ignored }
             onSelectTask?(task)
             return .handled
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: isEditing ? .contain : .ignore)
         .accessibilityLabel(entry.title)
         .accessibilityValue(entry.error ?? "")
-        .accessibilityAddTraits(entry.task == nil ? [] : .isButton)
+        .accessibilityAddTraits(!isEditing && entry.task != nil ? .isButton : [])
         .accessibilityAction {
+            guard !isEditing else { return }
             if let task = entry.task {
                 onSelectTask?(task)
             }
@@ -266,29 +306,37 @@ public struct TaskLibraryView: View {
             Button(String(localized: "删除", bundle: appLocalizationBundle), systemImage: "trash", role: .destructive) { deletingEntry = entry }
                 .disabled(TaskProcessingQueue.shared.taskID == entry.taskID)
         }
-        .draggable(entry.id)
-        .dropDestination(for: String.self) { ids, _ in
-            guard let id = ids.first, library.entries.contains(where: { $0.id == id }) else { return false }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                do {
-                    try library.move(entryID: id, to: entry.id)
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-            return true
-        } isTargeted: { targeted in
-            targetedEntryID = targeted ? entry.id : (targetedEntryID == entry.id ? nil : targetedEntryID)
-        }
     }
 
     private func rowBorderColor(for entryID: String) -> Color {
-        if targetedEntryID == entryID {
-            return Color.voxlineAccent
-        } else if hoveredEntryID == entryID {
+        if hoveredEntryID == entryID {
             return Color.voxlineAccent.opacity(0.35)
         } else {
             return Color.white.opacity(0.06)
+        }
+    }
+
+    private func moveUp(entry: TaskLibrary.Entry) {
+        guard let index = library.entries.firstIndex(where: { $0.id == entry.id }), index > 0 else { return }
+        let target = library.entries[index - 1]
+        withAnimation(.easeInOut(duration: 0.2)) {
+            do {
+                try library.move(entryID: entry.id, to: target.id)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func moveDown(entry: TaskLibrary.Entry) {
+        guard let index = library.entries.firstIndex(where: { $0.id == entry.id }), index < library.entries.count - 1 else { return }
+        let target = library.entries[index + 1]
+        withAnimation(.easeInOut(duration: 0.2)) {
+            do {
+                try library.move(entryID: entry.id, to: target.id)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

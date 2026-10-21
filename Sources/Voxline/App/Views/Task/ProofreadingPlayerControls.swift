@@ -1,5 +1,8 @@
 import SwiftUI
 import VoxlineMedia
+#if os(macOS)
+import AppKit
+#endif
 
 struct ProofreadingPlayerControls: View {
     @Bindable var playback: MediaPlaybackController
@@ -8,6 +11,7 @@ struct ProofreadingPlayerControls: View {
     enum Style {
         case capsule
         case card
+        case docked
     }
 
     var body: some View {
@@ -16,6 +20,8 @@ struct ProofreadingPlayerControls: View {
             capsuleContent
         case .card:
             cardContent
+        case .docked:
+            dockedContent
         }
     }
 
@@ -156,4 +162,161 @@ struct ProofreadingPlayerControls: View {
         #endif
         .menuIndicator(.hidden)
     }
+
+    // MARK: - Docked Style (macOS dedicated fixed player bar)
+    private var dockedContent: some View {
+        ViewThatFits(in: .horizontal) {
+            // Wide player: Single-row layout
+            HStack(spacing: 10) {
+                dockedTransport
+                dockedTime.fixedSize()
+                dockedProgress.frame(minWidth: 70)
+                speedMenu
+                volumeControl
+                #if os(macOS)
+                fullscreenButton
+                #endif
+            }
+
+            // Narrow player: Two-row compact layout
+            VStack(spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(playback.formattedCurrentTime)
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.primary)
+                    dockedProgress
+                    Text(playback.formattedDuration)
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    dockedTransport
+                    Spacer(minLength: 4)
+                    speedMenu
+                    volumeControl
+                    #if os(macOS)
+                    fullscreenButton
+                    #endif
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.regularMaterial)
+        .overlay(alignment: .top) { Divider() }
+        .disabled(!playback.isReady)
+    }
+
+    private var dockedTransport: some View {
+        HStack(spacing: 10) {
+            Button {
+                playback.seekRelative(by: -5.0)
+            } label: {
+                Image(systemName: "gobackward.5")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "快退 5 秒", bundle: appLocalizationBundle))
+            .help(String(localized: "快退 5 秒", bundle: appLocalizationBundle))
+
+            Button {
+                playback.togglePlayPause()
+            } label: {
+                Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(Color.voxlineAccent, in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(playback.isPlaying ? String(localized: "暂停", bundle: appLocalizationBundle) : String(localized: "播放", bundle: appLocalizationBundle))
+            .help(playback.isPlaying ? String(localized: "暂停 (空格键)", bundle: appLocalizationBundle) : String(localized: "播放 (空格键)", bundle: appLocalizationBundle))
+
+            Button {
+                playback.seekRelative(by: 5.0)
+            } label: {
+                Image(systemName: "goforward.5")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "快进 5 秒", bundle: appLocalizationBundle))
+            .help(String(localized: "快进 5 秒", bundle: appLocalizationBundle))
+        }
+        .fixedSize()
+    }
+
+    private var dockedTime: some View {
+        HStack(spacing: 3) {
+            Text(playback.formattedCurrentTime)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.primary)
+            Text("/")
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(.tertiary)
+            Text(playback.formattedDuration)
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var dockedProgress: some View {
+        Slider(
+            value: Binding(
+                get: { playback.currentTimeSeconds },
+                set: { playback.seek(to: $0) }
+            ),
+            in: 0...max(playback.durationSeconds, 1.0)
+        )
+        .controlSize(.mini)
+        .tint(Color.voxlineAccent)
+        .accessibilityLabel(String(localized: "播放进度", bundle: appLocalizationBundle))
+    }
+
+    private var volumeControl: some View {
+        HStack(spacing: 4) {
+            Button {
+                playback.toggleMute()
+            } label: {
+                Image(systemName: playback.isMuted || playback.volume == 0 ? "speaker.slash.fill" : (playback.volume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.2.fill"))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(playback.isMuted ? String(localized: "取消静音", bundle: appLocalizationBundle) : String(localized: "静音", bundle: appLocalizationBundle))
+            .help(playback.isMuted ? String(localized: "取消静音", bundle: appLocalizationBundle) : String(localized: "静音", bundle: appLocalizationBundle))
+
+            Slider(
+                value: Binding(
+                    get: { Double(playback.isMuted ? 0 : playback.volume) },
+                    set: { playback.setVolume(Float($0)) }
+                ),
+                in: 0...1.0
+            )
+            .controlSize(.mini)
+            .frame(width: 48)
+            .accessibilityLabel(String(localized: "音量", bundle: appLocalizationBundle))
+        }
+    }
+
+    #if os(macOS)
+    private var fullscreenButton: some View {
+        Button {
+            (NSApp.keyWindow ?? NSApp.mainWindow)?.toggleFullScreen(nil)
+        } label: {
+            Image(systemName: isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isFullScreen ? String(localized: "退出全屏", bundle: appLocalizationBundle) : String(localized: "全屏", bundle: appLocalizationBundle))
+        .help(isFullScreen ? String(localized: "退出全屏", bundle: appLocalizationBundle) : String(localized: "全屏 (⌃⌘F)", bundle: appLocalizationBundle))
+    }
+
+    private var isFullScreen: Bool {
+        (NSApp.keyWindow ?? NSApp.mainWindow)?.styleMask.contains(.fullScreen) == true
+    }
+    #endif
 }

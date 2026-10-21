@@ -12,7 +12,7 @@ public struct MediaDetailProofreadingView: View {
     let item: TaskMediaItem
     let onCommit: (TaskMediaItem, TaskMediaItem) throws -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var session: ProofreadingSession
+    @Bindable private var session: ProofreadingSession
     @State private var playbackController = MediaPlaybackController()
     @State private var isScrollingTranscript = false
     @State private var queue = TaskProcessingQueue.shared
@@ -29,15 +29,13 @@ public struct MediaDetailProofreadingView: View {
 
     public var onBack: (() -> Void)?
 
-    public init(taskID: UUID, initialOutputKind: SRTOutputKind, item: TaskMediaItem, onCommit: @escaping (TaskMediaItem, TaskMediaItem) throws -> Void, onBack: (() -> Void)? = nil) {
+    init(taskID: UUID, initialOutputKind: SRTOutputKind, item: TaskMediaItem, session: ProofreadingSession, onCommit: @escaping (TaskMediaItem, TaskMediaItem) throws -> Void, onBack: (() -> Void)? = nil) {
         self.taskID = taskID
         self.initialOutputKind = initialOutputKind
         self.item = item
         self.onCommit = onCommit
         self.onBack = onBack
-        _session = State(initialValue: ProofreadingSession(
-            previewKind: item.cues.contains(where: \.hasTranslation) ? .bilingual : .source
-        ))
+        self.session = session
     }
 
     public var body: some View {
@@ -220,11 +218,12 @@ public struct MediaDetailProofreadingView: View {
         return String(localized: "未翻译", bundle: appLocalizationBundle)
     }
 
-    // MARK: - QuickTime Player Pane (with Floating Glass Capsule)
+    // MARK: - QuickTime Player Pane (with Docked Controls)
     private var quickTimePlayerPane: some View {
-        ZStack(alignment: .bottom) {
-            // Video or Audio Canvas
-            Group {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottom) {
+                // Video or Audio Canvas
+                Group {
                 if let player = playbackController.player, playbackController.isReady {
                     if item.kind == .video {
                         NativeVideoPlayer(player: player)
@@ -349,16 +348,16 @@ public struct MediaDetailProofreadingView: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 10)
                 .subtitleOverlaySurface()
-                .padding(.bottom, 78) // Positioned above floating capsule
+                .padding(.bottom, 20)
                 .padding(.horizontal, 24)
                 .transition(reduceMotion ? .identity : .opacity)
             }
-
-            // QuickTime Floating Glass Capsule Controls Bar
-            ProofreadingPlayerControls(playback: playbackController, style: .capsule)
-                .padding(.bottom, 16)
-                .padding(.horizontal, 20)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        // Dedicated docked player control bar
+        ProofreadingPlayerControls(playback: playbackController, style: .docked)
+    }
     }
 
     // MARK: - Apple Podcasts Lyrics/Transcript Pane

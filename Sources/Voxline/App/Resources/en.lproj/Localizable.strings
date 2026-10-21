@@ -286,7 +286,7 @@
 "整体时间偏移…" = "Shift Subtitle Timing…";
 "文件名" = "File Name";
 "文件已存在" = "The file already exists.";
-"新建任务 (⌘N)" = "New Task (⌘N)";
+"新建任务 (⌘T)" = "New Task (⌘T)";
 "新建任务" = "New Task";
 "新建任务或打开已有 .voxline 文件以开始逐句转写与校对。" = "Create a new task or open an existing .voxline file to start sentence-by-sentence transcription and proofreading.";
 "无密钥" = "No API key";
@@ -735,3 +735,18 @@
 "更换文件…" = "Change File…";
 "未分配译文" = "Unassigned Translations";
 "查找字幕…" = "Find Subtitles…";
+
+"新建标签页" = "New Tab";
+"打开任务文件…" = "Open Task File…";
+"服务" = "Services";
+
+"音量" = "Volume";
+"静音" = "Mute";
+"取消静音" = "Unmute";
+"全屏" = "Full Screen";
+"退出全屏" = "Exit Full Screen";
+"全屏 (⌃⌘F)" = "Full Screen (⌃⌘F)";
+"播放 (空格键)" = "Play (Space)";
+"暂停 (空格键)" = "Pause (Space)";
+"上移" = "Move Up";
+"下移" = "Move Down";

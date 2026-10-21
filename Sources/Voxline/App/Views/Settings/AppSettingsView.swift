@@ -4,8 +4,6 @@ import VoxlineCore
 public struct AppSettingsView: View {
     public enum Tab: String, CaseIterable, Identifiable {
         case models = "模型管理"
-        case translation = "翻译服务"
-        case cloudTranscription = "云端转写"
         case sync = "iCloud 同步"
         case updates = "更新"
 
@@ -13,8 +11,6 @@ public struct AppSettingsView: View {
         public var icon: String {
             switch self {
             case .models: return "cpu"
-            case .translation: return "character.book.closed"
-            case .cloudTranscription: return "waveform.badge.mic"
             case .sync: return "arrow.triangle.2.circlepath"
             case .updates: return "arrow.clockwise.circle"
             }
@@ -32,10 +28,6 @@ public struct AppSettingsView: View {
             switch selectedTab {
             case .models:
                 ModelManagementView()
-            case .translation:
-                TranslationServicesSettingsView()
-            case .cloudTranscription:
-                CloudTranscriptionServicesSettingsView()
             case .sync:
                 TaskSyncSettingsView()
             case .updates:

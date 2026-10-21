@@ -23,7 +23,7 @@ struct VoxlineApp: App {
 
     var body: some Scene {
         #if os(macOS)
-        WindowGroup {
+        WindowGroup(id: "workspace") {
             MainWindowView()
                 .tint(Color.voxlineAccent)
                 .task { TaskSyncCoordinator.shared.restore() }
@@ -31,6 +31,7 @@ struct VoxlineApp: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1140, height: 740)
         .commands {
+            MacWorkspaceCommands()
             MacProofreadingCommands()
             CommandGroup(after: .appInfo) {
                 MacCheckForUpdatesButton()

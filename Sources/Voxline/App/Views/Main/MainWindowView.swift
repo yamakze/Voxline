@@ -3,22 +3,27 @@ import VoxlineWorkflow
 import SwiftUI
 import UniformTypeIdentifiers
 import VoxlineCore
+import VoxlineTranslation
 
 public struct MainWindowView: View {
     @State private var library = TaskLibrary.shared
+    @State private var translationStore = TranslationServiceStore.shared
+    @State private var cloudStore = CloudTranscriptionServiceStore.shared
     @State private var selectedTab: NavigationItem = .allTasks
     @State private var selectedMediaID: UUID?
     @State private var configurationTask: ProcessingTask?
     @State private var isOpeningFile = false
     @State private var newTaskDraft: ProcessingTask?
     @State private var errorMessage: String?
+    @State private var proofreadingSession = ProofreadingSession(previewKind: .source)
 
     public init() {}
 
     public enum NavigationItem: Hashable {
         case allTasks
         case task(UUID)
-        case settings
+        case translationServices
+        case cloudTranscriptionServices
     }
 
     public var body: some View {
@@ -31,6 +36,10 @@ public struct MainWindowView: View {
         .background(AppleTranslationSessionHost())
         .tint(Color.voxlineAccent)
         .frame(minWidth: 1100, minHeight: 700)
+        .focusedSceneValue(\.workspaceFiles, WorkspaceFileActions(
+            createTask: createTask,
+            openTask: openTask
+        ))
         .fileImporter(
             isPresented: $isOpeningFile,
             allowedContentTypes: [.voxlineTask]
@@ -72,7 +81,7 @@ public struct MainWindowView: View {
 
     // MARK: - Sidebar
     private var sidebarContent: some View {
-        List(selection: $selectedTab) {
+        List(selection: Binding(get: { selectedTab }, set: { selectNavigation($0) })) {
             Section(String(localized: "任务", bundle: appLocalizationBundle)) {
                 NavigationLink(value: NavigationItem.allTasks) {
                     HStack {
@@ -87,18 +96,35 @@ public struct MainWindowView: View {
                 }
             }
 
-            Section(String(localized: "系统", bundle: appLocalizationBundle)) {
-                NavigationLink(value: NavigationItem.settings) {
-                    Label(String(localized: "设置", bundle: appLocalizationBundle), systemImage: "gearshape")
+            Section(String(localized: "服务", bundle: appLocalizationBundle)) {
+                NavigationLink(value: NavigationItem.translationServices) {
+                    HStack {
+                        Label(String(localized: "翻译服务", bundle: appLocalizationBundle), systemImage: "character.book.closed")
+                        Spacer()
+                        if !translationStore.services.isEmpty {
+                            Text("\(translationStore.services.count)")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                NavigationLink(value: NavigationItem.cloudTranscriptionServices) {
+                    HStack {
+                        Label(String(localized: "云端转写", bundle: appLocalizationBundle), systemImage: "waveform.badge.mic")
+                        Spacer()
+                        if !cloudStore.services.isEmpty {
+                            Text("\(cloudStore.services.count)")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
             HStack {
-                Button {
-                    newTaskDraft = ProcessingTask()
-                } label: {
+                Button(action: createTask) {
                     Label(String(localized: "新建任务", bundle: appLocalizationBundle), systemImage: "plus")
                         .font(.system(size: 13, weight: .medium))
                 }
@@ -107,9 +133,7 @@ public struct MainWindowView: View {
 
                 Spacer()
 
-                Button {
-                    isOpeningFile = true
-                } label: {
+                Button(action: openTask) {
                     Image(systemName: "folder")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
@@ -130,15 +154,10 @@ public struct MainWindowView: View {
         case .allTasks:
             TaskLibraryView(
                 onSelectTask: { task in
-                    selectedMediaID = nil
-                    selectedTab = .task(task.id)
+                    selectNavigation(.task(task.id))
                 },
-                onNewTask: {
-                    newTaskDraft = ProcessingTask()
-                },
-                onOpenFile: {
-                    isOpeningFile = true
-                }
+                onNewTask: createTask,
+                onOpenFile: openTask
             )
 
         case .task(let taskID):
@@ -148,8 +167,10 @@ public struct MainWindowView: View {
                 ContentUnavailableView(String(localized: "任务未找到", bundle: appLocalizationBundle), systemImage: "exclamationmark.triangle")
             }
 
-        case .settings:
-            AppSettingsView()
+        case .translationServices:
+            TranslationServicesSettingsView()
+        case .cloudTranscriptionServices:
+            CloudTranscriptionServicesSettingsView()
         }
     }
 
@@ -163,13 +184,18 @@ public struct MainWindowView: View {
                     taskID: task.id,
                     initialOutputKind: !task.items[mediaIndex].cues.isEmpty && task.items[mediaIndex].cues.allSatisfy(\.hasTranslation) ? .bilingual : .source,
                     item: task.items[mediaIndex],
+                    session: proofreadingSession,
                     onCommit: { updated, original in
                         try library.updateItem(updated, taskID: task.id, comparedTo: original)
                     },
                     onBack: {
-                        selectedMediaID = nil
+                        do {
+                            try commitProofreadingDraft()
+                            selectedMediaID = nil
+                        } catch { errorMessage = error.localizedDescription }
                     }
                 )
+                .id("\(task.id)/\(mediaID)")
             } else {
                 TaskDetailView(
                     task: task,
@@ -177,7 +203,14 @@ public struct MainWindowView: View {
                         get: { configurationTask != nil },
                         set: { configurationTask = $0 ? task : nil }
                     ),
-                    selectedMediaID: $selectedMediaID
+                    selectedMediaID: Binding(get: { selectedMediaID }, set: { mediaID in
+                        if let item = task.items.first(where: { $0.id == mediaID }) {
+                            proofreadingSession = ProofreadingSession(
+                                previewKind: item.cues.contains(where: \.hasTranslation) ? .bilingual : .source
+                            )
+                        }
+                        selectedMediaID = mediaID
+                    })
                 )
                 .toolbar {
                     ToolbarItem(placement: .navigation) {
@@ -229,11 +262,46 @@ public struct MainWindowView: View {
         do {
             var task = try TaskDocumentCodec.decode(Data(contentsOf: url))
             task.interruptRunningItems()
+            try commitProofreadingDraft()
             library.register(task, at: url)
             selectedMediaID = nil
             selectedTab = .task(task.id)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func selectNavigation(_ destination: NavigationItem) {
+        guard destination != selectedTab else { return }
+        do {
+            try commitProofreadingDraft()
+            selectedMediaID = nil
+            selectedTab = destination
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func createTask() {
+        do {
+            try commitProofreadingDraft()
+            newTaskDraft = ProcessingTask()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func openTask() {
+        do {
+            try commitProofreadingDraft()
+            isOpeningFile = true
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func commitProofreadingDraft() throws {
+        guard proofreadingSession.editingSnapshot != nil else { return }
+        guard case .task(let taskID) = selectedTab,
+              let item = library.task(for: taskID)?.items.first(where: { $0.id == selectedMediaID }) else {
+            throw TaskValidationError.taskChanged
+        }
+        try proofreadingSession.saveEditing(in: item) { updated, original in
+            try library.updateItem(updated, taskID: taskID, comparedTo: original)
         }
     }
 }
