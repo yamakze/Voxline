@@ -13,9 +13,10 @@ struct IOSTaskLibraryView: View {
     @State private var replacement: ProcessingTask?
     @State private var newTaskDraft: ProcessingTask?
     @State private var navigationPath = NavigationPath()
-    @State private var sharingURL: URL?
+    @State private var sharingFile: TemporaryExportFile?
     @State private var conflictResolutionTaskID: UUID?
     @State private var noticeMessage: String?
+    @State private var fileOperation: Task<Void, Never>?
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -66,8 +67,8 @@ struct IOSTaskLibraryView: View {
                     }
                 )
             }
-            .sheet(item: Binding(get: { sharingURL.map { SharePayload(url: $0) } }, set: { sharingURL = $0?.url })) { payload in
-                ShareActivitySheet(activityItems: [payload.url])
+            .sheet(item: $sharingFile) { file in
+                ShareActivitySheet(activityItems: [file.url], retainedFile: file)
             }
             .sheet(isPresented: Binding(
                 get: { conflictResolutionTaskID != nil },
@@ -98,6 +99,7 @@ struct IOSTaskLibraryView: View {
                 Text(noticeMessage ?? "")
             }
             .task { await library.load() }
+            .onDisappear { fileOperation?.cancel() }
             .onChange(of: scenePhase) { _, phase in
                 library.handleScenePhaseChange(to: phase)
             }
@@ -394,19 +396,27 @@ struct IOSTaskLibraryView: View {
     }
 
     private func importTask(_ url: URL) {
-        do {
-            let task = try library.readImportedTask(from: url)
-            if library.task(task.id) != nil { replacement = task }
-            else { try library.save(task) }
-        } catch { library.errorMessage = error.localizedDescription }
+        fileOperation?.cancel()
+        fileOperation = Task {
+            do {
+                let task = try await library.readImportedTask(from: url)
+                try Task.checkCancellation()
+                if library.task(task.id) != nil { replacement = task }
+                else { try library.save(task) }
+            } catch is CancellationError { return }
+            catch { library.errorMessage = error.localizedDescription }
+        }
     }
 
     private func shareTask(_ task: ProcessingTask) {
-        do {
-            let url = try IOSExportHelper.prepareTaskArchive(for: task)
-            sharingURL = url
-        } catch {
-            library.errorMessage = error.localizedDescription
+        fileOperation?.cancel()
+        fileOperation = Task {
+            do {
+                let file = try await IOSExportHelper.prepareTaskArchive(for: task)
+                try Task.checkCancellation()
+                sharingFile = file
+            } catch is CancellationError { return }
+            catch { library.errorMessage = error.localizedDescription }
         }
     }
 }
@@ -419,8 +429,9 @@ private struct IOSTaskDetailView: View {
     @State private var showConflictSheet = false
     @State private var errorMessage: String?
     @State private var noticeMessage: String?
-    @State private var sharingURL: URL?
+    @State private var sharingFile: TemporaryExportFile?
     @State private var changingCloudService = false
+    @State private var fileOperation: Task<Void, Never>?
 
     private var fileState: TaskSyncCoordinator.FileState? {
         library.storage.url(for: taskID).flatMap { syncSettings.fileStates[$0.standardizedFileURL] }
@@ -538,8 +549,8 @@ private struct IOSTaskDetailView: View {
                     .menuIndicator(.hidden)
                 }
             }
-            .sheet(item: Binding(get: { sharingURL.map { SharePayload(url: $0) } }, set: { sharingURL = $0?.url })) { payload in
-                ShareActivitySheet(activityItems: [payload.url])
+            .sheet(item: $sharingFile) { file in
+                ShareActivitySheet(activityItems: [file.url], retainedFile: file)
             }
             .sheet(isPresented: $changingCloudService) {
                 ChangeCloudTranscriptionServiceSheet(task: task) { updated in
@@ -570,6 +581,7 @@ private struct IOSTaskDetailView: View {
                 get: { noticeMessage != nil }, set: { if !$0 { noticeMessage = nil } })) {
                 Button(String(localized: "好", bundle: appLocalizationBundle)) { noticeMessage = nil }
             } message: { Text(noticeMessage ?? "") }
+            .onDisappear { fileOperation?.cancel() }
         } else {
             ContentUnavailableView(String(localized: "任务不存在", bundle: appLocalizationBundle), systemImage: "tray")
         }
@@ -827,18 +839,16 @@ private struct IOSTaskDetailView: View {
     }
 
     private func shareTask(_ task: ProcessingTask) {
-        do {
-            let url = try IOSExportHelper.prepareTaskArchive(for: task)
-            sharingURL = url
-        } catch {
-            errorMessage = error.localizedDescription
+        fileOperation?.cancel()
+        fileOperation = Task {
+            do {
+                let file = try await IOSExportHelper.prepareTaskArchive(for: task)
+                try Task.checkCancellation()
+                sharingFile = file
+            } catch is CancellationError { return }
+            catch { errorMessage = error.localizedDescription }
         }
     }
-}
-
-private struct SharePayload: Identifiable {
-    let id = UUID()
-    let url: URL
 }
 
 private extension TranslationSettings.Engine {

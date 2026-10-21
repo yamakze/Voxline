@@ -91,7 +91,7 @@ struct IOSCapabilityTests {
         }
     }
 
-    @Test func deviceCopyUsesSharedStoreWithoutWritingImportedSourceOrStartingUnfinishedTranscription() throws {
+    @Test func deviceCopyUsesSharedStoreWithoutWritingImportedSourceOrStartingUnfinishedTranscription() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -102,7 +102,7 @@ struct IOSCapabilityTests {
         try bytes.write(to: source)
         let copies = directory.appendingPathComponent("device")
         let library = IOSTaskLibrary(directory: copies)
-        var imported = try library.readImportedTask(from: source)
+        var imported = try await library.readImportedTask(from: source)
         try library.save(imported)
         imported.title = "Device edit"
         try library.save(imported)
@@ -120,8 +120,30 @@ struct IOSCapabilityTests {
         #expect(throws: QueueError.self) { try library.startTranslation(taskID: task.id, mediaID: task.items[0].id) }
         let invalid = directory.appendingPathComponent("invalid.voxline")
         try Data(#"{"formatVersion":999}"#.utf8).write(to: invalid)
-        #expect(throws: DomainValidationError.self) { try library.readImportedTask(from: invalid) }
+        await #expect(throws: DomainValidationError.self) { try await library.readImportedTask(from: invalid) }
         #expect(library.task(task.id) == imported)
+    }
+
+    @Test func preparedSharesKeepIndependentContentAndReleaseTheirTemporaryFiles() async throws {
+        var item = TaskMediaItem(title: "clip", kind: .audio, source: .localFile(fileName: "clip.wav"))
+        item.cues = [try SubtitleCue(id: UUID(), startMilliseconds: 0, endMilliseconds: 500, sourceText: "Original")]
+        var file: TemporaryExportFile? = try await IOSExportHelper.prepareSRT(for: item, kind: .source)
+        let directory = try #require(file?.directory)
+        var sharingFile = file
+        file = nil
+        #expect(try String(contentsOf: #require(sharingFile).url, encoding: .utf8).contains("Original"))
+
+        try item.cues[0].replaceSourceText(with: "Edited")
+        let next = try await IOSExportHelper.prepareSRT(for: item, kind: .source)
+        #expect(next.directory != directory)
+        #expect(try String(contentsOf: next.url, encoding: .utf8).contains("Edited"))
+        #expect(try String(contentsOf: #require(sharingFile).url, encoding: .utf8).contains("Original"))
+        sharingFile = nil
+        #expect(!FileManager.default.fileExists(atPath: directory.path))
+
+        let task = ProcessingTask(title: "Shared", items: [item])
+        let archive = try await IOSExportHelper.prepareTaskArchive(for: task)
+        #expect(try TaskDocumentCodec.decode(Data(contentsOf: archive.url)) == task)
     }
 
     #if targetEnvironment(simulator)

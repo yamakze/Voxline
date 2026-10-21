@@ -17,11 +17,13 @@ struct IOSMediaDetailView: View {
     @State private var playback = MediaPlaybackController()
     @State private var importingMedia = false
     @State private var association: IOSMediaAssociationCandidate?
+    @State private var localAssociationRevision = 0
     @State private var showingOffset = false
     @State private var structureState = SubtitleStructureState()
 
     // 导出与烧录
-    @State private var sharingURL: URL?
+    @State private var sharingFile: TemporaryExportFile?
+    @State private var fileOperation: Task<Void, Never>?
     @State private var showingEmbedding = false
     @State private var showingBurnIn = false
     @State private var importState = SubtitleImportState()
@@ -38,6 +40,11 @@ struct IOSMediaDetailView: View {
 
     private var task: ProcessingTask? { library.task(taskID) }
     private var item: TaskMediaItem? { library.task(taskID)?.items.first { $0.id == mediaID } }
+
+    private struct MediaLoadRequest: Equatable {
+        let source: MediaPlaybackController.SourceIdentity
+        let localAssociationRevision: Int
+    }
 
     var body: some View {
         if let item {
@@ -110,9 +117,12 @@ struct IOSMediaDetailView: View {
                 case .failure(let error): session.errorMessage = error.localizedDescription
                 }
             }
-            .sheet(item: $association, onDismiss: { Task { if let item = self.item { await playback.loadMedia(for: item) } } }) { candidate in
+            .sheet(item: $association) { candidate in
                 IOSMediaAssociationSheet(candidate: candidate) { updated in
                     try library.storage.updateItem(updated, taskID: taskID, comparedTo: candidate.item)
+                    if MediaPlaybackController.SourceIdentity(item: updated) == MediaPlaybackController.SourceIdentity(item: candidate.item) {
+                        localAssociationRevision += 1
+                    }
                 }
             }
             .sheet(item: $session.editingSnapshot) { cue in
@@ -141,8 +151,8 @@ struct IOSMediaDetailView: View {
             .sheet(isPresented: $showingBurnIn) {
                 IOSSubtitleBurnInSheet(item: item)
             }
-            .sheet(item: Binding(get: { sharingURL.map { SharePayload(url: $0) } }, set: { sharingURL = $0?.url })) { payload in
-                ShareActivitySheet(activityItems: [payload.url])
+            .sheet(item: $sharingFile) { file in
+                ShareActivitySheet(activityItems: [file.url], retainedFile: file)
             }
             .subtitleStructureSheets(state: structureState, item: item, session: session, onCommit: { updated, original in
                 try library.storage.updateItem(updated, taskID: taskID, comparedTo: original)
@@ -171,13 +181,15 @@ struct IOSMediaDetailView: View {
                 get: { session.errorMessage != nil }, set: { if !$0 { session.errorMessage = nil } })) {
                 Button(String(localized: "好", bundle: appLocalizationBundle)) { session.errorMessage = nil }
             } message: { Text(session.errorMessage ?? "") }
-            .task(id: MediaPlaybackController.SourceIdentity(item: item)) { await playback.loadMedia(for: item) }
+            .task(id: MediaLoadRequest(source: .init(item: item), localAssociationRevision: localAssociationRevision)) {
+                await playback.loadMedia(for: item)
+            }
             .onChange(of: item.cues) { _, cues in
                 session.updateSubtitles(cues)
                 playback.updateSubtitles(cues)
             }
             .onAppear { session.updateSubtitles(item.cues) }
-            .onDisappear { playback.releaseMedia() }
+            .onDisappear { fileOperation?.cancel(); playback.releaseMedia() }
         } else {
             ContentUnavailableView(String(localized: "媒体不存在", bundle: appLocalizationBundle), systemImage: "film")
         }
@@ -586,11 +598,14 @@ struct IOSMediaDetailView: View {
     }
 
     private func shareSRT(kind: SRTOutputKind, item: TaskMediaItem) {
-        do {
-            let url = try IOSExportHelper.prepareSRT(for: item, kind: kind)
-            sharingURL = url
-        } catch {
-            session.errorMessage = error.localizedDescription
+        fileOperation?.cancel()
+        fileOperation = Task {
+            do {
+                let file = try await IOSExportHelper.prepareSRT(for: item, kind: kind)
+                try Task.checkCancellation()
+                sharingFile = file
+            } catch is CancellationError { return }
+            catch { session.errorMessage = error.localizedDescription }
         }
     }
 
@@ -601,11 +616,6 @@ struct IOSMediaDetailView: View {
     private func formatDuration(_ milliseconds: Int64) -> String {
         String(format: "%.1fs", Double(milliseconds) / 1000.0)
     }
-}
-
-private struct SharePayload: Identifiable {
-    let id = UUID()
-    let url: URL
 }
 
 private struct IOSSubtitleEditor: View {

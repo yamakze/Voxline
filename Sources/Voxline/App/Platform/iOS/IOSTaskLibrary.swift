@@ -32,11 +32,14 @@ final class IOSTaskLibrary {
         if errorMessage?.isEmpty == true { errorMessage = nil }
     }
 
-    func readImportedTask(from url: URL) throws -> ProcessingTask {
+    @concurrent
+    nonisolated func readImportedTask(from url: URL) async throws -> ProcessingTask {
+        try Task.checkCancellation()
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         var task = try TaskDocumentCodec.decode(Data(contentsOf: url))
         task.interruptRunningItems()
+        try Task.checkCancellation()
         return task
     }
 

@@ -15,6 +15,7 @@ final class SubtitleBurnInSession {
     var fileName: String
     var errorMessage: String?
     var exportedURL: URL?
+    private(set) var temporaryExport: TemporaryExportFile?
     var requiresOverwriteConfirmation = false
     private(set) var isPreparing = false
     private(set) var isExporting = false
@@ -31,13 +32,14 @@ final class SubtitleBurnInSession {
     }
 
     func cancel() { operation?.cancel() }
-    func close() { operation?.cancel(); plan?.releaseAccess() }
+    func close() { operation?.cancel(); plan?.releaseAccess(); temporaryExport = nil }
 
     func invalidatePreview() {
         plan?.releaseAccess()
         plan = nil
         previewImage = nil
         exportedURL = nil
+        temporaryExport = nil
         errorMessage = nil
     }
 
@@ -45,6 +47,7 @@ final class SubtitleBurnInSession {
         isPreparing = true
         errorMessage = nil
         exportedURL = nil
+        temporaryExport = nil
         operation = Task { @MainActor in
             defer { isPreparing = false; operation = nil }
             do {
@@ -58,11 +61,13 @@ final class SubtitleBurnInSession {
         }
     }
 
-    func startExport(to destination: URL, accessDirectory directory: URL, allowOverwrite: Bool) {
+    func startExport(to destination: URL, accessDirectory directory: URL, allowOverwrite: Bool,
+                     temporaryFile: TemporaryExportFile? = nil) {
         isExporting = true
         progress = 0
         errorMessage = nil
         exportedURL = nil
+        temporaryExport = nil
         requiresOverwriteConfirmation = false
         operation = Task { @MainActor in
             let access = directory.startAccessingSecurityScopedResource()
@@ -75,6 +80,8 @@ final class SubtitleBurnInSession {
                 if plan == nil { plan = try await SubtitleBurnInExporter.composition(for: item, options: options) }
                 guard let plan else { throw BurnInError.invalidGeometry }
                 try await SubtitleBurnInExporter.export(plan, to: destination, allowOverwrite: allowOverwrite) { self.progress = $0 }
+                try Task.checkCancellation()
+                temporaryExport = temporaryFile
                 exportedURL = destination
             } catch BurnInError.fileAlreadyExists {
                 if allowOverwrite { errorMessage = BurnInError.fileAlreadyExists.localizedDescription }

@@ -10,6 +10,7 @@ struct IOSSubtitleBurnInSheet: View {
     private var item: TaskMediaItem { session.item }
     @Environment(\.dismiss) private var dismiss
     @State private var showPreviewPlayer = false
+    @State private var sharingFile: TemporaryExportFile?
 
     init(item: TaskMediaItem) {
         _session = State(initialValue: SubtitleBurnInSession(item: item))
@@ -37,9 +38,9 @@ struct IOSSubtitleBurnInSheet: View {
                     Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
                         .disabled(session.isExporting)
                 }
-                if let exportedURL = session.exportedURL {
+                if let file = session.temporaryExport {
                     ToolbarItem(placement: .confirmationAction) {
-                        ShareLink(item: exportedURL) {
+                        Button { sharingFile = file } label: {
                             Label(String(localized: "分享视频", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                         }
                     }
@@ -47,8 +48,11 @@ struct IOSSubtitleBurnInSheet: View {
             }
             .sheet(isPresented: $showPreviewPlayer) {
                 if let exportedURL = session.exportedURL {
-                    VideoPlayerView(url: exportedURL)
+                    VideoPlayerView(url: exportedURL, retainedFile: session.temporaryExport)
                 }
+            }
+            .sheet(item: $sharingFile) { file in
+                ShareActivitySheet(activityItems: [file.url], retainedFile: file)
             }
             .onChange(of: session.options) { _, _ in session.invalidatePreview() }
             .onChange(of: session.previewTime) { _, _ in session.previewImage = nil }
@@ -263,7 +267,7 @@ struct IOSSubtitleBurnInSheet: View {
             if session.isExporting {
                 IOSBurnInExportProgress(session: session)
                 .padding(.vertical, 4)
-            } else if let exportedURL = session.exportedURL {
+            } else if let file = session.temporaryExport {
                 VStack(spacing: 12) {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
@@ -280,7 +284,7 @@ struct IOSSubtitleBurnInSheet: View {
                         }
                         .buttonStyle(.bordered)
 
-                        ShareLink(item: exportedURL) {
+                        Button { sharingFile = file } label: {
                             Label(String(localized: "保存或分享", bundle: appLocalizationBundle), systemImage: "square.and.arrow.up")
                         }
                         .buttonStyle(.borderedProminent)
@@ -308,8 +312,10 @@ struct IOSSubtitleBurnInSheet: View {
     }
 
     private func startExport() {
-        let destination = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("mp4")
-        session.startExport(to: destination, accessDirectory: FileManager.default.temporaryDirectory, allowOverwrite: true)
+        do {
+            let file = try TemporaryExportFile(fileName: session.fileName)
+            session.startExport(to: file.url, accessDirectory: file.directory, allowOverwrite: true, temporaryFile: file)
+        } catch { session.errorMessage = error.localizedDescription }
     }
 
     private func formatTime(_ milliseconds: Int64) -> String {
@@ -338,6 +344,7 @@ private struct IOSBurnInExportProgress: View {
 
 private struct VideoPlayerView: View {
     let url: URL
+    let retainedFile: TemporaryExportFile?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
