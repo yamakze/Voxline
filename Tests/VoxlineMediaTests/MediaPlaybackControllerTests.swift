@@ -83,7 +83,8 @@ struct MediaPlaybackControllerTests {
         #expect(controller.playbackRate == 2)
         controller.togglePlayPause()
         #expect(player.rate == 2)
-        try await waitFor { controller.currentTimeSeconds >= 0.99 && !controller.isPlaying }
+        // Wait for the end notification, rather than a periodic sample just before the end.
+        try await waitFor { controller.currentTimeSeconds == controller.durationSeconds && !controller.isPlaying }
         #expect(controller.activeSubtitle == nil && controller.completedSubtitleEndMilliseconds == 1000)
         controller.togglePlayPause()
         #expect(controller.playbackRate == 2)

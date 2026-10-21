@@ -7,6 +7,11 @@ final class TemporaryExportFile: Identifiable, Sendable {
     let url: URL
 
     init(fileName: String) throws {
+        guard !fileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              fileName != ".", fileName != "..",
+              !fileName.contains("/"), !fileName.contains("\\"), !fileName.contains("\0") else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
         directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("VoxlineExports", isDirectory: true)
             .appendingPathComponent(id.uuidString, isDirectory: true)
