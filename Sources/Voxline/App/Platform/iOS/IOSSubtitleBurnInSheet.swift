@@ -90,27 +90,61 @@ struct IOSSubtitleBurnInSheet: View {
             }
             .frame(maxHeight: 220)
 
-            HStack {
-                Picker(String(localized: "预览字幕位置", bundle: appLocalizationBundle), selection: $session.previewTime) {
-                    ForEach(item.cues) { cue in
-                        Text("\(formatTime(cue.startMilliseconds)) · \(cue.sourceText.prefix(20))")
-                            .tag(cue.startMilliseconds)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text(String(localized: "预览字幕节点", bundle: appLocalizationBundle))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button {
+                        session.refreshPreview()
+                    } label: {
+                        Label(String(localized: "刷新预览", bundle: appLocalizationBundle), systemImage: "arrow.clockwise")
+                            .font(.caption2.weight(.medium))
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .disabled(session.isPreparing || session.isExporting)
                 }
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .disabled(session.isPreparing || session.isExporting)
 
-                Spacer()
-
-                Button {
-                    session.refreshPreview()
+                Menu {
+                    Picker(String(localized: "预览字幕位置", bundle: appLocalizationBundle), selection: $session.previewTime) {
+                        ForEach(item.cues) { cue in
+                            Text("\(formatTime(cue.startMilliseconds)) · \(cue.sourceText)")
+                                .tag(cue.startMilliseconds)
+                        }
+                    }
                 } label: {
-                    Label(String(localized: "刷新预览", bundle: appLocalizationBundle), systemImage: "arrow.clockwise")
-                        .font(.caption)
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock")
+                            .font(.caption)
+                            .foregroundStyle(Color.voxlineAccent)
+
+                        let currentText: String = {
+                            if let cue = item.cues.first(where: { $0.startMilliseconds == session.previewTime }) ?? item.cues.first {
+                                return "\(formatTime(cue.startMilliseconds)) · \(cue.sourceText)"
+                            }
+                            return String(localized: "选择预览字幕", bundle: appLocalizationBundle)
+                        }()
+
+                        Text(currentText)
+                            .font(.subheadline)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .foregroundStyle(.primary)
+
+                        Spacer()
+
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
                 .disabled(session.isPreparing || session.isExporting)
             }
 
@@ -142,15 +176,30 @@ struct IOSSubtitleBurnInSheet: View {
                 .pickerStyle(.segmented)
             }
 
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(String(localized: "视频编码", bundle: appLocalizationBundle))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                    Picker(String(localized: "视频编码", bundle: appLocalizationBundle), selection: $session.options.codec) {
-                        ForEach(BurnInCodec.allCases, id: \.self) { Text($0.label).tag($0) }
+                    Menu {
+                        Picker(String(localized: "视频编码", bundle: appLocalizationBundle), selection: $session.options.codec) {
+                            ForEach(BurnInCodec.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                    } label: {
+                        HStack {
+                            Text(session.options.codec.label)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
-                    .pickerStyle(.menu)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -158,17 +207,33 @@ struct IOSSubtitleBurnInSheet: View {
                     Text(String(localized: "画面质量", bundle: appLocalizationBundle))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                    Picker(String(localized: "画面质量", bundle: appLocalizationBundle), selection: $session.options.quality) {
-                        ForEach(BurnInQuality.allCases, id: \.self) { Text($0.label).tag($0) }
+                    Menu {
+                        Picker(String(localized: "画面质量", bundle: appLocalizationBundle), selection: $session.options.quality) {
+                            ForEach(BurnInQuality.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                    } label: {
+                        HStack {
+                            Text(session.options.quality.label)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
-                    .pickerStyle(.menu)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(String(localized: "字幕字号（1080p 基准）", bundle: appLocalizationBundle))
+                    Text(String(localized: "字幕字号", bundle: appLocalizationBundle))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                     Spacer()

@@ -18,7 +18,13 @@ public struct TaskStatusBadge: View {
         .font(.caption.weight(.medium))
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
-        .background(backgroundColor.opacity(0.15), in: .capsule)
+        .background(backgroundColor.opacity(0.12), in: .capsule)
+        #if os(macOS)
+        .overlay(
+            Capsule()
+                .strokeBorder(foregroundColor.opacity(0.25), lineWidth: 0.8)
+        )
+        #endif
         .foregroundStyle(foregroundColor)
     }
 
@@ -71,7 +77,13 @@ public struct MediaStatusBadge: View {
         .font(.caption.weight(.medium))
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(backgroundColor.opacity(0.15), in: .capsule)
+        .background(backgroundColor.opacity(0.12), in: .capsule)
+        #if os(macOS)
+        .overlay(
+            Capsule()
+                .strokeBorder(foregroundColor.opacity(0.25), lineWidth: 0.8)
+        )
+        #endif
         .foregroundStyle(foregroundColor)
     }
 
@@ -260,9 +272,15 @@ public struct SyncFileStatusBadge: View {
             Text(label)
         }
         .font(.caption2.weight(.medium))
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2.5)
         .background(backgroundColor.opacity(0.12), in: .capsule)
+        #if os(macOS)
+        .overlay(
+            Capsule()
+                .strokeBorder(foregroundColor.opacity(0.25), lineWidth: 0.8)
+        )
+        #endif
         .foregroundStyle(foregroundColor)
     }
 

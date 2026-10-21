@@ -24,16 +24,32 @@ struct InsertSubtitleSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.voxlineAccent.opacity(0.12))
+                    Image(systemName: "plus.bubble")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.voxlineAccent)
+                }
+                .frame(width: 24, height: 24)
                 Text(String(localized: "添加字幕", bundle: appLocalizationBundle))
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
             .background(.regularMaterial)
-
-            Divider()
+            #endif
 
             Form {
                 Section(String(localized: "时间轴", bundle: appLocalizationBundle)) {
@@ -106,8 +122,6 @@ struct InsertSubtitleSheet: View {
                 .padding(.vertical, 4)
             }
 
-            Divider()
-
             HStack {
                 Spacer()
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) {
@@ -124,7 +138,17 @@ struct InsertSubtitleSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
             .background(.regularMaterial)
+            #endif
         }
         #if os(macOS)
         .frame(width: 480, height: 460)
@@ -187,16 +211,32 @@ struct AdjustTimingSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.voxlineAccent.opacity(0.12))
+                    Image(systemName: "clock")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.voxlineAccent)
+                }
+                .frame(width: 24, height: 24)
                 Text(String(localized: "调整时间", bundle: appLocalizationBundle))
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
             .background(.regularMaterial)
-
-            Divider()
+            #endif
 
             Form {
                 Section(String(localized: "当前字幕", bundle: appLocalizationBundle)) {
@@ -250,8 +290,6 @@ struct AdjustTimingSheet: View {
                 .padding(.vertical, 4)
             }
 
-            Divider()
-
             HStack {
                 Spacer()
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) {
@@ -267,7 +305,17 @@ struct AdjustTimingSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
             .background(.regularMaterial)
+            #endif
         }
         #if os(macOS)
         .frame(width: 460, height: 380)
@@ -337,16 +385,32 @@ struct SplitSubtitleSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.voxlineAccent.opacity(0.12))
+                    Image(systemName: "scissors")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.voxlineAccent)
+                }
+                .frame(width: 24, height: 24)
                 Text(String(localized: "拆分字幕", bundle: appLocalizationBundle))
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
             .background(.regularMaterial)
-
-            Divider()
+            #endif
 
             Form {
                 Section(String(localized: "拆分时间点", bundle: appLocalizationBundle)) {
@@ -450,8 +514,6 @@ struct SplitSubtitleSheet: View {
                 .padding(.vertical, 4)
             }
 
-            Divider()
-
             HStack {
                 Spacer()
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) {
@@ -468,7 +530,17 @@ struct SplitSubtitleSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
             .background(.regularMaterial)
+            #endif
         }
         #if os(macOS)
         .frame(width: 500, height: 560)
@@ -565,16 +637,32 @@ struct MergeSubtitlesSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.voxlineAccent.opacity(0.12))
+                    Image(systemName: "arrow.triangle.merge")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.voxlineAccent)
+                }
+                .frame(width: 24, height: 24)
                 Text(String(localized: "合并字幕", bundle: appLocalizationBundle))
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
             .background(.regularMaterial)
-
-            Divider()
+            #endif
 
             Form {
                 Section(String(localized: "合并范围", bundle: appLocalizationBundle)) {
@@ -640,8 +728,6 @@ struct MergeSubtitlesSheet: View {
                 .padding(.vertical, 4)
             }
 
-            Divider()
-
             HStack {
                 Spacer()
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) {
@@ -658,7 +744,17 @@ struct MergeSubtitlesSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
             .background(.regularMaterial)
+            #endif
         }
         #if os(macOS)
         .frame(width: 480, height: 460)

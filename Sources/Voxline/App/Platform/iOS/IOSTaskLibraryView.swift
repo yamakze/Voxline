@@ -732,14 +732,16 @@ private struct IOSTaskDetailView: View {
                 itemStatusTag(item.status)
             }
 
-            // 处理步骤进度指示
-            ScrollView(.horizontal, showsIndicators: false) {
-                MediaProcessingStepsView(
-                    item: item,
-                    hasTranslation: task.parameters.translation != nil,
-                    provider: task.parameters.transcription.provider
-                )
-                .padding(.vertical, 2)
+            // 处理步骤进度指示（未完成时展示各步骤，已完成时由右上角状态标签统一展示，去除重复）
+            if item.status != .completed {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    MediaProcessingStepsView(
+                        item: item,
+                        hasTranslation: task.parameters.translation != nil,
+                        provider: task.parameters.transcription.provider
+                    )
+                    .padding(.vertical, 2)
+                }
             }
 
             // 失败或暂停行快捷重试

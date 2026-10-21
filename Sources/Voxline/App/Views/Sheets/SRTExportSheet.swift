@@ -27,11 +27,30 @@ public struct SRTExportSheet: View {
     private var missingTranslationCount: Int { cues.filter { !$0.hasTranslation }.count }
 
     public var body: some View {
-        VStack(spacing: 20) {
-            HStack {
-                Text(String(localized: "导出 SRT 字幕", bundle: appLocalizationBundle)).font(.headline)
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.voxlineAccent.opacity(0.12))
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.voxlineAccent)
+                }
+                .frame(width: 24, height: 24)
+                Text(String(localized: "导出 SRT 字幕", bundle: appLocalizationBundle))
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+
             VStack(alignment: .leading, spacing: 16) {
                 Picker(String(localized: "导出类型", bundle: appLocalizationBundle), selection: $selectedKind) {
                     Text(String(localized: "原文 SRT", bundle: appLocalizationBundle)).tag(SRTOutputKind.source)
@@ -62,17 +81,29 @@ public struct SRTExportSheet: View {
                         .font(.callout).foregroundStyle(.green)
                 }
             }
-            .padding().liquidGlassSurface()
+            .padding(20)
+
             HStack {
-                Text(String(localized: "\(cues.count) 条字幕 · UTF-8 编码", bundle: appLocalizationBundle)).font(.caption).foregroundStyle(.secondary)
+                Text(String(localized: "\(cues.count) 条字幕 · UTF-8 编码", bundle: appLocalizationBundle))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(String(localized: "导出", bundle: appLocalizationBundle)) { export(allowOverwrite: false) }
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                     .disabled(targetDirectory == nil || cues.isEmpty || (selectedKind != .source && missingTranslationCount > 0))
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
         }
-        .padding(24).frame(width: 520)
+        .frame(width: 520)
         .fileImporter(isPresented: $showDirectoryPicker, allowedContentTypes: [.folder]) { result in
             do {
                 targetDirectory = try result.get()

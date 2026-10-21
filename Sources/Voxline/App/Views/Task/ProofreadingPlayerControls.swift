@@ -11,7 +11,9 @@ struct ProofreadingPlayerControls: View {
     enum Style {
         case capsule
         case card
+        #if os(macOS)
         case docked
+        #endif
     }
 
     var body: some View {
@@ -20,8 +22,10 @@ struct ProofreadingPlayerControls: View {
             capsuleContent
         case .card:
             cardContent
+        #if os(macOS)
         case .docked:
             dockedContent
+        #endif
         }
     }
 
@@ -153,9 +157,12 @@ struct ProofreadingPlayerControls: View {
         } label: {
             Text(String(format: "%.2fx", playback.playbackRate))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.secondary.opacity(0.15), in: .capsule)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2.5)
+                .background(Color.secondary.opacity(0.10), in: .capsule)
+                .overlay(
+                    Capsule().strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.8)
+                )
         }
         #if os(macOS)
         .menuStyle(.borderlessButton)
@@ -163,7 +170,8 @@ struct ProofreadingPlayerControls: View {
         .menuIndicator(.hidden)
     }
 
-    // MARK: - Docked Style (macOS dedicated fixed player bar)
+    #if os(macOS)
+    // MARK: - Docked Style
     private var dockedContent: some View {
         ViewThatFits(in: .horizontal) {
             // Wide player: Single-row layout
@@ -173,9 +181,7 @@ struct ProofreadingPlayerControls: View {
                 dockedProgress.frame(minWidth: 70)
                 speedMenu
                 volumeControl
-                #if os(macOS)
                 fullscreenButton
-                #endif
             }
 
             // Narrow player: Two-row compact layout
@@ -195,16 +201,21 @@ struct ProofreadingPlayerControls: View {
                     Spacer(minLength: 4)
                     speedMenu
                     volumeControl
-                    #if os(macOS)
                     fullscreenButton
-                    #endif
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.regularMaterial)
-        .overlay(alignment: .top) { Divider() }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .background {
+            Color(nsColor: .windowBackgroundColor).opacity(0.8)
+                .background(.regularMaterial)
+        }
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.4))
+                .frame(height: 1)
+        }
         .disabled(!playback.isReady)
     }
 
@@ -227,8 +238,16 @@ struct ProofreadingPlayerControls: View {
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
-                    .background(Color.voxlineAccent, in: .circle)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.voxlineAccent, Color.voxlineAccent.opacity(0.85)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        in: .circle
+                    )
+                    .shadow(color: Color.voxlineAccent.opacity(0.35), radius: 3, y: 1)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(playback.isPlaying ? String(localized: "暂停", bundle: appLocalizationBundle) : String(localized: "播放", bundle: appLocalizationBundle))
@@ -301,7 +320,6 @@ struct ProofreadingPlayerControls: View {
         }
     }
 
-    #if os(macOS)
     private var fullscreenButton: some View {
         Button {
             (NSApp.keyWindow ?? NSApp.mainWindow)?.toggleFullScreen(nil)

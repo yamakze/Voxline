@@ -16,7 +16,8 @@ private struct AppIconView: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: size * 0.22))
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+                .shadow(color: Color.black.opacity(0.12), radius: 3, y: 1.5)
         } else {
             fallbackIcon
         }
@@ -188,7 +189,11 @@ private struct MacAppUpdatesSettingsView: View {
             .disabled(!updater.isConfigured)
             .accessibilityLabel(String(localized: "自动检查更新", bundle: appLocalizationBundle))
 
+            #if os(macOS)
+            Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            #else
             Divider()
+            #endif
 
             Toggle(String(localized: "自动下载更新", bundle: appLocalizationBundle), isOn: Binding(
                 get: { updater.automaticallyDownloadsUpdates },

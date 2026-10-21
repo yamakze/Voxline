@@ -20,10 +20,28 @@ public struct SubtitleEmbeddingSheet: View {
 
     public var body: some View {
         @Bindable var session = session
-        VStack(spacing: 20) {
-            HStack {
-                Text(String(localized: "内封软字幕视频", bundle: appLocalizationBundle)).font(.headline)
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.voxlineAccent.opacity(0.12))
+                    Image(systemName: "film.stack")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.voxlineAccent)
+                }
+                .frame(width: 24, height: 24)
+                Text(String(localized: "内封软字幕视频", bundle: appLocalizationBundle))
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
             }
 
             VStack(alignment: .leading, spacing: 16) {
@@ -112,12 +130,11 @@ public struct SubtitleEmbeddingSheet: View {
                     }
                 }
             }
-            .padding()
-            .liquidGlassSurface()
+            .padding(20)
 
             HStack {
                 Text(String(localized: "\(itemSnapshot.cues.count) 条字幕", bundle: appLocalizationBundle))
-                    .font(.caption)
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
@@ -130,8 +147,16 @@ public struct SubtitleEmbeddingSheet: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(targetDirectory == nil || session.isExporting || itemSnapshot.cues.isEmpty || (session.selectedKind != .source && session.missingTranslationCount > 0))
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
         }
-        .padding(24)
         .frame(width: 540)
         .onDisappear {
             session.cancel()

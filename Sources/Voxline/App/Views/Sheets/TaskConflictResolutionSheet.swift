@@ -35,21 +35,38 @@ public struct TaskConflictResolutionSheet: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.orange.opacity(0.14))
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.orange)
+                }
+                .frame(width: 26, height: 26)
+
+                VStack(alignment: .leading, spacing: 1) {
                     Text(String(localized: "解决版本冲突", bundle: appLocalizationBundle))
-                        .font(.headline)
+                        .font(.system(size: 14, weight: .semibold))
                     Text(String(localized: "未选版本另存副本。", bundle: appLocalizationBundle))
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
             .background(.regularMaterial)
-
-            Divider()
+            #endif
 
             if let error = errorMessage {
                 HStack(spacing: 8) {
@@ -108,8 +125,6 @@ public struct TaskConflictResolutionSheet: View {
                 .padding(20)
             }
 
-            Divider()
-
             HStack(spacing: 12) {
                 if let draft = draftTask {
                     Button(String(localized: "草稿另存为副本", bundle: appLocalizationBundle)) {
@@ -135,7 +150,17 @@ public struct TaskConflictResolutionSheet: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
             .background(.regularMaterial)
+            #endif
         }
         .frame(minWidth: 540, minHeight: 480)
         .onAppear {

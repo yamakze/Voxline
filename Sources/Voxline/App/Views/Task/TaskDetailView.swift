@@ -173,9 +173,24 @@ public struct TaskDetailView: View {
                                     .frame(width: 22)
 
                                 // Media Kind Icon
-                                Image(systemName: item.kind == .video ? "film" : "waveform")
-                                    .font(.headline)
-                                    .foregroundStyle(item.kind == .video ? .blue : .purple)
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(
+                                            (item.kind == .video ? Color.blue : Color.purple)
+                                                .opacity(0.12)
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .strokeBorder(
+                                                    (item.kind == .video ? Color.blue : Color.purple).opacity(0.24),
+                                                    lineWidth: 0.8
+                                                )
+                                        )
+                                    Image(systemName: item.kind == .video ? "film" : "waveform")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(item.kind == .video ? .blue : .purple)
+                                }
+                                .frame(width: 32, height: 32)
 
                                 // Title & Meta
                                 VStack(alignment: .leading, spacing: 3) {
@@ -220,37 +235,41 @@ public struct TaskDetailView: View {
                                 )
 
                                 // In-line Action Buttons
-                                HStack(spacing: 6) {
+                                HStack(spacing: 5) {
                                     if item.status.isRetryable {
-                                        Button(item.status.isTranslationPaused ? String(localized: "继续翻译", bundle: appLocalizationBundle) : String(localized: "重试", bundle: appLocalizationBundle), systemImage: "arrow.clockwise") {
+                                        Button {
                                             do { try queue.start(taskID: task.id, mediaID: item.id) }
                                             catch { errorMessage = error.localizedDescription }
+                                        } label: {
+                                            Image(systemName: "arrow.clockwise")
                                         }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
+                                        .buttonStyle(RowIconButtonStyle(isPrimary: false))
+                                        .help(item.status.isTranslationPaused ? String(localized: "继续翻译", bundle: appLocalizationBundle) : String(localized: "重试", bundle: appLocalizationBundle))
+                                        .accessibilityLabel(item.status.isTranslationPaused ? String(localized: "继续翻译", bundle: appLocalizationBundle) : String(localized: "重试", bundle: appLocalizationBundle))
                                         .disabled(queue.taskID != nil || task.items.isEmpty)
                                     }
 
                                     if queue.taskID == task.id, queue.isScheduled(mediaID: item.id) {
-                                        Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                                        Button {
                                             do { try queue.cancel(mediaID: item.id) }
                                             catch { errorMessage = error.localizedDescription }
+                                        } label: {
+                                            Image(systemName: "xmark")
                                         }
-                                        .controlSize(.small)
+                                        .buttonStyle(RowIconButtonStyle(isPrimary: false))
+                                        .help(String(localized: "取消处理", bundle: appLocalizationBundle))
+                                        .accessibilityLabel(String(localized: "取消处理", bundle: appLocalizationBundle))
                                         .disabled(queue.isCancelling && queue.mediaID == item.id)
                                     }
 
                                     Button {
                                         selectedMediaID = item.id
                                     } label: {
-                                        HStack(spacing: 4) {
-                                            Text(String(localized: "校对", bundle: appLocalizationBundle))
-                                            Image(systemName: "chevron.right")
-                                                .font(.caption2.weight(.bold))
-                                        }
+                                        Image(systemName: "chevron.right")
                                     }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
+                                    .buttonStyle(RowIconButtonStyle(isPrimary: true))
+                                    .help(String(localized: "进入校对", bundle: appLocalizationBundle))
+                                    .accessibilityLabel(String(localized: "进入校对", bundle: appLocalizationBundle))
                                 }
                             }
                             .padding(.vertical, 12)
@@ -285,13 +304,54 @@ public struct TaskDetailView: View {
                         }
 
                         if index < task.items.count - 1 {
-                            Divider()
+                            Rectangle()
+                                .fill(Color(nsColor: .separatorColor).opacity(0.4))
+                                .frame(height: 1)
+                                .padding(.leading, 54)
                         }
                     }
                 }
                 .liquidGlassSurface(cornerRadius: 12)
             }
         }
+    }
+}
+
+private struct RowIconButtonStyle: ButtonStyle {
+    var isPrimary: Bool
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(
+                !isEnabled
+                    ? Color.secondary.opacity(0.35)
+                    : (isPrimary ? Color.voxlineAccent : (isHovered ? Color.primary : Color.secondary.opacity(0.85)))
+            )
+            .frame(width: 22, height: 20)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(
+                        isPrimary
+                            ? Color.voxlineAccent.opacity(configuration.isPressed ? 0.22 : (isHovered ? 0.14 : 0.08))
+                            : Color(nsColor: .controlBackgroundColor).opacity(configuration.isPressed ? 0.9 : (isHovered ? 0.8 : 0.45))
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(
+                        isPrimary
+                            ? Color.voxlineAccent.opacity(isHovered ? 0.38 : 0.22)
+                            : Color(nsColor: .separatorColor).opacity(isHovered ? 0.75 : 0.45),
+                        lineWidth: 0.8
+                    )
+            )
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: isHovered)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            .onHover { isHovered = $0 }
     }
 }
 

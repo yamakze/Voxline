@@ -142,21 +142,38 @@ public struct TaskLibraryView: View {
                 .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .scale.combined(with: .opacity)))
             }
 
-            Image(systemName: isPlaceholder ? "icloud.and.arrow.down" : "film.stack")
-                .font(.title2)
-                .foregroundStyle(Color.voxlineAccent)
-                .frame(width: 36, height: 36)
-                .background(Color.voxlineAccent.opacity(0.12), in: .circle)
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.voxlineAccent.opacity(0.18),
+                                Color.voxlineAccent.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color.voxlineAccent.opacity(0.24), lineWidth: 0.8)
+                    )
+
+                Image(systemName: isPlaceholder ? "icloud.and.arrow.down" : "film.stack")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.voxlineAccent)
+            }
+            .frame(width: 38, height: 38)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(entry.title)
-                        .font(.headline)
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.primary)
                 }
 
                 if let task = entry.task {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         Text(String(localized: "\(task.items.count) 媒体", bundle: appLocalizationBundle))
                         Text("·")
                         Text(String(localized: "\(task.completedCount) 完成", bundle: appLocalizationBundle))
@@ -169,7 +186,7 @@ public struct TaskLibraryView: View {
                             Text(started.formatted(date: .abbreviated, time: .shortened))
                         }
                     }
-                    .font(.caption2)
+                    .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
 
                     if !task.items.isEmpty && task.startedAt != nil && task.completedCount < task.items.count {
@@ -178,6 +195,7 @@ public struct TaskLibraryView: View {
                             total: Double(task.items.count)
                         )
                         .controlSize(.mini)
+                        .tint(Color.voxlineAccent)
                         .padding(.top, 2)
                     }
                 } else if isPlaceholder {
@@ -211,12 +229,14 @@ public struct TaskLibraryView: View {
             }
 
             if isEditing {
-                HStack(spacing: 8) {
+                HStack(spacing: 5) {
                     Button {
                         moveUp(entry: entry)
                     } label: {
                         Image(systemName: "chevron.up")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
+                            .frame(width: 24, height: 24)
+                            .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .help(String(localized: "上移", bundle: appLocalizationBundle))
@@ -226,7 +246,9 @@ public struct TaskLibraryView: View {
                         moveDown(entry: entry)
                     } label: {
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
+                            .frame(width: 24, height: 24)
+                            .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .help(String(localized: "下移", bundle: appLocalizationBundle))
@@ -243,8 +265,8 @@ public struct TaskLibraryView: View {
         .padding(.vertical, 12)
         .liquidGlassSurface()
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(rowBorderColor(for: entry.id), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(rowBorderColor(for: entry.id), lineWidth: 1.2)
         )
         .onHover { isHovered in
             withAnimation(.easeInOut(duration: 0.15)) {
@@ -310,9 +332,9 @@ public struct TaskLibraryView: View {
 
     private func rowBorderColor(for entryID: String) -> Color {
         if hoveredEntryID == entryID {
-            return Color.voxlineAccent.opacity(0.35)
+            return Color.voxlineAccent.opacity(0.45)
         } else {
-            return Color.white.opacity(0.06)
+            return Color.clear
         }
     }
 

@@ -15,6 +15,14 @@ public extension Color {
 
     /// 正在播放/活动字幕条目的精致微描边
     static let voxlineActiveCueBorder = Color.accentColor.opacity(0.25)
+
+    /// 双语译文使用适配深浅背景的琥珀色。
+    static let voxlineTranslationText = Color(nsColor: NSColor(name: nil, dynamicProvider: { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(red: 0.98, green: 0.74, blue: 0.32, alpha: 1.0)
+            : NSColor(red: 0.64, green: 0.34, blue: 0.04, alpha: 1.0)
+    }))
+
 }
 
 /// 全局 Dock 图标注入管理器

@@ -392,17 +392,27 @@ public struct MediaDetailProofreadingView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.secondary.opacity(0.1), in: .capsule)
-                .frame(width: 170)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4.5)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(isSearchFocused ? Color.accentColor : Color.primary.opacity(0.08), lineWidth: 1)
+                )
+                .frame(width: 180)
 
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(.regularMaterial)
-
-            Divider()
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor).opacity(0.4))
+                    .frame(height: 1)
+            }
 
             // Lyrics / Transcript Stream with Focus Centering
             if item.cues.isEmpty {

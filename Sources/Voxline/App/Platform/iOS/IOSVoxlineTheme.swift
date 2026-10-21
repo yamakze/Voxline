@@ -15,5 +15,12 @@ public extension Color {
 
     /// 正在播放/活动字幕条目的精致微描边
     static let voxlineActiveCueBorder = Color.accentColor.opacity(0.25)
+
+    /// 双语译文使用适配深浅背景的琥珀色。
+    static let voxlineTranslationText = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.98, green: 0.74, blue: 0.32, alpha: 1.0)
+            : UIColor(red: 0.64, green: 0.34, blue: 0.04, alpha: 1.0)
+    })
 }
 #endif

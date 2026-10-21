@@ -41,17 +41,23 @@ public struct StorageBreakdownBar<Trailing: View>: View {
                 HStack(spacing: 2) {
                     ForEach(segments) { segment in
                         let width = max(Double(segment.byteCount) / total * geometry.size.width, segment.byteCount > 0 ? 4.0 : 0.0)
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(segment.color)
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [segment.color, segment.color.opacity(0.85)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
                             .frame(width: width)
                     }
                     // Free space
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.18))
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.12))
                 }
             }
-            .frame(height: 14)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .frame(height: 8)
+            .clipShape(Capsule())
 
             // Legend
             HStack(alignment: .center, spacing: 16) {

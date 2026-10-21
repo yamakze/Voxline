@@ -6,12 +6,47 @@ import UIKit
 public struct NativeControlSurface: ViewModifier {
     var cornerRadius: CGFloat
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    #if os(macOS)
+    @Environment(\.colorScheme) private var colorScheme
+    #endif
 
     public init(cornerRadius: CGFloat = 14) {
         self.cornerRadius = cornerRadius
     }
 
     @ViewBuilder public func body(content: Content) -> some View {
+        #if os(macOS)
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        if reduceTransparency {
+            content
+                .background(Color(nsColor: .controlBackgroundColor), in: shape)
+                .overlay(shape.strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
+        } else {
+            content
+                .background {
+                    shape.fill(
+                        colorScheme == .dark
+                            ? Color(nsColor: .controlBackgroundColor).opacity(0.70)
+                            : Color(nsColor: .controlBackgroundColor)
+                    )
+                    .background(.regularMaterial, in: shape)
+                }
+                .overlay {
+                    shape.strokeBorder(
+                        colorScheme == .dark
+                            ? Color.white.opacity(0.10)
+                            : Color.black.opacity(0.06),
+                        lineWidth: 1
+                    )
+                }
+                .shadow(
+                    color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.035),
+                    radius: colorScheme == .dark ? 6 : 4,
+                    x: 0,
+                    y: colorScheme == .dark ? 3 : 1.5
+                )
+        }
+        #else
         if reduceTransparency {
             content.background(Color.voxlineControlBackground, in: .rect(cornerRadius: cornerRadius))
         } else if #available(macOS 26, iOS 26, *) {
@@ -19,15 +54,37 @@ public struct NativeControlSurface: ViewModifier {
         } else {
             content.background(.regularMaterial, in: .rect(cornerRadius: cornerRadius))
         }
+        #endif
     }
 }
 
 public struct NativeGlassCapsuleSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    #if os(macOS)
+    @Environment(\.colorScheme) private var colorScheme
+    #endif
 
     public init() {}
 
     @ViewBuilder public func body(content: Content) -> some View {
+        #if os(macOS)
+        if reduceTransparency {
+            content
+                .background(Color.voxlineControlBackground, in: .capsule)
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+                .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+        } else {
+            content
+                .background(.ultraThinMaterial, in: .capsule)
+                .overlay(
+                    Capsule().strokeBorder(
+                        colorScheme == .dark ? Color.white.opacity(0.20) : Color.white.opacity(0.55),
+                        lineWidth: 1
+                    )
+                )
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.25 : 0.10), radius: 10, y: 4)
+        }
+        #else
         if reduceTransparency {
             content
                 .background(Color.voxlineControlBackground, in: .capsule)
@@ -44,6 +101,7 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
                 .overlay(Capsule().strokeBorder(Color.white.opacity(0.2), lineWidth: 1))
                 .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
         }
+        #endif
     }
 }
 

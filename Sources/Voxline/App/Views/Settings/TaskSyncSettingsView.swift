@@ -131,9 +131,24 @@ public struct TaskSyncSettingsView: View {
         Group {
             if let folder = settings.folderURL {
                 HStack(alignment: .center, spacing: 14) {
-                    Image(systemName: "folder.fill")
-                        .font(.system(size: 26))
-                        .foregroundStyle(Color.voxlineAccent)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.blue.opacity(0.18), Color.blue.opacity(0.08)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(Color.blue.opacity(0.24), lineWidth: 0.8)
+                            )
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.blue)
+                    }
+                    .frame(width: 42, height: 42)
 
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 8) {
@@ -141,7 +156,7 @@ public struct TaskSyncSettingsView: View {
                                 .font(.system(size: 15, weight: .semibold))
 
                             HStack(spacing: 4) {
-                                Circle().fill(Color.green).frame(width: 7, height: 7)
+                                Circle().fill(Color.green).frame(width: 6, height: 6)
                                 Text(String(localized: "已启用", bundle: appLocalizationBundle))
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(.green)
@@ -149,6 +164,9 @@ public struct TaskSyncSettingsView: View {
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
                             .background(Color.green.opacity(0.12), in: .capsule)
+                            #if os(macOS)
+                            .overlay(Capsule().strokeBorder(Color.green.opacity(0.25), lineWidth: 0.6))
+                            #endif
                         }
 
                         Text(folder.path)
@@ -270,7 +288,7 @@ public struct TaskSyncSettingsView: View {
                     Text(String(localized: "任务文档", bundle: appLocalizationBundle))
                         .foregroundStyle(.secondary)
                     Text("\(taskCount)")
-                        .font(.callout.weight(.semibold))
+                        .font(.callout.weight(.semibold).monospacedDigit())
                 }
 
                 Divider().frame(height: 14)
@@ -282,7 +300,7 @@ public struct TaskSyncSettingsView: View {
                     Text(String(localized: "原媒体文件", bundle: appLocalizationBundle))
                         .foregroundStyle(.secondary)
                     Text("\(mediaCount)")
-                        .font(.callout.weight(.semibold))
+                        .font(.callout.weight(.semibold).monospacedDigit())
                 }
 
                 Divider().frame(height: 14)
@@ -294,7 +312,7 @@ public struct TaskSyncSettingsView: View {
                     Text(String(localized: "传输中", bundle: appLocalizationBundle))
                         .foregroundStyle(.secondary)
                     Text("\(uploadingCount + downloadingCount)")
-                        .font(.callout.weight(.semibold))
+                        .font(.callout.weight(.semibold).monospacedDigit())
                 }
 
                 Spacer()
@@ -388,20 +406,30 @@ public struct TaskSyncSettingsView: View {
         .interactiveDismissDisabled(isProcessing)
         #elseif os(macOS)
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.blue.opacity(0.12))
+                    Image(systemName: "icloud")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.blue)
+                }
+                .frame(width: 24, height: 24)
                 Text(String(localized: "启用 iCloud 文件夹同步", bundle: appLocalizationBundle))
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(.regularMaterial)
-
-            Divider()
+            .padding(.vertical, 12)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
 
             migrationForm(folder: folder, summary: summary)
-
-            Divider()
 
             HStack {
                 Spacer()
@@ -422,7 +450,13 @@ public struct TaskSyncSettingsView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .background(.regularMaterial)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
         }
         .frame(minWidth: 460, minHeight: 380)
         #endif

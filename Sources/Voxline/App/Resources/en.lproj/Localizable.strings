@@ -750,3 +750,6 @@
 "暂停 (空格键)" = "Pause (Space)";
 "上移" = "Move Up";
 "下移" = "Move Down";
+"预览字幕节点" = "Preview Cue";
+"选择预览字幕" = "Choose Preview Cue";
+"字幕字号" = "Subtitle Font Size";

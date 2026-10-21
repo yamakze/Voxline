@@ -131,13 +131,23 @@ public struct CloudTranscriptionServicesSettingsView: View {
     private func serviceCard(service: CloudTranscriptionServiceConfig) -> some View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.purple.opacity(0.12))
-                    .frame(width: 44, height: 44)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.purple.opacity(0.20), Color.purple.opacity(0.08)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color.purple.opacity(0.24), lineWidth: 0.8)
+                    )
                 Image(systemName: "waveform")
-                    .font(.system(size: 20))
+                    .font(.system(size: 19, weight: .medium))
                     .foregroundStyle(.purple)
             }
+            .frame(width: 42, height: 42)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -148,11 +158,17 @@ public struct CloudTranscriptionServicesSettingsView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Color.blue.opacity(0.12), in: .capsule)
+                        #if os(macOS)
+                        .overlay(Capsule().strokeBorder(Color.blue.opacity(0.25), lineWidth: 0.6))
+                        #endif
                     Text(service.modelID)
                         .font(.caption2.monospaced())
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(Color.secondary.opacity(0.12), in: .capsule)
+                        #if os(macOS)
+                        .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.2), lineWidth: 0.6))
+                        #endif
                 }
 
                 Text(service.baseURL.absoluteString)
@@ -262,20 +278,30 @@ private struct CloudTranscriptionServiceEditorModal: View {
         }
         #elseif os(macOS)
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.purple.opacity(0.12))
+                    Image(systemName: "waveform")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.purple)
+                }
+                .frame(width: 24, height: 24)
                 Text(titleText)
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(.regularMaterial)
-
-            Divider()
+            .padding(.vertical, 12)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
 
             editorForm
-
-            Divider()
 
             HStack {
                 Spacer()
@@ -289,7 +315,13 @@ private struct CloudTranscriptionServiceEditorModal: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .background(.regularMaterial)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
         }
         .frame(minWidth: 480, minHeight: 400)
         .task {

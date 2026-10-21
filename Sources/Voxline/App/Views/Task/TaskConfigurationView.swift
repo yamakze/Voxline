@@ -246,21 +246,41 @@ public struct TaskConfigurationView: View {
     #endif
 
     // MARK: - Sheet Header Bar
+    #if os(macOS)
     private var sheetHeaderBar: some View {
         HStack(alignment: .center, spacing: 10) {
-            Image(systemName: "film.stack")
-                .font(.title3)
-                .foregroundStyle(.tint)
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.accentColor.opacity(0.24), lineWidth: 0.8)
+                    )
+                Image(systemName: "film.stack")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .frame(width: 28, height: 28)
 
             Text(session.originalTask.items.isEmpty ? String(localized: "新建任务", bundle: appLocalizationBundle) : String(localized: "任务准备", bundle: appLocalizationBundle))
-                .font(.headline)
+                .font(.system(size: 14, weight: .semibold))
 
             Spacer()
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        .background(.regularMaterial)
+        .background {
+            Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                .background(.regularMaterial)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.4))
+                .frame(height: 1)
+        }
     }
+
+    #endif
 
     // MARK: - Left: Media Import & Tracks Panel
     private var fcpMediaImportPane: some View {
@@ -695,6 +715,7 @@ public struct TaskConfigurationView: View {
     }
 
     // MARK: - Bottom Action Bar
+    #if os(macOS)
     private var bottomActionBar: some View {
         HStack(spacing: 12) {
             if let blockReason = session.preflightBlockReason {
@@ -728,8 +749,18 @@ public struct TaskConfigurationView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
-        .background(.regularMaterial)
+        .background {
+            Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                .background(.regularMaterial)
+        }
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.4))
+                .frame(height: 1)
+        }
     }
+
+    #endif
 
     private func commitTask(discardingTranslations: Bool = false) async {
         do {
@@ -757,14 +788,22 @@ public struct TaskConfigurationView: View {
         Button {
             showMediaImporter = true
         } label: {
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 ZStack {
-                    Circle()
-                        .fill(isDropTargeted ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08))
-                        .frame(width: 52, height: 52)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            isDropTargeted
+                                ? LinearGradient(colors: [Color.accentColor.opacity(0.24), Color.accentColor.opacity(0.12)], startPoint: .top, endPoint: .bottom)
+                                : LinearGradient(colors: [Color.secondary.opacity(0.10), Color.secondary.opacity(0.04)], startPoint: .top, endPoint: .bottom)
+                        )
+                        .frame(width: 58, height: 58)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(isDropTargeted ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.06), lineWidth: 1)
+                        )
 
                     Image(systemName: isDropTargeted ? "arrow.down.circle.fill" : "waveform.badge.plus")
-                        .font(.system(size: 24, weight: .medium))
+                        .font(.system(size: 26, weight: .medium))
                         .foregroundStyle(isDropTargeted ? Color.accentColor : Color.secondary)
                 }
 
@@ -785,21 +824,21 @@ public struct TaskConfigurationView: View {
                     Label(String(localized: "选择文件…", bundle: appLocalizationBundle), systemImage: "folder")
                 }
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .controlSize(.regular)
                 .padding(.top, 4)
             }
             .padding(.vertical, 36)
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isDropTargeted ? Color.accentColor.opacity(0.06) : Color.clear)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isDropTargeted ? Color.accentColor.opacity(0.06) : Color.secondary.opacity(0.02))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(
-                        isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.28),
-                        style: StrokeStyle(lineWidth: isDropTargeted ? 2.0 : 1.5, dash: isDropTargeted ? [] : [6, 4])
+                        isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.24),
+                        style: StrokeStyle(lineWidth: isDropTargeted ? 2.0 : 1.2, dash: isDropTargeted ? [] : [6, 4])
                     )
             )
             .contentShape(Rectangle())

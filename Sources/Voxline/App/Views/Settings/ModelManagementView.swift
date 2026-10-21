@@ -156,11 +156,22 @@ private struct ModelCardRow: View {
             HStack(alignment: .center, spacing: 14) {
                 // Model Icon
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(model.isBaseline ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.1))
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            model.isBaseline
+                                ? LinearGradient(colors: [Color.accentColor.opacity(0.20), Color.accentColor.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                : LinearGradient(colors: [Color.secondary.opacity(0.12), Color.secondary.opacity(0.06)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(
+                                    model.isBaseline ? Color.accentColor.opacity(0.25) : Color.primary.opacity(0.06),
+                                    lineWidth: 0.8
+                                )
+                        )
                         .frame(width: 40, height: 40)
                     Image(systemName: "cpu")
-                        .font(.system(size: 18))
+                        .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(model.isBaseline ? Color.accentColor : .primary)
                 }
 
@@ -361,11 +372,17 @@ private struct ModelCardRow: View {
         }
         .font(.caption2.weight(.medium))
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.vertical, 3.5)
         .background(
             Color.secondary.opacity(0.08),
             in: .capsule
         )
+        #if os(macOS)
+        .overlay(
+            Capsule()
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.8)
+        )
+        #endif
     }
 
     @ViewBuilder

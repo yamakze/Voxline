@@ -58,21 +58,24 @@ struct ProofreadingCueRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(
-            isActive
-                ? Color.voxlineActiveCueBackground
-                : (isHovered ? Color.secondary.opacity(0.06) : Color.clear),
-            in: .rect(cornerRadius: 10)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
+        .background {
+            if isActive {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.voxlineActiveCueBackground)
+            } else if isHovered {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.secondary.opacity(0.06))
+            }
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(isActive ? Color.voxlineActiveCueBorder : Color.clear, lineWidth: 1)
-        )
+        }
         .overlay(alignment: .leading) {
             if isActive {
-                RoundedRectangle(cornerRadius: 1.5)
+                Capsule()
                     .fill(Color.voxlineAccent)
-                    .frame(width: 3)
+                    .frame(width: 3.5)
                     .padding(.vertical, 6)
                     .padding(.leading, 3)
                     .transition(reduceMotion ? .identity : .opacity)
@@ -96,15 +99,18 @@ struct ProofreadingCueRow: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: isActive ? "speaker.wave.2.fill" : "play.fill")
-                        .font(.system(size: 9))
+                        .font(.system(size: 8, weight: .bold))
                     Text(formatCueTimestamp(cue.startMilliseconds))
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3.5)
                 .background(
-                    isActive ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.12),
+                    isActive ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.10),
                     in: .capsule
+                )
+                .overlay(
+                    Capsule().strokeBorder(isActive ? Color.accentColor.opacity(0.35) : Color.primary.opacity(0.06), lineWidth: 0.8)
                 )
                 .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
             }
@@ -151,15 +157,29 @@ struct ProofreadingCueRow: View {
     }
 
     private var textContent: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             if isEditing {
                 TextField(String(localized: "原文内容", bundle: appLocalizationBundle), text: $session.sourceDraft)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 16, weight: .medium))
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 15, weight: .medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.voxlineTextBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Color.voxlineAccent.opacity(0.5), lineWidth: 1)
+                    )
 
                 TextField(String(localized: "译文内容", bundle: appLocalizationBundle), text: $session.translationDraft)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 15))
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.voxlineTextBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Color.voxlineTranslationText.opacity(0.4), lineWidth: 1)
+                    )
             } else {
                 if session.previewKind != .translation {
                     Text(cue.sourceText)
@@ -174,7 +194,7 @@ struct ProofreadingCueRow: View {
                     case .succeeded(let trans, _):
                         Text(trans)
                             .font(.system(size: isActive ? 16 : 14, weight: isActive ? .semibold : .regular))
-                            .foregroundStyle(session.previewKind == .bilingual ? Color.orange : .primary)
+                            .foregroundStyle(session.previewKind == .bilingual ? Color.voxlineTranslationText : .primary)
                             .lineSpacing(2)
                             .contentShape(Rectangle())
                             .onTapGesture { onSeek(cue.startMilliseconds) }

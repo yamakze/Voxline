@@ -154,13 +154,23 @@ public struct TranslationServicesSettingsView: View {
     private func serviceCard(service: TranslationServiceConfig) -> some View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.teal.opacity(0.12))
-                    .frame(width: 44, height: 44)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.teal.opacity(0.20), Color.teal.opacity(0.08)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color.teal.opacity(0.24), lineWidth: 0.8)
+                    )
                 Image(systemName: "character.book.closed")
-                    .font(.system(size: 20))
+                    .font(.system(size: 19, weight: .medium))
                     .foregroundStyle(.teal)
             }
+            .frame(width: 42, height: 42)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -284,20 +294,30 @@ private struct ServiceEditorModal: View {
         .task { await loadCredential() }
         #elseif os(macOS)
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.teal.opacity(0.12))
+                    Image(systemName: "character.book.closed")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.teal)
+                }
+                .frame(width: 24, height: 24)
                 Text(titleText)
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .semibold))
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(.regularMaterial)
-
-            Divider()
+            .padding(.vertical, 12)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
 
             editorForm
-
-            Divider()
 
             HStack {
                 Button(String(localized: "测试连接", bundle: appLocalizationBundle)) {
@@ -330,7 +350,13 @@ private struct ServiceEditorModal: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .background(.regularMaterial)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
         }
         .frame(width: 500, height: 480)
         .interactiveDismissDisabled(isSaving || isTesting)
