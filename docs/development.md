@@ -47,6 +47,26 @@ make help
 | `Scripts/build-ios-ipa.sh` | 构建 iOS 真机架构 arm64 产物，生成未签名 Payload 与 `Voxline-unsigned.ipa` |
 | `Scripts/compile_and_run_ios.sh` | 编译、安装并启动指定或默认 iOS 模拟器（默认 iPhone 17 Pro） |
 | `Scripts/check-localization.py` | 核对编译器提取的本地化键与模块中英资源文件一致性 |
+| `Scripts/capture-macos-ui.swift` | 使用原生 Accessibility 遍历 Mac 页面、ScreenCaptureKit 捕获实际窗口，生成 PNG、页面清单与 HTML 图册 |
+
+### Mac 页面截图
+
+截图脚本需要 macOS 15.2 或更新版本。先运行 `make run`，选择已有可播放视频且带字幕的任务：
+
+```bash
+swift Scripts/capture-macos-ui.swift --task "任务名称"
+```
+
+截图保存在忽略的 `tmp/ui-captures/<时间>/`，通过 `index.html` 查看，`manifest.json` 记录已捕获页面及不可用原因。脚本在新标签页中遍历任务、服务、设置和校对弹窗；只打开编辑页并取消，不保存、删除、开始处理或执行导出。完成后关闭截图标签页。
+
+首次运行需为实际运行脚本的终端／Codex 授予 macOS“辅助功能”和“屏幕录制”权限：
+
+```bash
+swift Scripts/capture-macos-ui.swift --permissions
+swift Scripts/capture-macos-ui.swift --request-permissions
+```
+
+系统授权完成后重新启动终端再运行。`--current` 仅捕获当前 Voxline 窗口；`--app` 指定运行中的 App 路径，`--output` 指定图册目录，`--help` 查看全部参数。采集期间保持 Mac 解锁，暂不操作 Voxline。
 
 ---
 
