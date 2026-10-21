@@ -26,24 +26,60 @@ public struct NativeControlSurface: ViewModifier {
                 .background {
                     shape.fill(
                         colorScheme == .dark
-                            ? Color(nsColor: .controlBackgroundColor).opacity(0.70)
-                            : Color(nsColor: .controlBackgroundColor)
+                            ? LinearGradient(
+                                colors: [
+                                    Color(nsColor: .controlBackgroundColor).opacity(0.48),
+                                    Color(nsColor: .controlBackgroundColor).opacity(0.30)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            : LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.60),
+                                    Color(nsColor: .controlBackgroundColor).opacity(0.38)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                     )
                     .background(.regularMaterial, in: shape)
                 }
                 .overlay {
                     shape.strokeBorder(
                         colorScheme == .dark
-                            ? Color.white.opacity(0.10)
-                            : Color.black.opacity(0.06),
+                            ? LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.18),
+                                    Color.white.opacity(0.06),
+                                    Color.white.opacity(0.02)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            : LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.85),
+                                    Color.white.opacity(0.35),
+                                    Color.black.opacity(0.06)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
                         lineWidth: 1
                     )
                 }
                 .shadow(
-                    color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.035),
-                    radius: colorScheme == .dark ? 6 : 4,
+                    color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.03),
+                    radius: colorScheme == .dark ? 3 : 1.5,
                     x: 0,
-                    y: colorScheme == .dark ? 3 : 1.5
+                    y: 1
+                )
+                .shadow(
+                    color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.05),
+                    radius: colorScheme == .dark ? 12 : 8,
+                    x: 0,
+                    y: colorScheme == .dark ? 6 : 3
                 )
         }
         #else
@@ -75,14 +111,63 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
                 .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
         } else {
             content
-                .background(.ultraThinMaterial, in: .capsule)
+                .background {
+                    Capsule()
+                        .fill(
+                            colorScheme == .dark
+                                ? LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.10),
+                                        Color.white.opacity(0.02)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                                : LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.35),
+                                        Color.white.opacity(0.08)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                        )
+                        .background(.ultraThinMaterial, in: .capsule)
+                }
                 .overlay(
                     Capsule().strokeBorder(
-                        colorScheme == .dark ? Color.white.opacity(0.20) : Color.white.opacity(0.55),
+                        colorScheme == .dark
+                            ? LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.35),
+                                    Color.white.opacity(0.12)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            : LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.90),
+                                    Color.white.opacity(0.40)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
                         lineWidth: 1
                     )
                 )
-                .shadow(color: .black.opacity(colorScheme == .dark ? 0.25 : 0.10), radius: 10, y: 4)
+                .shadow(
+                    color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.04),
+                    radius: colorScheme == .dark ? 4 : 2,
+                    x: 0,
+                    y: 1.5
+                )
+                .shadow(
+                    color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.09),
+                    radius: colorScheme == .dark ? 16 : 12,
+                    x: 0,
+                    y: colorScheme == .dark ? 8 : 5
+                )
         }
         #else
         if reduceTransparency {
@@ -111,6 +196,34 @@ public struct NativeSubtitleOverlaySurface: ViewModifier {
     public init() {}
 
     @ViewBuilder public func body(content: Content) -> some View {
+        #if os(macOS)
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        if reduceTransparency {
+            content
+                .background(Color.black, in: shape)
+                .overlay(shape.strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
+        } else {
+            content
+                .background {
+                    shape.fill(Color.black.opacity(0.60))
+                        .background(.ultraThinMaterial, in: shape)
+                }
+                .overlay {
+                    shape.strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.32),
+                                Color.white.opacity(0.12)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+                }
+                .shadow(color: Color.black.opacity(0.40), radius: 12, x: 0, y: 5)
+        }
+        #else
         if reduceTransparency {
             content
                 .background(Color.black, in: .rect(cornerRadius: 12))
@@ -135,6 +248,7 @@ public struct NativeSubtitleOverlaySurface: ViewModifier {
                         .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
                 )
         }
+        #endif
     }
 }
 
