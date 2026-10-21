@@ -318,7 +318,8 @@ public final class TaskProcessingQueue {
                             case .decoding: detail = String(localized: "正在转写", bundle: voxlineLocalizationBundle)
                             case .completed: detail = String(localized: "正在保存字幕", bundle: voxlineLocalizationBundle)
                             }
-                            self.progressText = String(localized: "\(detail) · \(Int(Double(index) / Double(chunks.count) * 100))%", bundle: voxlineLocalizationBundle)
+                            let text = String(localized: "\(detail) · \(Int(Double(index) / Double(chunks.count) * 100))%", bundle: voxlineLocalizationBundle)
+                            if self.progressText != text { self.progressText = text }
                         }
                     }
                 }

@@ -7,7 +7,8 @@ import WhisperKit
 /// One SDK worker writes window evidence; callbacks read snapshots through the same lock.
 final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
     private let state = Mutex<[TranscriptionWindowEvidence]>([])
-    private let decoding = Mutex<(text: String?, tokens: [Int]?, active: Bool)>((nil, nil, true))
+    private let decoding = Mutex<(text: String?, tokens: [Int]?, active: Bool, lastPublished: ContinuousClock.Instant?)>(
+        (nil, nil, true, nil))
     private let cancelled = Mutex<Bool>(false)
     let sourceOffsetSeconds: Double
 
@@ -27,6 +28,9 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
             guard $0.active else { return false }
             $0.text = text
             $0.tokens = tokens
+            let now = ContinuousClock.now
+            if let previous = $0.lastPublished, previous.duration(to: now) < .milliseconds(200) { return false }
+            $0.lastPublished = now
             return true
         }
     }
@@ -43,7 +47,7 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
                 skippedAsNoSpeech: result.1 == nil,
                 segmentsBeforeAlignment: (result.1 ?? []).map { Self.raw($0, offset: sourceOffsetSeconds) }))
         }
-        decoding.withLock { $0.text = nil; $0.tokens = nil }
+        decoding.withLock { $0.text = nil; $0.tokens = nil; $0.lastPublished = nil }
         return result
     }
 
@@ -99,16 +103,29 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
     }
 
     /// Decoder timestamps can include the padded tail of the 30-second model window.
-    /// Intersect segment times with real audio; never invent a duration for collapsed text.
+    /// Intersect segment times with real audio. A timestamp token at the exact window end
+    /// belongs to the preceding timed segment; keep its text without inventing extra audio.
     static func segmentTimingsWithinWindow(_ segments: [RawTranscriptionSegment], lower: Double,
                                           upper: Double) throws -> [RawTranscriptionSegment] {
-        let bounded = segments.map { segment in
+        var bounded: [RawTranscriptionSegment] = []
+        for segment in segments {
             guard !segment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  segment.startSeconds.isFinite, segment.endSeconds.isFinite else { return segment }
-            return RawTranscriptionSegment(startSeconds: max(lower, segment.startSeconds),
+                  segment.startSeconds.isFinite, segment.endSeconds.isFinite else {
+                bounded.append(segment)
+                continue
+            }
+            if segment.startSeconds == upper, segment.endSeconds >= segment.startSeconds,
+               let previous = bounded.last, previous.endSeconds == upper,
+               previous.startSeconds < previous.endSeconds,
+               !previous.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                bounded[bounded.count - 1] = RawTranscriptionSegment(startSeconds: previous.startSeconds,
+                    endSeconds: upper, text: previous.text + segment.text, words: nil)
+                continue
+            }
+            bounded.append(RawTranscriptionSegment(startSeconds: max(lower, segment.startSeconds),
                 endSeconds: min(upper, segment.endSeconds), text: segment.text, words: nil,
                 averageLogProbability: segment.averageLogProbability,
-                noSpeechProbability: segment.noSpeechProbability, timingSource: segment.timingSource)
+                noSpeechProbability: segment.noSpeechProbability, timingSource: segment.timingSource))
         }
         try validate(bounded, lower: lower, upper: upper)
         return bounded

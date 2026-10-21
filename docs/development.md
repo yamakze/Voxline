@@ -8,6 +8,7 @@
 # macOS
 make build            # 使用 SwiftPM 编译 Mac 应用包（产物：dist/macos/Voxline.app）
 make run              # 编译并在停止旧实例后启动 Mac 应用
+make run CONFIGURATION=release  # 使用与发布版相同的优化配置运行
 make test             # 运行核心单元测试与工作流测试套件
 
 # iOS
@@ -20,6 +21,8 @@ make ipa              # 构建未签名的 Release IPA（产物：dist/ios/Voxli
 ```bash
 make help
 ```
+
+日常构建默认使用 Debug（`-Onone`）。比较转写速度和 CPU 时使用 Release，并保持模型、语言、媒体范围一致，依次运行，避免两个进程争用 CPU、GPU 和神经网络引擎。模型首次加载耗时与已加载后的转写耗时分别记录。
 
 ---
 

@@ -121,21 +121,24 @@ public enum SubtitleSegmenter {
             while start < words.count {
                 var end = start
                 var width = 0
+                var hasText = false
                 var preferredEnd: Int?
                 while end < words.count {
                     let candidateWidth = width + visualWidth(words[end].text)
                     let duration = (words[end].endSeconds - words[start].startSeconds) * 1000
                     let boundaryBefore = end > start && isWordBoundary(after: words[end - 1].text, before: words[end].text)
-                    if boundaryBefore, (candidateWidth > policy.maximumWidth || duration > Double(policy.maximumDurationMilliseconds)),
+                    if boundaryBefore, hasText,
+                       (candidateWidth > policy.maximumWidth || duration > Double(policy.maximumDurationMilliseconds)),
                        words[end - 1].endSeconds > words[start].startSeconds {
                         end = preferredEnd ?? end
                         break
                     }
                     width = candidateWidth
+                    hasText = hasText || !words[end].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     end += 1
                     let positiveDuration = words[end - 1].endSeconds > words[start].startSeconds
                     let boundaryAfter = end == words.count || isWordBoundary(after: words[end - 1].text, before: words[end].text)
-                    if positiveDuration, boundaryAfter {
+                    if positiveDuration, boundaryAfter, hasText {
                         let punctuation = finalPunctuation(words[end - 1].text)
                         if punctuation == .sentence { break }
                         if end < words.count,
@@ -146,10 +149,11 @@ public enum SubtitleSegmenter {
                         }
                     }
                 }
-                // A trailing zero-duration word belongs to the preceding timed speech.
-                // Width or punctuation splitting must not leave it as an unrenderable cue.
-                while end < words.count, words[end].startSeconds == words[end].endSeconds,
-                      words[end].startSeconds == words[end - 1].endSeconds {
+                // Spaces and trailing zero-duration words belong to adjacent speech.
+                // Splitting must not leave them as an empty or unrenderable cue.
+                while end < words.count,
+                      words[end].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                      (words[end].startSeconds == words[end].endSeconds && words[end].startSeconds == words[end - 1].endSeconds) {
                     end += 1
                 }
                 let cue = try timedCue(sourceID: sourceID, segmentIndex: segmentIndex, wordIndex: start,

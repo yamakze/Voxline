@@ -195,6 +195,41 @@ struct TranscriptionProviderTests {
         #expect(tailWindow.alignedSegments?.first?.startSeconds == tailWindow.alignedSegments?.first?.endSeconds)
     }
 
+    @Test func recoversCollapsedTailTextAtTheWindowBoundaryWithoutLosingRecognition() throws {
+        let audio = try TranscriptionAudio(localURL: URL(fileURLWithPath: "/unused.wav"),
+            sourceStartMilliseconds: 3_840_000, durationMilliseconds: 120_000)
+        let original = [RawTranscriptionSegment(startSeconds: 3958.919998, endSeconds: 3960, text: " 아", words: nil),
+                        RawTranscriptionSegment(startSeconds: 3960, endSeconds: 3960.020004, text: " 아", words: nil)]
+        let aligned = [RawTranscriptionSegment(startSeconds: 3956.08, endSeconds: 3956.08, text: " 아", words: nil),
+                       RawTranscriptionSegment(startSeconds: 3956.43, endSeconds: 3956.78, text: " 아", words: nil)]
+        let spaced = RawTranscriptionSegment(startSeconds: 3900, endSeconds: 3912.3, text: " 本当", words: [
+            RawWordTiming(text: " ", startSeconds: 3900, endSeconds: 3902.3, probability: 0.46),
+            RawWordTiming(text: "本当", startSeconds: 3902.3, endSeconds: 3912.3, probability: 0.26)
+        ])
+        var evidence = TranscriptionEvidence(settings: .whisperKitBaseline, audio: audio)
+        evidence.windows = [
+            .init(seekFrame: 0, frameCount: 480_000, decodedText: "", decodedTokens: [], language: "ko",
+                  skippedAsNoSpeech: true, segmentsBeforeAlignment: []),
+            .init(seekFrame: 480_000, frameCount: 480_000, decodedText: "", decodedTokens: [], language: "ko",
+                  skippedAsNoSpeech: true, segmentsBeforeAlignment: []),
+            .init(seekFrame: 960_000, frameCount: 480_000, decodedText: " 本当", decodedTokens: [], language: "ko",
+                  skippedAsNoSpeech: false, segmentsBeforeAlignment: [spaced], alignedSegments: [spaced]),
+            .init(seekFrame: 1_440_000, frameCount: 480_000, decodedText: " 아 아", decodedTokens: [], language: "ko",
+                  skippedAsNoSpeech: false, segmentsBeforeAlignment: original, alignedSegments: aligned)
+        ]
+        evidence.segments = [spaced] + aligned
+        let recovered = try WhisperKitTranscriptionProvider.recoverCompletedEvidence(evidence)
+        #expect(recovered.outcome == .completed)
+        #expect(recovered.windows.last?.segmentsBeforeAlignment == original)
+        #expect(recovered.windows.last?.alignedSegments == aligned)
+        #expect(recovered.segments.count == 2)
+        #expect(recovered.segments.last?.text == " 아 아")
+        let result = try SubtitleSegmenter.segment(recovered, sourceID: UUID(), mediaDurationMilliseconds: 4_425_621)
+        #expect(result.cues.map(\.sourceText) == ["本当", "아 아"])
+        #expect(result.cues.last?.endMilliseconds == 3_960_000)
+        #expect(try WhisperKitTranscriptionProvider.recoverCompletedEvidence(recovered) == recovered)
+    }
+
     @Test func rejectsUnknownLanguageAndModelWithoutSubstitution() throws {
         #expect(throws: WhisperTranscriptionError.unsupportedLanguage("english")) {
             try WhisperKitTranscriptionProvider(settings: TranscriptionSettings(modelID: TranscriptionSettings.whisperKitBaseline.modelID,
@@ -329,7 +364,7 @@ struct TranscriptionProviderTests {
         #expect(!raw.isEmpty)
         #expect(results.contains { $0.windows.contains { $0.usesSegmentTimings == true } })
         for evidence in results {
-            let result = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: 1077718)
+            _ = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: 1077718)
         }
         let inventory = try await store.inventory(modelID: settings.modelID)
         guard case .loaded = inventory.state else { Issue.record("Model not reused"); return }

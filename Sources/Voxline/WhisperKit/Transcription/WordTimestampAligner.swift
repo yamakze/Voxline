@@ -72,42 +72,49 @@ enum WordTimestampAligner {
             throw WhisperTranscriptionError.invalidAlignment(String(localized: "对齐矩阵未覆盖识别词元。", bundle: voxlineLocalizationBundle))
         }
         let columns = shape[1]
-        var previous = [Double](repeating: .infinity, count: columns + 1)
-        previous[0] = 0
-        var trace = [UInt8](repeating: 2, count: (tokenCount + 1) * (columns + 1))
-        for row in 1...tokenCount {
-            trace[row * (columns + 1)] = 1
-            var current = [Double](repeating: .infinity, count: columns + 1)
-            for column in 1...columns {
-                let weight = matrix[[row - 1, column - 1] as [NSNumber]].doubleValue
-                guard weight.isFinite else {
-                    throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐权重无效。", bundle: voxlineLocalizationBundle))
+        // Convert once through Core ML, preserving logical rows (including IOSurface padding).
+        // Per-cell MLMultiArray subscripting boxes indices and values in this hot loop.
+        let weights = MLMultiArray(concatenating: [matrix], axis: 0, dataType: .double)
+        return try weights.withUnsafeBufferPointer(ofType: Double.self) { values in
+            let strides = weights.strides.map(\.intValue)
+            var previous = [Double](repeating: .infinity, count: columns + 1)
+            var current = previous
+            previous[0] = 0
+            var trace = [UInt8](repeating: 2, count: (tokenCount + 1) * (columns + 1))
+            for row in 1...tokenCount {
+                trace[row * (columns + 1)] = 1
+                current[0] = .infinity
+                for column in 1...columns {
+                    let weight = values[(row - 1) * strides[0] + (column - 1) * strides[1]]
+                    guard weight.isFinite else {
+                        throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐权重无效。", bundle: voxlineLocalizationBundle))
+                    }
+                    let diagonal = previous[column - 1]
+                    let up = previous[column]
+                    let left = current[column - 1]
+                    let cost: Double
+                    let direction: UInt8
+                    if diagonal < up && diagonal < left { cost = diagonal; direction = 0 }
+                    else if up < diagonal && up < left { cost = up; direction = 1 }
+                    else { cost = left; direction = 2 }
+                    current[column] = cost - weight
+                    trace[row * (columns + 1) + column] = direction
                 }
-                let diagonal = previous[column - 1]
-                let up = previous[column]
-                let left = current[column - 1]
-                let cost: Double
-                let direction: UInt8
-                if diagonal < up && diagonal < left { cost = diagonal; direction = 0 }
-                else if up < diagonal && up < left { cost = up; direction = 1 }
-                else { cost = left; direction = 2 }
-                current[column] = cost - weight
-                trace[row * (columns + 1) + column] = direction
+                swap(&previous, &current)
             }
-            previous = current
-        }
-        var row = tokenCount
-        var column = columns
-        var path = [(token: Int, column: Int)]()
-        while row > 0 || column > 0 {
-            path.append((row - 1, column - 1))
-            switch trace[row * (columns + 1) + column] {
-            case 0: row -= 1; column -= 1
-            case 1: row -= 1
-            default: column -= 1
+            var row = tokenCount
+            var column = columns
+            var path = [(token: Int, column: Int)]()
+            while row > 0 || column > 0 {
+                path.append((row - 1, column - 1))
+                switch trace[row * (columns + 1) + column] {
+                case 0: row -= 1; column -= 1
+                case 1: row -= 1
+                default: column -= 1
+                }
             }
+            return Array(path.reversed())
         }
-        return Array(path.reversed())
     }
 
     private static func mergedPunctuations(_ alignment: [WordTiming], prepended: String,
