@@ -16,7 +16,11 @@ struct AudioExtractionTests {
         let identity = try await MediaInspector.shared.inspect(url).identity(audioTrackID: 1)
         let extractor = AudioExtractor(directory: directory.appendingPathComponent("cache"))
         let mediaID = UUID()
-        let audio = try await extractor.extract(mediaURL: url, mediaID: mediaID, identity: identity)
+        let progress = Mutex<[Double]>([])
+        let audio = try await extractor.extract(mediaURL: url, mediaID: mediaID, identity: identity) { event in
+            if case .extracting(let fraction) = event { progress.withLock { $0.append(fraction) } }
+        }
+        #expect(progress.withLock { $0.first == 0 && $0.last == 1 })
         #expect(!audio.reusedCache)
         #expect(audio.chunks.count == 2)
         #expect(audio.chunks.map(\.sourceStartMilliseconds) == [0, 120_000])
@@ -190,7 +194,7 @@ struct AudioExtractionTests {
         let extractor = AudioExtractor(directory: cache)
         let task = Task {
             try await extractor.extract(mediaURL: url, mediaID: id, identity: identity) { event in
-                if case .extracting(let fraction) = event, fraction > 0 { withUnsafeCurrentTask { $0?.cancel() } }
+                if case .extracting = event { withUnsafeCurrentTask { $0?.cancel() } }
             }
         }
         await #expect(throws: CancellationError.self) { try await task.value }

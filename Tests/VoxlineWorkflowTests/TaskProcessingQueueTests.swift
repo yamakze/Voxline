@@ -849,7 +849,7 @@ struct TaskProcessingQueueTests {
         #expect(throws: QueueError.noWork) { try retryQueue.start(taskID: task.id) }
         for item in completed.items {
             let output = directory.appendingPathComponent("\(item.id).source.srt")
-            try SubtitleExporter.export(cues: item.cues, kind: .source, to: output, media: item.media)
+            try await SubtitleExporter.export(cues: item.cues, kind: .source, to: output, media: item.media)
             #expect(try String(contentsOf: output, encoding: .utf8) ==
                 SubtitleExporter.generateSRT(cues: item.cues, kind: .source, media: item.media))
         }

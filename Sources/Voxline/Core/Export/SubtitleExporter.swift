@@ -26,6 +26,7 @@ public enum SubtitleExporter {
     }
 
     public static func generateSRT(cues: [SubtitleCue], kind: SRTOutputKind, media: MediaIdentity? = nil) throws -> String {
+        try Task.checkCancellation()
         guard !cues.isEmpty else { throw SubtitleExportError.emptyCues }
         let cues = try SubtitleCue.clampedToMedia(cues, media: media)
         if kind != .source {
@@ -34,6 +35,7 @@ public enum SubtitleExporter {
         }
 
         let records = try cues.enumerated().map { index, cue in
+            try Task.checkCancellation()
             let text = try subtitleText(for: cue, kind: kind)
             return "\(index + 1)\n\(formatSRTTimestamp(milliseconds: cue.startMilliseconds)) --> \(formatSRTTimestamp(milliseconds: cue.endMilliseconds))\n\(text)\n"
         }
@@ -72,14 +74,18 @@ public enum SubtitleExporter {
         }
     }
 
+    @concurrent
     public static func export(cues: [SubtitleCue], kind: SRTOutputKind, to fileURL: URL,
-                              media: MediaIdentity? = nil, allowOverwrite: Bool = false) throws {
+                              media: MediaIdentity? = nil, allowOverwrite: Bool = false) async throws {
+        try Task.checkCancellation()
         try validateFileName(fileURL.lastPathComponent)
         let content = try generateSRT(cues: cues, kind: kind, media: media)
         if FileManager.default.fileExists(atPath: fileURL.path), !allowOverwrite {
             throw SubtitleExportError.fileAlreadyExists
         }
-        do { try Data(content.utf8).write(to: fileURL, options: .atomic) }
+        let data = Data(content.utf8)
+        try Task.checkCancellation()
+        do { try data.write(to: fileURL, options: .atomic) }
         catch { throw SubtitleExportError.writeFailed(error.localizedDescription) }
     }
 }

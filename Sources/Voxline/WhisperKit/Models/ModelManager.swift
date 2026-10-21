@@ -52,10 +52,10 @@ public final class ModelManager {
     init(store: WhisperModelStore = .shared) {
         self.store = store
         activityTask = Task { [weak self, store] in
+            await self?.refreshAll()
             for await busy in await store.activityChanges() {
                 guard let self else { return }
                 self.isOperating = busy
-                if !busy { await self.refreshAll() }
             }
         }
     }

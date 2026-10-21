@@ -66,7 +66,7 @@ struct SubtitleExporterTests {
         #expect(throws: (any Error).self) { try SubtitleExporter.generateSRT(cues: [outside], kind: .source, media: media) }
     }
 
-    @Test func atomicUTF8WriteRequiresOverwriteChoiceAndPreservesFileOnValidationFailure() throws {
+    @Test func atomicUTF8WriteRequiresOverwriteChoiceAndPreservesFileOnValidationFailure() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -74,24 +74,30 @@ struct SubtitleExporterTests {
         let original = Data("existing subtitles".utf8)
         try original.write(to: url)
         let valid = try cue()
-        #expect(throws: SubtitleExportError.fileAlreadyExists) {
-            try SubtitleExporter.export(cues: [valid], kind: .bilingual, to: url)
+        await #expect(throws: SubtitleExportError.fileAlreadyExists) {
+            try await SubtitleExporter.export(cues: [valid], kind: .bilingual, to: url)
         }
         #expect(try Data(contentsOf: url) == original)
         var invalid = valid
         invalid.translation = .pending
-        #expect(throws: SubtitleExportError.incompleteTranslations(1)) {
-            try SubtitleExporter.export(cues: [invalid], kind: .translation, to: url, allowOverwrite: true)
+        await #expect(throws: SubtitleExportError.incompleteTranslations(1)) {
+            try await SubtitleExporter.export(cues: [invalid], kind: .translation, to: url, allowOverwrite: true)
         }
         #expect(try Data(contentsOf: url) == original)
-        try SubtitleExporter.export(cues: [valid], kind: .bilingual, to: url, allowOverwrite: true)
+        try await SubtitleExporter.export(cues: [valid], kind: .bilingual, to: url, allowOverwrite: true)
         #expect(try Data(contentsOf: url) == Data(SubtitleExporter.generateSRT(cues: [valid], kind: .bilingual).utf8))
         let blocked = directory.appendingPathComponent("blocked")
         try Data("occupied".utf8).write(to: blocked)
         do {
-            try SubtitleExporter.export(cues: [valid], kind: .source, to: blocked.appendingPathComponent("file.srt"))
+            try await SubtitleExporter.export(cues: [valid], kind: .source, to: blocked.appendingPathComponent("file.srt"))
             Issue.record("Expected explicit write failure")
         } catch SubtitleExportError.writeFailed(let reason) { #expect(!reason.isEmpty) }
+        let cancelled = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await SubtitleExporter.export(cues: [valid], kind: .source, to: url, allowOverwrite: true)
+        }
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        #expect(try Data(contentsOf: url) == Data(SubtitleExporter.generateSRT(cues: [valid], kind: .bilingual).utf8))
     }
 
     @Test(arguments: ["", ".srt", "../clip.srt", "folder/clip.srt", "folder\\clip.srt", "clip.txt", "clip\0.srt"])

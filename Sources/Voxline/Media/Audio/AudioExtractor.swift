@@ -100,7 +100,9 @@ public actor AudioExtractor {
                 guard before.fileSize == after.fileSize, before.contentModificationDate == after.contentModificationDate else {
                     throw MediaAccessError.fileChanged
                 }
-                return try record.audio(in: root, reusedCache: true)
+                let result = try record.audio(in: root, reusedCache: true)
+                onProgress(.extracting(fraction: 1))
+                return result
             } catch is DecodingError {
                 onProgress(.cacheInvalidated(reason: String(localized: "音频缓存记录损坏，重新提取。", bundle: voxlineLocalizationBundle)))
             } catch AudioExtractionError.invalidCache {
@@ -139,6 +141,8 @@ public actor AudioExtractor {
             chunkFrames = 0
         }
         onProgress(.extracting(fraction: 0))
+        let clock = ContinuousClock()
+        var nextProgressUpdate = clock.now + .milliseconds(200)
         while let sample = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
             let frames = CMSampleBufferGetNumSamples(sample)
@@ -188,7 +192,11 @@ public actor AudioExtractor {
             guard sourceEndMilliseconds <= Double(identity.durationMilliseconds) + 1 else {
                 throw AudioExtractionError.outsideMedia
             }
-            onProgress(.extracting(fraction: min(sourceEndMilliseconds / Double(identity.durationMilliseconds), 1)))
+            let now = clock.now
+            if now >= nextProgressUpdate {
+                onProgress(.extracting(fraction: min(sourceEndMilliseconds / Double(identity.durationMilliseconds), 1)))
+                nextProgressUpdate = now + .milliseconds(200)
+            }
         }
         try Task.checkCancellation()
         guard reader.status == .completed else { throw reader.error ?? AudioExtractionError.incompleteDecode }
@@ -203,6 +211,7 @@ public actor AudioExtractor {
         try Task.checkCancellation()
         let result = try record.audio(in: root, reusedCache: false)
         try JSONEncoder().encode(record).write(to: manifestURL, options: .atomic)
+        onProgress(.extracting(fraction: 1))
         return result
     }
 

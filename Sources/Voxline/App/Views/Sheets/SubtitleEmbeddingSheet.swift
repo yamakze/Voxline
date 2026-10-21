@@ -95,19 +95,7 @@ public struct SubtitleEmbeddingSheet: View {
                 .foregroundStyle(.secondary)
 
                 if session.isExporting {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ProgressView(value: session.progress)
-                        HStack {
-                            Text(String(localized: "正在封装软字幕 \(Int(session.progress * 100))%…", bundle: appLocalizationBundle))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button(String(localized: "取消", bundle: appLocalizationBundle)) {
-                                session.cancel()
-                            }
-                            .controlSize(.small)
-                        }
-                    }
+                    SubtitleEmbeddingProgress(session: session)
                 }
 
                 if let errorMessage = session.errorMessage {
@@ -183,6 +171,24 @@ public struct SubtitleEmbeddingSheet: View {
     private func startExport(allowOverwrite: Bool) {
         guard let directory = targetDirectory else { return }
         session.startExport(to: directory.appendingPathComponent(session.fileName), accessDirectory: directory, allowOverwrite: allowOverwrite)
+    }
+}
+
+private struct SubtitleEmbeddingProgress: View {
+    let session: SubtitleEmbeddingSession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ProgressView(value: session.progress)
+            HStack {
+                Text(String(localized: "正在封装软字幕 \(Int(session.progress * 100))%…", bundle: appLocalizationBundle))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) { session.cancel() }
+                    .controlSize(.small)
+            }
+        }
     }
 }
 #endif

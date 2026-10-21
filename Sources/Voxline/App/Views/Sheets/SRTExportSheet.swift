@@ -7,6 +7,7 @@ public struct SRTExportSheet: View {
     let mediaTitle: String
     let cues: [SubtitleCue]
     let media: MediaIdentity?
+    private let missingTranslationCount: Int
     @Environment(\.dismiss) private var dismiss
     @State private var selectedKind: SRTOutputKind
     @State private var fileName: String
@@ -15,16 +16,16 @@ public struct SRTExportSheet: View {
     @State private var showDirectoryPicker = false
     @State private var showOverwriteAlert = false
     @State private var exportedURL: URL?
+    @State private var exportTask: Task<Void, Never>?
 
     public init(mediaTitle: String, cues: [SubtitleCue], media: MediaIdentity?, initialKind: SRTOutputKind) {
         self.mediaTitle = mediaTitle
         self.cues = cues
         self.media = media
+        missingTranslationCount = cues.reduce(0) { $0 + ($1.hasTranslation ? 0 : 1) }
         _selectedKind = State(initialValue: initialKind)
         _fileName = State(initialValue: SubtitleExporter.suggestedFileName(mediaTitle: mediaTitle, kind: initialKind))
     }
-
-    private var missingTranslationCount: Int { cues.filter { !$0.hasTranslation }.count }
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -82,6 +83,7 @@ public struct SRTExportSheet: View {
                 }
             }
             .padding(20)
+            .disabled(exportTask != nil)
 
             HStack {
                 Text(String(localized: "\(cues.count) 条字幕 · UTF-8 编码", bundle: appLocalizationBundle))
@@ -91,7 +93,7 @@ public struct SRTExportSheet: View {
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(String(localized: "导出", bundle: appLocalizationBundle)) { export(allowOverwrite: false) }
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-                    .disabled(targetDirectory == nil || cues.isEmpty || (selectedKind != .source && missingTranslationCount > 0))
+                    .disabled(exportTask != nil || targetDirectory == nil || cues.isEmpty || (selectedKind != .source && missingTranslationCount > 0))
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -104,6 +106,7 @@ public struct SRTExportSheet: View {
             }
         }
         .frame(width: 520)
+        .onDisappear { exportTask?.cancel() }
         .fileImporter(isPresented: $showDirectoryPicker, allowedContentTypes: [.folder]) { result in
             do {
                 targetDirectory = try result.get()
@@ -118,18 +121,27 @@ public struct SRTExportSheet: View {
     }
 
     private func export(allowOverwrite: Bool) {
-        guard let directory = targetDirectory else { return }
+        guard exportTask == nil, let directory = targetDirectory else { return }
         errorMessage = nil
         exportedURL = nil
-        let accessing = directory.startAccessingSecurityScopedResource()
-        defer { if accessing { directory.stopAccessingSecurityScopedResource() } }
-        do {
-            try SubtitleExporter.validateFileName(fileName)
-            let url = directory.appendingPathComponent(fileName)
-            try SubtitleExporter.export(cues: cues, kind: selectedKind, to: url, media: media, allowOverwrite: allowOverwrite)
-            exportedURL = url
-        } catch SubtitleExportError.fileAlreadyExists { showOverwriteAlert = true }
-        catch { errorMessage = error.localizedDescription }
+        let name = fileName
+        let url = directory.appendingPathComponent(name)
+        let kind = selectedKind
+        exportTask = Task {
+            let accessing = directory.startAccessingSecurityScopedResource()
+            defer {
+                if accessing { directory.stopAccessingSecurityScopedResource() }
+                exportTask = nil
+            }
+            do {
+                try SubtitleExporter.validateFileName(name)
+                try await SubtitleExporter.export(cues: cues, kind: kind, to: url, media: media, allowOverwrite: allowOverwrite)
+                try Task.checkCancellation()
+                exportedURL = url
+            } catch is CancellationError { return }
+            catch SubtitleExportError.fileAlreadyExists { showOverwriteAlert = true }
+            catch { errorMessage = error.localizedDescription }
+        }
     }
 }
 

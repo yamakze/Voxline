@@ -7,6 +7,7 @@ import VoxlineMedia
 @Observable @MainActor
 final class SubtitleEmbeddingSession {
     let item: TaskMediaItem
+    let missingTranslationCount: Int
     private let parameters: TaskParameters?
     var selectedKind: SRTOutputKind
     var fileName: String
@@ -19,13 +20,13 @@ final class SubtitleEmbeddingSession {
 
     init(item: TaskMediaItem, task: ProcessingTask?) {
         self.item = item
+        missingTranslationCount = item.cues.reduce(0) { $0 + ($1.hasTranslation ? 0 : 1) }
         parameters = task?.parameters
-        selectedKind = item.cues.allSatisfy(\.hasTranslation) ? .bilingual : .source
+        selectedKind = missingTranslationCount == 0 ? .bilingual : .source
         let base = ((item.media?.fileName ?? item.title) as NSString).deletingPathExtension
         fileName = "\(base).embedded.mp4"
     }
 
-    var missingTranslationCount: Int { item.cues.filter { !$0.hasTranslation }.count }
     var languageTag: String {
         let code = selectedKind == .source ? parameters?.transcription.languageCode : parameters?.translation?.targetLanguage
         return code.flatMap { $0.isEmpty ? nil : $0 } ?? "und"
