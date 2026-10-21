@@ -81,6 +81,12 @@ Manual Download
 
 Download from [Releases](https://github.com/yamakze/Voxline/releases/latest) and drag `Voxline.app` into **Applications**.
 
+> [!NOTE] first launch with a warning such as *"Voxline cannot be opened because Apple cannot check it for malicious software"* or mark it as damaged.
+> You can launch the app using any of the following methods:
+> 1. **Control-Click**: In Finder, open `/Applications`, hold `Control` and click `Voxline.app`, select **Open**, and confirm in the alert dialog.
+> 2. **System Settings**: Go to **System Settings** → **Privacy & Security**, scroll down to the **Security** section, and click **Open Anyway** next to the blocked Voxline notice.
+> 3. **Terminal**: Remove the quarantine attribute by running: ` xattr -cr /Applications/Voxline.app`
+
 ### iOS / iPadOS
 
 Each release includes an unsigned `ipa`. Sideload with your preferred tool signed with your Apple ID:

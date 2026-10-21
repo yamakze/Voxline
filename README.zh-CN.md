@@ -81,6 +81,13 @@ brew upgrade --cask yamakze/voxline/voxline
 
 从 [Releases](https://github.com/yamakze/Voxline/releases/latest) 下载，将 `Voxline.app` 拖入「应用程序」文件夹即可。
 
+> [!NOTE] 首次打开时可能会提示「无法打开“Voxline”，因为 Apple 无法检查其是否包含恶意软件」或提示应用已损坏。
+> 
+> 可通过以下任一方式正常打开：
+> 1. **快捷键打开**：在「访达」的「应用程序」中按住 `Control` 键并点按 `Voxline.app`，在弹出菜单中选择「打开」，并在确认弹窗中再次点击「打开」；
+> 2. **系统设置放行**：前往 macOS「系统设置」→「隐私与安全性」，在“安全性”分栏找到被拦截的 Voxline，点击「仍要打开」；
+> 3. **终端移除隔离标记**：在终端执行命令：`xattr -cr /Applications/Voxline.app`
+
 ### iOS / iPadOS
 
 每次发版均附带未签名的 `ipa`。使用您偏好的侧载工具配合个人 Apple ID 签名安装：
