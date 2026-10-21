@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.1.1 - 2026-10-21
+
+### Improved
+
+- Refined the Mac workspace with in-window task navigation, a docked player, standalone settings, and task creation and opening commands.
+- Improved glass-style surfaces on macOS 15 with translucent fills, gradient highlights, and softer shadows.
+- Reduced idle interface work, processing progress updates, and word timestamp alignment overhead.
+- Streamlined iOS imports, playback cleanup, and temporary export ownership across previews and sharing.
+
+### Fixed
+
+- Restored focused subtitle search and protected editing drafts when switching pages or media.
+- Recovered transcription text at chunk boundaries and kept whitespace and zero-duration words with adjacent speech.
+- Improved subtitle export cancellation and output validation, and rejected paths in temporary export file names.
+- Prevented opening another Mac window from interrupting active cloud processing with redundant service reloads.
+
+---
+
+### 改进
+
+- 优化 Mac 工作区：窗口内切换任务、停靠播放器、独立设置窗口，以及新建和打开任务快捷命令。
+- 改善 macOS 15 玻璃质感，调整半透明底色、渐变高光与柔和阴影。
+- 减少界面空闲刷新、处理进度更新和词级时间戳对齐开销。
+- 简化 iOS 导入流程，完善播放资源释放，以及预览和分享期间的临时导出文件管理。
+
+### 修复
+
+- 恢复当前媒体的字幕搜索与快捷键聚焦，切换页面或媒体时保护编辑草稿。
+- 恢复转写分块边界文本，将空白词和零时长词保留在相邻语音字幕中。
+- 改善字幕导出取消和输出校验，拒绝临时导出文件名中包含路径。
+- 避免新开 Mac 窗口重复加载服务配置，干扰正在进行的云端处理。
+
 ## 1.1.0 - 2026-10-13
 
 ### Added
