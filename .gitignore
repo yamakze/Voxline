@@ -14,6 +14,7 @@ __pycache__/
 .codex/
 .agents/
 .codegraph/
+/.agy-staff/
 /tmp/
 /.local/
 /AGENTS.md

@@ -753,3 +753,18 @@
 "预览字幕节点" = "Preview Cue";
 "选择预览字幕" = "Choose Preview Cue";
 "字幕字号" = "Subtitle Font Size";
+
+/* Appearance Settings */
+"外观" = "Appearance";
+"外观模式" = "Appearance Mode";
+"跟随系统" = "System";
+"浅色" = "Light";
+"深色" = "Dark";
+"细节" = "Details";
+"微染主题色" = "Theme Accent";
+"主题色浓度" = "Tint Intensity";
+"天蓝" = "Sky Blue";
+"靛蓝" = "Indigo";
+"翠色" = "Emerald";
+"通透红" = "Crimson";
+"灰" = "Graphite";

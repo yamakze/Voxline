@@ -5,39 +5,148 @@ import ImageIO
 import ScreenCaptureKit
 import UniformTypeIdentifiers
 
-// Actual Voxline windows, driven through Accessibility and captured by ScreenCaptureKit.
-// Run from the repository root: swift Scripts/capture-macos-ui.swift --task "Task title"
+// Mac: native Accessibility traversal and ScreenCaptureKit window capture.
+// iOS: native Simulator screenshots, appended by page name to the same gallery.
+enum CapturePlatform: String { case macos, ios }
+
 struct CaptureOptions {
+    var platform: CapturePlatform = .macos
     var app = "dist/macos/Voxline.app"
-    var output = "tmp/ui-captures/" + ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+    var output = ""
     var task: String?
+    var device: String?
+    var page: String?
     var mode = "all"
+
     init() throws {
         var args = CommandLine.arguments.dropFirst().makeIterator()
+        var directory: String?
         while let arg = args.next() {
             switch arg {
-            case "--app", "--output", "--task":
+            case "--platform", "--app", "--output", "--task", "--device", "--page":
                 guard let value = args.next() else { throw CaptureFailure("Missing value for \(arg)") }
-                if arg == "--app" { app = value }
-                else if arg == "--output" { output = value }
-                else { task = value }
-            case "--current", "--permissions", "--request-permissions", "--dump": mode = String(arg.dropFirst(2))
+                switch arg {
+                case "--platform":
+                    guard let selected = CapturePlatform(rawValue: value) else {
+                        throw CaptureFailure("Platform must be macos or ios")
+                    }
+                    platform = selected
+                case "--app": app = value
+                case "--output": directory = value
+                case "--task": task = value
+                case "--device": device = value
+                default: page = value
+                }
+            case "--current", "--permissions", "--request-permissions", "--dump", "--list-devices":
+                mode = String(arg.dropFirst(2))
             case "--help", "-h": mode = "help"
             default: throw CaptureFailure("Unknown option: \(arg)")
             }
         }
+        let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        output = directory ?? "tmp/ui-captures/\(platform.rawValue)-\(timestamp)"
+        if let page {
+            guard !page.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  ![".", ".."].contains(page), !page.contains("/"), !page.contains("\\"), !page.contains("\0") else {
+                throw CaptureFailure("Page name must be a nonempty filename without a path")
+            }
+        }
+        if platform == .macos, device != nil { throw CaptureFailure("--device requires --platform ios") }
+        if platform == .ios, task != nil { throw CaptureFailure("--task is available for Mac page traversal only") }
     }
 }
+
 struct CaptureFailure: Error, CustomStringConvertible {
     let description: String
     let unavailable: Bool
     init(_ description: String, unavailable: Bool = false) { self.description = description; self.unavailable = unavailable }
 }
+
 struct PageCapture: Codable {
     let page: String
     let status: String
     let file: String?
     let reason: String?
+}
+
+func writeGallery(_ records: [PageCapture], to output: URL, platform: String) throws {
+    let sorted = records.sorted { $0.page < $1.page }
+    let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    try encoder.encode(sorted).write(to: output.appendingPathComponent("manifest.json"), options: .atomic)
+    func escaped(_ value: String) -> String {
+        value.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+    }
+    let rows = sorted.map { record in
+        let title = escaped(record.page)
+        if let file = record.file {
+            var link = URLComponents()
+            link.path = file
+            let path = escaped(link.percentEncodedPath)
+            return "<section><h2>\(title)</h2><a href=\"\(path)\"><img loading=\"lazy\" src=\"\(path)\"></a></section>"
+        }
+        return "<section><h2>\(title)</h2><p>\(escaped(record.status)): \(escaped(record.reason ?? ""))</p></section>"
+    }.joined(separator: "\n")
+    let title = "Voxline \(platform) UI"
+    let html = "<!doctype html><meta charset=utf-8><title>\(title)</title><style>body{font:16px system-ui;background:#eee;margin:32px}section{margin-bottom:32px}img{max-width:100%;max-height:90vh;height:auto;box-shadow:0 2px 16px #888}h2{font-size:18px}</style><h1>\(title)</h1>" + rows
+    try html.write(to: output.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+}
+
+/// Only invokes Apple's local Simulator tooling; no app data is copied or modified.
+func simulatorCommand(_ arguments: [String]) throws -> Data {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+    process.arguments = ["simctl"] + arguments
+    let stdout = Pipe(), stderr = Pipe()
+    process.standardOutput = stdout; process.standardError = stderr
+    try process.run()
+    let data = stdout.fileHandleForReading.readDataToEndOfFile()
+    let errors = stderr.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        throw CaptureFailure("simctl \(arguments.first ?? ""): \(String(decoding: errors, as: UTF8.self))")
+    }
+    return data
+}
+
+struct SimulatorDevice: Decodable {
+    let name: String
+    let udid: String
+    let state: String
+}
+struct SimulatorInventory: Decodable { let devices: [String: [SimulatorDevice]] }
+
+func captureSimulator(_ options: CaptureOptions) throws {
+    guard ["all", "current", "list-devices"].contains(options.mode) else {
+        throw CaptureFailure("iOS supports --page, --device and --list-devices; Mac Accessibility and Screen Recording are not required")
+    }
+    let inventory = try JSONDecoder().decode(SimulatorInventory.self,
+        from: simulatorCommand(["list", "devices", "available", "--json"]))
+    let devices = inventory.devices.filter { $0.key.contains(".iOS-") }.flatMap(\.value)
+    if options.mode == "list-devices" {
+        for device in devices.sorted(by: { $0.name < $1.name }) {
+            print("\(device.udid)  \(device.name)  \(device.state)")
+        }
+        return
+    }
+    let candidates = devices.filter { device in
+        device.state == "Booted" && (options.device.map { $0 == device.udid || $0 == device.name } ?? (device.name == "iPhone 17 Pro"))
+    }
+    guard candidates.count == 1, let device = candidates.first else {
+        throw CaptureFailure("Select one booted iOS Simulator with --device UUID. Default: booted iPhone 17 Pro. Use --list-devices or run make ios-run first.")
+    }
+    let output = URL(fileURLWithPath: options.output).standardizedFileURL
+    let manifest = output.appendingPathComponent("manifest.json")
+    var records = FileManager.default.fileExists(atPath: manifest.path)
+        ? try JSONDecoder().decode([PageCapture].self, from: Data(contentsOf: manifest)) : []
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    let page = options.page ?? "current-screen"
+    let file = page + ".png"
+    _ = try simulatorCommand(["io", device.udid, "screenshot", "--type=png", output.appendingPathComponent(file).path])
+    records.removeAll { $0.page == page }
+    records.append(.init(page: page, status: "captured", file: file, reason: nil))
+    try writeGallery(records, to: output, platform: "iOS")
+    print("captured \(page) · \(device.name)\nGallery: \(output.appendingPathComponent("index.html").path)")
 }
 
 @MainActor final class MacPageCapture {
@@ -88,7 +197,8 @@ struct PageCapture: Codable {
     }
     func normalized(_ value: String) -> String { value.replacingOccurrences(of: "…", with: "...") }
     func matches(_ element: AXUIElement, _ key: String) -> Bool {
-        let names = [key, translations[key] ?? key].map(normalized)
+        let keys = key == "校对" ? [key, "进入校对"] : [key]
+        let names = keys.flatMap { [$0, translations[$0] ?? $0] }.map(normalized)
         let values = [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute, kAXValueAttribute, kAXPlaceholderValueAttribute]
             .map { normalized(text(element, $0)) }
         return values.contains { value in names.contains { value == $0 || value.hasPrefix($0 + "、") } }
@@ -198,6 +308,7 @@ struct PageCapture: Codable {
         }
         CGImageDestinationAddImage(destination, image, nil)
         guard CGImageDestinationFinalize(destination) else { throw CaptureFailure("Cannot write PNG: \(url.path)") }
+        records.removeAll { $0.page == page }
         records.append(.init(page: page, status: "captured", file: file, reason: nil))
         print("captured \(page)")
     }
@@ -222,22 +333,16 @@ struct PageCapture: Codable {
         }
     }
     func index() throws {
-        records.sort { $0.page < $1.page }
-        let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(records).write(to: output.appendingPathComponent("manifest.json"), options: .atomic)
-        let rows = records.map { record in
-            if let file = record.file { return "<section><h2>\(record.page)</h2><a href=\"\(file)\"><img loading=\"lazy\" src=\"\(file)\"></a></section>" }
-            let reason = (record.reason ?? "").replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
-            return "<section><h2>\(record.page)</h2><p>Unavailable: \(reason)</p></section>"
-        }.joined(separator: "\n")
-        let html = "<!doctype html><meta charset=utf-8><title>Voxline Mac UI</title><style>body{font:16px system-ui;background:#eee;margin:32px}section{margin-bottom:32px}img{max-width:100%;height:auto;box-shadow:0 2px 16px #888}h2{font-size:18px}</style><h1>Voxline Mac UI</h1>" + rows
-        try html.write(to: output.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+        try writeGallery(records, to: output, platform: "Mac")
     }
     func run() async throws {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         application.activate()
         try await Task.sleep(for: .milliseconds(350))
         if options.mode == "dump" {
+            print("Application PID:", application.processIdentifier)
+            let windows = attribute(ax, kAXWindowsAttribute) as? [AXUIElement] ?? []
+            print("Windows:", windows.map { [text($0, kAXTitleAttribute), text($0, kAXIdentifierAttribute)] })
             for element in nodes(try focusedWindow()) {
                 let role = text(element, kAXRoleAttribute)
                 if text(element, kAXSubroleAttribute) == kAXSecureTextFieldSubrole { continue }
@@ -245,13 +350,37 @@ struct PageCapture: Codable {
             }
             return
         }
-        if options.mode == "current" {
-            try await capture("current-window")
+        if options.mode == "current" || options.page != nil {
+            let manifest = output.appendingPathComponent("manifest.json")
+            if FileManager.default.fileExists(atPath: manifest.path) {
+                records = try JSONDecoder().decode([PageCapture].self, from: Data(contentsOf: manifest))
+            }
+            try await capture(options.page ?? "current-window")
             try index()
             return
         }
         // Work in a fresh native tab, leaving an existing editing session untouched.
+        let windowDeadline = Date().addingTimeInterval(8)
+        var workspace: AXUIElement?
+        repeat {
+            var windows = attribute(ax, kAXWindowsAttribute) as? [AXUIElement] ?? []
+            if let focused = try? focusedWindow() { windows.insert(focused, at: 0) }
+            workspace = windows.first {
+                text($0, kAXIdentifierAttribute).hasPrefix("workspace-") || text($0, kAXTitleAttribute) == "Voxline"
+            }
+            if workspace == nil { try await Task.sleep(for: .milliseconds(150)) }
+        } while workspace == nil && Date() < windowDeadline
+        guard let workspace else { throw CaptureFailure("Open a Voxline workspace window before capturing all pages") }
+        let focused = try focusedWindow()
+        if !CFEqual(workspace, focused) {
+            let result = AXUIElementPerformAction(workspace, kAXRaiseAction as CFString)
+            guard result == .success else { throw CaptureFailure("Cannot bring the Voxline workspace forward: \(result.rawValue)") }
+        }
+        try await Task.sleep(for: .milliseconds(200))
         try key(45, command: true) // Cmd+N
+        if find("全部任务", role: kAXRowRole) == nil, let toggle = find("显示边栏", role: kAXButtonRole) {
+            try press(toggle)
+        }
         _ = try await wait("全部任务", role: kAXRowRole)
         let captureWindowID = text(try focusedWindow(), kAXIdentifierAttribute)
         try await capture("01-task-library")
@@ -286,9 +415,22 @@ struct PageCapture: Codable {
         }
         try key(43, command: true) // Cmd+,
         _ = try await wait("模型管理", role: kAXRadioButtonRole)
-        for (name, page) in [("模型管理", "24-settings-models"), ("iCloud 同步", "25-settings-sync"), ("更新", "26-settings-updates")] {
+        for (name, page) in [("模型管理", "24-settings-models"), ("iCloud 同步", "25-settings-sync"), ("更新", "26-settings-updates"), ("外观", "27-settings-appearance")] {
             try await click(name, role: kAXRadioButtonRole)
+            let scrollbar = name == "外观"
+                ? nodes(try focusedWindow()).first { text($0, kAXRoleAttribute) == kAXScrollBarRole } : nil
+            if let scrollbar {
+                guard AXUIElementSetAttributeValue(scrollbar, kAXValueAttribute as CFString, NSNumber(value: 0)) == .success else {
+                    throw CaptureFailure("Cannot scroll appearance settings to the top")
+                }
+            }
             try await capture(page)
+            if let scrollbar {
+                guard AXUIElementSetAttributeValue(scrollbar, kAXValueAttribute as CFString, NSNumber(value: 1)) == .success else {
+                    throw CaptureFailure("Cannot scroll appearance settings to the parameters")
+                }
+                try await capture("28-settings-appearance-parameters")
+            }
         }
         try key(13, command: true) // Cmd+W: settings window only
         try await click("全部任务", role: kAXRowRole)
@@ -363,18 +505,28 @@ Task { @MainActor in
         let options = try CaptureOptions()
         if options.mode == "help" {
             print("""
-            Usage: swift Scripts/capture-macos-ui.swift [options]
-              --app PATH        Running Voxline app (default dist/macos/Voxline.app)
-              --output PATH     PNG gallery and manifest (default tmp/ui-captures/<time>)
+            Usage: swift Scripts/capture-ui.swift [options]
+              --platform NAME   macos (default) or ios
+              --app PATH        Running Mac app (default dist/macos/Voxline.app)
+              --device UUID     Booted iOS Simulator (default iPhone 17 Pro)
+              --list-devices    List available iOS Simulators
+              --page NAME       Capture current window/screen as NAME.png; append to gallery
+              --output PATH     PNG gallery and manifest (default tmp/ui-captures/<platform>-<time>)
               --task TITLE      Existing task with a playable video and subtitles
               --current         Capture only the focused Voxline window
               --dump            Print visible Accessibility control names (no secure fields)
               --permissions     Check Screen Recording and Accessibility access
               --request-permissions  Ask macOS for required access, then rerun
-            Default: traverse Mac pages in a new tab; cancel sheets and close the capture tab when finished.
+            Mac default: traverse pages in a new tab; cancel sheets and close the capture tab when finished.
+            iOS: capture the current Simulator screen. Navigate in Voxline and rerun --page with the same --output to build a gallery.
             """)
             exit(0)
         }
+        if options.platform == .ios {
+            try captureSimulator(options)
+            exit(0)
+        }
+        if options.mode == "list-devices" { throw CaptureFailure("--list-devices requires --platform ios") }
         if options.mode == "request-permissions" {
             let prompt = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
             _ = AXIsProcessTrustedWithOptions(prompt)
@@ -396,7 +548,7 @@ Task { @MainActor in
         }
         exit(0)
     } catch {
-        FileHandle.standardError.write(Data("capture-macos-ui: \(error)\n".utf8))
+        FileHandle.standardError.write(Data("capture-ui: \(error)\n".utf8))
         exit(1)
     }
 }

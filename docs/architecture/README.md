@@ -82,6 +82,7 @@ graph TD
 - **Mac 窗口会话**：每个工作区持有独立的导航与 `ProofreadingSession`，离页时直接提交当前草稿。焦点值只将菜单命令送入当前窗口，窗口自身不通过焦点闭包调用子页面，避免焦点发布与监听形成刷新循环。
 - **共享视图**：任务列表、参数配置会话（`TaskConfigurationSession`）、双语校对播放器（`MediaDetailProofreadingView`）、字幕结构编辑器（`SubtitleStructureEditor`）与设置面板。
 - **视觉风格**：系统 26+ 使用 Liquid Glass 流体玻璃，旧系统使用原生 Material，全面适配深色模式与 VoiceOver 辅助功能。
+- **Mac 窗口合成**：采用系统窗口背景，不额外叠加整窗桌面模糊或光晕。普通面板与胶囊使用底板单阴影，字幕叠层的阴影不包含文字与控件。
 
 ---
 

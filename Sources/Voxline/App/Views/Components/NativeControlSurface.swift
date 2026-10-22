@@ -44,6 +44,7 @@ public struct NativeControlSurface: ViewModifier {
                             )
                     )
                     .background(.regularMaterial, in: shape)
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 8, y: 3)
                 }
                 .overlay {
                     shape.strokeBorder(
@@ -69,18 +70,6 @@ public struct NativeControlSurface: ViewModifier {
                         lineWidth: 1
                     )
                 }
-                .shadow(
-                    color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.03),
-                    radius: colorScheme == .dark ? 3 : 1.5,
-                    x: 0,
-                    y: 1
-                )
-                .shadow(
-                    color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.05),
-                    radius: colorScheme == .dark ? 12 : 8,
-                    x: 0,
-                    y: colorScheme == .dark ? 6 : 3
-                )
         }
         #else
         if reduceTransparency {
@@ -108,7 +97,6 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
             content
                 .background(Color.voxlineControlBackground, in: .capsule)
                 .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
-                .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
         } else {
             content
                 .background {
@@ -133,6 +121,7 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
                                 )
                         )
                         .background(.ultraThinMaterial, in: .capsule)
+                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.25 : 0.09), radius: 10, y: 4)
                 }
                 .overlay(
                     Capsule().strokeBorder(
@@ -155,18 +144,6 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
                             ),
                         lineWidth: 1
                     )
-                )
-                .shadow(
-                    color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.04),
-                    radius: colorScheme == .dark ? 4 : 2,
-                    x: 0,
-                    y: 1.5
-                )
-                .shadow(
-                    color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.09),
-                    radius: colorScheme == .dark ? 16 : 12,
-                    x: 0,
-                    y: colorScheme == .dark ? 8 : 5
                 )
         }
         #else
@@ -207,6 +184,7 @@ public struct NativeSubtitleOverlaySurface: ViewModifier {
                 .background {
                     shape.fill(Color.black.opacity(0.60))
                         .background(.ultraThinMaterial, in: shape)
+                        .shadow(color: .black.opacity(0.40), radius: 12, y: 5)
                 }
                 .overlay {
                     shape.strokeBorder(
@@ -221,7 +199,6 @@ public struct NativeSubtitleOverlaySurface: ViewModifier {
                         lineWidth: 1
                     )
                 }
-                .shadow(color: Color.black.opacity(0.40), radius: 12, x: 0, y: 5)
         }
         #else
         if reduceTransparency {
