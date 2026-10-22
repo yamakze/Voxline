@@ -63,21 +63,15 @@ struct ProofreadingPlayerControls: View {
             .accessibilityLabel(String(localized: "快进 5 秒", bundle: appLocalizationBundle))
             .help(String(localized: "快进 5 秒", bundle: appLocalizationBundle))
 
-            Text(playback.formattedCurrentTime)
+            PlaybackCurrentTime(playback: playback)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.primary)
 
-            Slider(
-                value: Binding(
-                    get: { playback.currentTimeSeconds },
-                    set: { playback.seek(to: $0) }
-                ),
-                in: 0...max(playback.durationSeconds, 1.0)
-            )
-            .controlSize(.mini)
-            .tint(Color.voxlineAccent)
-            .accessibilityLabel(String(localized: "播放进度", bundle: appLocalizationBundle))
-            .frame(minWidth: 100)
+            PlaybackProgressSlider(playback: playback)
+                .controlSize(.mini)
+                .tint(Color.voxlineAccent)
+                .accessibilityLabel(String(localized: "播放进度", bundle: appLocalizationBundle))
+                .frame(minWidth: 100)
 
             Text(playback.formattedDuration)
                 .font(.system(size: 11, weight: .regular, design: .monospaced))
@@ -94,19 +88,13 @@ struct ProofreadingPlayerControls: View {
     private var cardContent: some View {
         VStack(spacing: 6) {
             HStack(spacing: 10) {
-                Text(playback.formattedCurrentTime)
+                PlaybackCurrentTime(playback: playback)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
 
-                Slider(
-                    value: Binding(
-                        get: { playback.currentTimeSeconds },
-                        set: { playback.seek(to: $0) }
-                    ),
-                    in: 0...max(playback.durationSeconds, 0.1)
-                )
-                .tint(Color.voxlineAccent)
-                .disabled(!playback.isReady)
+                PlaybackProgressSlider(playback: playback, minimumDuration: 0.1)
+                    .tint(Color.voxlineAccent)
+                    .disabled(!playback.isReady)
 
                 Text(playback.formattedDuration)
                     .font(.caption2.monospacedDigit())
@@ -187,7 +175,7 @@ struct ProofreadingPlayerControls: View {
             // Narrow player: Two-row compact layout
             VStack(spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(playback.formattedCurrentTime)
+                    PlaybackCurrentTime(playback: playback)
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.primary)
                     dockedProgress
@@ -269,7 +257,7 @@ struct ProofreadingPlayerControls: View {
 
     private var dockedTime: some View {
         HStack(spacing: 3) {
-            Text(playback.formattedCurrentTime)
+            PlaybackCurrentTime(playback: playback)
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.primary)
             Text("/")
@@ -282,16 +270,10 @@ struct ProofreadingPlayerControls: View {
     }
 
     private var dockedProgress: some View {
-        Slider(
-            value: Binding(
-                get: { playback.currentTimeSeconds },
-                set: { playback.seek(to: $0) }
-            ),
-            in: 0...max(playback.durationSeconds, 1.0)
-        )
-        .controlSize(.mini)
-        .tint(Color.voxlineAccent)
-        .accessibilityLabel(String(localized: "播放进度", bundle: appLocalizationBundle))
+        PlaybackProgressSlider(playback: playback)
+            .controlSize(.mini)
+            .tint(Color.voxlineAccent)
+            .accessibilityLabel(String(localized: "播放进度", bundle: appLocalizationBundle))
     }
 
     private var volumeControl: some View {
@@ -337,4 +319,29 @@ struct ProofreadingPlayerControls: View {
         (NSApp.keyWindow ?? NSApp.mainWindow)?.styleMask.contains(.fullScreen) == true
     }
     #endif
+}
+
+/// Read the playback clock here so its 30 Hz updates do not invalidate the control bar.
+private struct PlaybackCurrentTime: View {
+    let playback: MediaPlaybackController
+
+    var body: some View {
+        Text(playback.formattedCurrentTime)
+    }
+}
+
+/// Slider evaluates its binding in this leaf, independently of transport buttons and material.
+private struct PlaybackProgressSlider: View {
+    let playback: MediaPlaybackController
+    var minimumDuration: Double = 1
+
+    var body: some View {
+        Slider(
+            value: Binding(
+                get: { playback.currentTimeSeconds },
+                set: { playback.seek(to: $0) }
+            ),
+            in: 0...max(playback.durationSeconds, minimumDuration)
+        )
+    }
 }

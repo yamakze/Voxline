@@ -12,9 +12,7 @@ final class ProofreadingSession {
     }
 
     var previewKind: SRTOutputKind
-    var searchQuery = "" {
-        didSet { filterTranscriptRows() }
-    }
+    var searchQuery = ""
     private(set) var transcriptRows: [TranscriptRow] = []
     private(set) var hasUntranslatedCues = false
     @ObservationIgnored private var allTranscriptRows: [TranscriptRow] = []
@@ -43,6 +41,17 @@ final class ProofreadingSession {
             TranscriptRow(cue: cues[index], nextCue: index + 1 < cues.count ? cues[index + 1] : nil)
         }
         hasUntranslatedCues = cues.contains { !$0.hasTranslation }
+        filterTranscriptRows()
+    }
+
+    /// Called by the page's search task; a new query or leaving the page cancels the delay.
+    func refreshSearchResults() async {
+        if !searchQuery.isEmpty {
+            do { try await Task.sleep(for: .milliseconds(200)) }
+            // Sleep cancellation keeps the current results and never opens an editing alert.
+            catch { return }
+        }
+        guard !Task.isCancelled else { return }
         filterTranscriptRows()
     }
 

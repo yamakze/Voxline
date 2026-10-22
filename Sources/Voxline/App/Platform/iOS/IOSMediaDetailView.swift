@@ -41,11 +41,6 @@ struct IOSMediaDetailView: View {
     private var task: ProcessingTask? { library.task(taskID) }
     private var item: TaskMediaItem? { library.task(taskID)?.items.first { $0.id == mediaID } }
 
-    private struct MediaLoadRequest: Equatable {
-        let source: MediaPlaybackController.SourceIdentity
-        let localAssociationRevision: Int
-    }
-
     var body: some View {
         if let item {
             GeometryReader { geometry in
@@ -181,7 +176,7 @@ struct IOSMediaDetailView: View {
                 get: { session.errorMessage != nil }, set: { if !$0 { session.errorMessage = nil } })) {
                 Button(String(localized: "好", bundle: appLocalizationBundle)) { session.errorMessage = nil }
             } message: { Text(session.errorMessage ?? "") }
-            .task(id: MediaLoadRequest(source: .init(item: item), localAssociationRevision: localAssociationRevision)) {
+            .task(id: MediaPlaybackController.LoadRequest(source: .init(item: item), localAssociationRevision: localAssociationRevision)) {
                 await playback.loadMedia(for: item)
             }
             .onChange(of: item.cues) { _, cues in
@@ -189,6 +184,7 @@ struct IOSMediaDetailView: View {
                 playback.updateSubtitles(cues)
             }
             .onAppear { session.updateSubtitles(item.cues) }
+            .task(id: session.searchQuery) { await session.refreshSearchResults() }
             .onDisappear { fileOperation?.cancel(); playback.releaseMedia() }
         } else {
             ContentUnavailableView(String(localized: "媒体不存在", bundle: appLocalizationBundle), systemImage: "film")

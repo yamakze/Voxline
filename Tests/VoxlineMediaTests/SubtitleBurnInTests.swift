@@ -16,13 +16,14 @@ struct SubtitleBurnInTests {
         var item = try await fixture(store: store, inspector: inspector, directory: directory)
         try item.cues[0].replaceSourceText(with: String(repeating: "Very long dialogue with a complete ending. ", count: 30))
         item.cues[0].translation = .succeeded(text: String(repeating: "完整长句字幕，自动缩小字号。", count: 30), sourceRevision: 1)
-        let plan = try await SubtitleBurnInExporter.composition(for: item, options: BurnInOptions(), mediaStore: store, inspector: inspector)
+        let options = BurnInOptions()
+        let plan = try await SubtitleBurnInExporter.composition(for: item, options: options, mediaStore: store, inspector: inspector)
         defer { plan.releaseAccess() }
         let before = try await plan.preview(atMilliseconds: 500)
         let during = try await plan.preview(atMilliseconds: 1500)
         #expect(try Self.pixels(before) != Self.pixels(during))
         let destination = directory.appendingPathComponent("long.mp4")
-        try await SubtitleBurnInExporter.export(plan, to: destination) { _ in }
+        try await SubtitleBurnInExporter.export(plan, to: destination, codec: options.codec, quality: options.quality) { _ in }
         let output = try await inspector.inspect(destination)
         #expect(output.durationMilliseconds >= 3900)
         #expect(output.audioTracks.count == 1)
@@ -119,7 +120,7 @@ struct SubtitleBurnInTests {
         #expect(try Self.pixels(before) == Self.pixels(after))
         let destination = directory.appendingPathComponent("output.mp4")
         var progress: [Double] = []
-        try await SubtitleBurnInExporter.export(plan, to: destination) { progress.append($0) }
+        try await SubtitleBurnInExporter.export(plan, to: destination, codec: options.codec, quality: options.quality) { progress.append($0) }
         #expect(progress.last == 1)
         let exported = try await inspector.inspect(destination)
         #expect(exported.audioTracks.count == 1)
@@ -148,14 +149,21 @@ struct SubtitleBurnInTests {
         #expect(Double(outsideDifference) / Double(beforePixels.count) < 5)
         let existing = try Data(contentsOf: destination)
         await #expect(throws: BurnInError.fileAlreadyExists) {
-            try await SubtitleBurnInExporter.export(plan, to: destination) { _ in }
+            try await SubtitleBurnInExporter.export(plan, to: destination, codec: options.codec, quality: options.quality) { _ in }
         }
         #expect(try Data(contentsOf: destination) == existing)
-        try await SubtitleBurnInExporter.export(plan, to: destination, allowOverwrite: true) { _ in }
+        // Encoding is chosen at export; changing it reuses the same subtitle composition.
+        options.codec = .hevc
+        options.quality = .fullHD
+        try await SubtitleBurnInExporter.export(plan, to: destination, codec: options.codec, quality: options.quality, allowOverwrite: true) { _ in }
         #expect(FileManager.default.fileExists(atPath: destination.path))
+        let reencoded = AVURLAsset(url: destination)
+        let reencodedVideo = try #require(try await reencoded.loadTracks(withMediaType: .video).first)
+        let reencodedFormat = try #require(try await reencodedVideo.load(.formatDescriptions).first)
+        #expect(CMFormatDescriptionGetMediaSubType(reencodedFormat) == kCMVideoCodecType_HEVC)
         let cancelled = Task { @MainActor in
             try Task.checkCancellation()
-            try await SubtitleBurnInExporter.export(plan, to: directory.appendingPathComponent("cancelled.mp4")) { _ in }
+            try await SubtitleBurnInExporter.export(plan, to: directory.appendingPathComponent("cancelled.mp4"), codec: options.codec, quality: options.quality) { _ in }
         }
         cancelled.cancel()
         await #expect(throws: CancellationError.self) { try await cancelled.value }
@@ -178,7 +186,7 @@ struct SubtitleBurnInTests {
         let preview = try await plan.preview(atMilliseconds: 2500)
         #expect(preview.height > preview.width)
         let destination = directory.appendingPathComponent("portrait.mp4")
-        try await SubtitleBurnInExporter.export(plan, to: destination) { _ in }
+        try await SubtitleBurnInExporter.export(plan, to: destination, codec: options.codec, quality: options.quality) { _ in }
         let image = try await Self.outputFrame(destination, milliseconds: 2500)
         #expect(image.width == preview.width && image.height == preview.height)
         let asset = AVURLAsset(url: destination)
@@ -188,7 +196,7 @@ struct SubtitleBurnInTests {
         var exportTask: Task<Void, Error>?
         var sawExportProgress = false
         exportTask = Task { @MainActor in
-            try await SubtitleBurnInExporter.export(plan, to: destination, allowOverwrite: true) { value in
+            try await SubtitleBurnInExporter.export(plan, to: destination, codec: options.codec, quality: options.quality, allowOverwrite: true) { value in
                 if value < 1 { sawExportProgress = true; exportTask?.cancel() }
             }
         }
@@ -214,7 +222,7 @@ struct SubtitleBurnInTests {
         let hardlink = directory.appendingPathComponent("source.mp4")
         try FileManager.default.linkItem(at: plan.sourceURL, to: hardlink)
         await #expect(throws: BurnInError.sourceIsOutput) {
-            try await SubtitleBurnInExporter.export(plan, to: hardlink, allowOverwrite: true) { _ in }
+            try await SubtitleBurnInExporter.export(plan, to: hardlink, codec: options.codec, quality: options.quality, allowOverwrite: true) { _ in }
         }
         #expect(try Data(contentsOf: hardlink) == Data(contentsOf: plan.sourceURL))
         item = TaskMediaItem(title: item.title, kind: .audio, source: item.source, media: item.media, cues: item.cues)
@@ -279,7 +287,7 @@ struct SubtitleBurnInTests {
             let filename = "S001-\(kind.rawValue).mp4"
             let output = directory.appendingPathComponent(filename)
             let started = ContinuousClock.now
-            try await SubtitleBurnInExporter.export(plan, to: output, allowOverwrite: true) { _ in }
+            try await SubtitleBurnInExporter.export(plan, to: output, codec: options.codec, quality: options.quality, allowOverwrite: true) { _ in }
             let elapsed = started.duration(to: .now)
             let result = try await inspector.inspect(output)
             #expect(abs(result.durationMilliseconds - inspection.durationMilliseconds) < 100)

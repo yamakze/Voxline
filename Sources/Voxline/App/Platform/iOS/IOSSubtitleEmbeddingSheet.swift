@@ -64,21 +64,7 @@ public struct IOSSubtitleEmbeddingSheet: View {
                 }
 
                 if session.isExporting {
-                    Section(String(localized: "导出进度", bundle: appLocalizationBundle)) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ProgressView(value: session.progress)
-                            HStack {
-                                Text(String(localized: "正在封装软字幕 \(Int(session.progress * 100))%…", bundle: appLocalizationBundle))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
-                                    session.cancel()
-                                }
-                                .font(.caption)
-                            }
-                        }
-                    }
+                    IOSSubtitleEmbeddingProgress(session: session)
                 }
 
                 if let exportedURL = session.exportedURL {
@@ -139,7 +125,7 @@ public struct IOSSubtitleEmbeddingSheet: View {
             }
             .sheet(isPresented: $showPreviewPlayer) {
                 if let exportedURL = session.exportedURL {
-                    VideoPlayerView(url: exportedURL)
+                    IOSExportVideoPreview(url: exportedURL)
                 }
             }
             .onDisappear {
@@ -154,21 +140,24 @@ public struct IOSSubtitleEmbeddingSheet: View {
     }
 }
 
-private struct VideoPlayerView: View {
-    let url: URL
-    @Environment(\.dismiss) private var dismiss
+private struct IOSSubtitleEmbeddingProgress: View {
+    let session: SubtitleEmbeddingSession
 
     var body: some View {
-        NavigationStack {
-            VideoPlayer(player: AVPlayer(url: url))
-                .ignoresSafeArea()
-                .navigationTitle(String(localized: "视频预览", bundle: appLocalizationBundle))
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(String(localized: "完成", bundle: appLocalizationBundle)) { dismiss() }
+        Section(String(localized: "导出进度", bundle: appLocalizationBundle)) {
+            VStack(alignment: .leading, spacing: 8) {
+                ProgressView(value: session.progress)
+                HStack {
+                    Text(String(localized: "正在封装软字幕 \(Int(session.progress * 100))%…", bundle: appLocalizationBundle))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                        session.cancel()
                     }
+                    .font(.caption)
                 }
+            }
         }
     }
 }

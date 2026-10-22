@@ -7,7 +7,6 @@ import VoxlineMedia
 
 struct IOSSubtitleBurnInSheet: View {
     @State private var session: SubtitleBurnInSession
-    private var item: TaskMediaItem { session.item }
     @Environment(\.dismiss) private var dismiss
     @State private var showPreviewPlayer = false
     @State private var sharingFile: TemporaryExportFile?
@@ -48,14 +47,12 @@ struct IOSSubtitleBurnInSheet: View {
             }
             .sheet(isPresented: $showPreviewPlayer) {
                 if let exportedURL = session.exportedURL {
-                    VideoPlayerView(url: exportedURL, retainedFile: session.temporaryExport)
+                    IOSExportVideoPreview(url: exportedURL, retainedFile: session.temporaryExport)
                 }
             }
             .sheet(item: $sharingFile) { file in
                 ShareActivitySheet(activityItems: [file.url], retainedFile: file)
             }
-            .onChange(of: session.options) { _, _ in session.invalidatePreview() }
-            .onChange(of: session.previewTime) { _, _ in session.previewImage = nil }
             .onDisappear {
                 session.close()
             }
@@ -96,7 +93,7 @@ struct IOSSubtitleBurnInSheet: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text(String(localized: "预览字幕节点", bundle: appLocalizationBundle))
+                    Text(String(localized: "预览字幕", bundle: appLocalizationBundle))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
 
@@ -113,42 +110,7 @@ struct IOSSubtitleBurnInSheet: View {
                     .disabled(session.isPreparing || session.isExporting)
                 }
 
-                Menu {
-                    Picker(String(localized: "预览字幕位置", bundle: appLocalizationBundle), selection: $session.previewTime) {
-                        ForEach(item.cues) { cue in
-                            Text("\(formatTime(cue.startMilliseconds)) · \(cue.sourceText)")
-                                .tag(cue.startMilliseconds)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock")
-                            .font(.caption)
-                            .foregroundStyle(Color.voxlineAccent)
-
-                        let currentText: String = {
-                            if let cue = item.cues.first(where: { $0.startMilliseconds == session.previewTime }) ?? item.cues.first {
-                                return "\(formatTime(cue.startMilliseconds)) · \(cue.sourceText)"
-                            }
-                            return String(localized: "选择预览字幕", bundle: appLocalizationBundle)
-                        }()
-
-                        Text(currentText)
-                            .font(.subheadline)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .foregroundStyle(.primary)
-
-                        Spacer()
-
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
+                BurnInPreviewCuePicker(options: session.previewOptions, selection: $session.previewCueID)
                 .disabled(session.isPreparing || session.isExporting)
             }
 
@@ -318,9 +280,6 @@ struct IOSSubtitleBurnInSheet: View {
         } catch { session.errorMessage = error.localizedDescription }
     }
 
-    private func formatTime(_ milliseconds: Int64) -> String {
-        Duration.milliseconds(milliseconds).formatted(.time(pattern: .minuteSecond(padMinuteToLength: 2)))
-    }
 }
 
 private struct IOSBurnInExportProgress: View {
@@ -342,23 +301,4 @@ private struct IOSBurnInExportProgress: View {
     }
 }
 
-private struct VideoPlayerView: View {
-    let url: URL
-    let retainedFile: TemporaryExportFile?
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VideoPlayer(player: AVPlayer(url: url))
-                .ignoresSafeArea()
-                .navigationTitle(String(localized: "视频预览", bundle: appLocalizationBundle))
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(String(localized: "完成", bundle: appLocalizationBundle)) { dismiss() }
-                    }
-                }
-        }
-    }
-}
 #endif

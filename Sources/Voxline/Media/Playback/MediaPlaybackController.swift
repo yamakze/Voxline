@@ -12,6 +12,16 @@ public final class MediaPlaybackController {
         public init(item: TaskMediaItem) { itemID = item.id; media = item.media }
     }
 
+    public struct LoadRequest: Equatable, Sendable {
+        public let source: SourceIdentity
+        public let localAssociationRevision: Int
+
+        public init(source: SourceIdentity, localAssociationRevision: Int) {
+            self.source = source
+            self.localAssociationRevision = localAssociationRevision
+        }
+    }
+
     public private(set) var player: AVPlayer?
     public private(set) var isReady = false
     public private(set) var isLoading = false

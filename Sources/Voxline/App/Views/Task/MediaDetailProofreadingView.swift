@@ -24,6 +24,7 @@ public struct MediaDetailProofreadingView: View {
     @State private var showEmbeddingSheet = false
     @State private var showBurnInSheet = false
     @State private var showRelinkSheet = false
+    @State private var localAssociationRevision = 0
     @State private var importState = SubtitleImportState()
     @State private var structureState = SubtitleStructureState()
 
@@ -160,7 +161,7 @@ public struct MediaDetailProofreadingView: View {
         )) {
             Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { session.errorMessage = nil }
         } message: { Text(session.errorMessage ?? "") }
-        .task(id: MediaPlaybackController.SourceIdentity(item: item)) {
+        .task(id: MediaPlaybackController.LoadRequest(source: .init(item: item), localAssociationRevision: localAssociationRevision)) {
             await playbackController.loadMedia(for: item)
         }
         .onChange(of: item.cues) { _, cues in
@@ -168,6 +169,7 @@ public struct MediaDetailProofreadingView: View {
             playbackController.updateSubtitles(cues)
         }
         .onAppear { session.updateSubtitles(item.cues) }
+        .task(id: session.searchQuery) { await session.refreshSearchResults() }
         .onDisappear {
             playbackController.releaseMedia()
         }
@@ -192,10 +194,13 @@ public struct MediaDetailProofreadingView: View {
             SubtitleEmbeddingSheet(item: item, task: TaskLibrary.shared.task(for: taskID))
         }
         .sheet(isPresented: $showBurnInSheet) { SubtitleBurnInSheet(item: item) }
-        .sheet(isPresented: $showRelinkSheet, onDismiss: {
-            Task { await playbackController.loadMedia(for: item) }
-        }) {
-            MediaRelinkSheet(item: item, onCommit: onCommit)
+        .sheet(isPresented: $showRelinkSheet) {
+            MediaRelinkSheet(item: item) { updated, original in
+                try onCommit(updated, original)
+                if MediaPlaybackController.SourceIdentity(item: updated) == MediaPlaybackController.SourceIdentity(item: original) {
+                    localAssociationRevision += 1
+                }
+            }
         }
         .subtitleImportSheets(state: importState, item: item, taskID: taskID,
             library: TaskLibrary.shared, session: session, onCommit: onCommit)

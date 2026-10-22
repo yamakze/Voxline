@@ -537,7 +537,6 @@
 "音频" = "Audio";
 "预览包含的媒体与字幕" = "Preview included media and subtitles";
 "预览字幕" = "Preview Subtitles";
-"预览字幕位置" = "Preview the subtitle position";
 "预览已取消。" = "The preview has been canceled.";
 "预览视频" = "Preview Video";
 "预设协议" = "Protocol Preset";
@@ -750,7 +749,6 @@
 "暂停 (空格键)" = "Pause (Space)";
 "上移" = "Move Up";
 "下移" = "Move Down";
-"预览字幕节点" = "Preview Cue";
 "选择预览字幕" = "Choose Preview Cue";
 "字幕字号" = "Subtitle Font Size";
 

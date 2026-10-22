@@ -8,10 +8,28 @@ import VoxlineMedia
 @Observable @MainActor
 final class SubtitleBurnInSession {
     let item: TaskMediaItem
-    var options: BurnInOptions
+    let previewOptions: BurnInPreviewOptions
+    var options: BurnInOptions {
+        didSet {
+            guard options != oldValue else { return }
+            if options.kind != oldValue.kind || options.fontSize != oldValue.fontSize {
+                plan?.releaseAccess()
+                plan = nil
+                previewImage = nil
+            }
+            exportedURL = nil
+            temporaryExport = nil
+            errorMessage = nil
+        }
+    }
     private(set) var plan: SubtitleBurnInPlan?
     var previewImage: CGImage?
-    var previewTime: Int64
+    var previewCueID: UUID? {
+        didSet { if previewCueID != oldValue { previewImage = nil } }
+    }
+    private var previewTime: Int64 {
+        previewCueID.flatMap { previewOptions.cuesByID[$0]?.time } ?? 0
+    }
     var fileName: String
     var errorMessage: String?
     var exportedURL: URL?
@@ -24,24 +42,16 @@ final class SubtitleBurnInSession {
 
     init(item: TaskMediaItem) {
         self.item = item
+        previewOptions = BurnInPreviewOptions(cues: item.cues)
         var options = BurnInOptions()
         options.kind = item.cues.allSatisfy(\.hasTranslation) ? .bilingual : .source
         self.options = options
-        previewTime = item.cues.first?.startMilliseconds ?? 0
+        previewCueID = previewOptions.cues.first?.id
         fileName = "\(((item.media?.fileName ?? item.title) as NSString).deletingPathExtension).subtitled.mp4"
     }
 
     func cancel() { operation?.cancel() }
     func close() { operation?.cancel(); plan?.releaseAccess(); temporaryExport = nil }
-
-    func invalidatePreview() {
-        plan?.releaseAccess()
-        plan = nil
-        previewImage = nil
-        exportedURL = nil
-        temporaryExport = nil
-        errorMessage = nil
-    }
 
     func refreshPreview() {
         isPreparing = true
@@ -79,7 +89,8 @@ final class SubtitleBurnInSession {
             do {
                 if plan == nil { plan = try await SubtitleBurnInExporter.composition(for: item, options: options) }
                 guard let plan else { throw BurnInError.invalidGeometry }
-                try await SubtitleBurnInExporter.export(plan, to: destination, allowOverwrite: allowOverwrite) { self.progress = $0 }
+                try await SubtitleBurnInExporter.export(plan, to: destination, codec: options.codec,
+                    quality: options.quality, allowOverwrite: allowOverwrite) { self.progress = $0 }
                 try Task.checkCancellation()
                 temporaryExport = temporaryFile
                 exportedURL = destination

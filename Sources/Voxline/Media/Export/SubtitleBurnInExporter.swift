@@ -59,18 +59,16 @@ public final class SubtitleBurnInPlan {
     public let sourceURL: URL
     public let renderSize: CGSize
     public let duration: CMTime
-    public let options: BurnInOptions
     private let hasScopedAccess: Bool
     private var accessReleased = false
 
     fileprivate init(asset: AVComposition, videoComposition: AVVideoComposition, sourceURL: URL,
-         duration: CMTime, options: BurnInOptions, hasScopedAccess: Bool) {
+         duration: CMTime, hasScopedAccess: Bool) {
         self.asset = asset
         self.videoComposition = videoComposition
         self.sourceURL = sourceURL
         self.renderSize = videoComposition.renderSize
         self.duration = duration
-        self.options = options
         self.hasScopedAccess = hasScopedAccess
     }
 
@@ -164,11 +162,12 @@ public enum SubtitleBurnInExporter {
         try Task.checkCancellation()
         retained = true
         return SubtitleBurnInPlan(asset: composition, videoComposition: videoComposition,
-                                  sourceURL: bookmark.url, duration: duration, options: options, hasScopedAccess: access)
+                                  sourceURL: bookmark.url, duration: duration, hasScopedAccess: access)
     }
 
     @MainActor
-    public static func export(_ plan: SubtitleBurnInPlan, to destination: URL, allowOverwrite: Bool = false,
+    public static func export(_ plan: SubtitleBurnInPlan, to destination: URL, codec: BurnInCodec, quality: BurnInQuality,
+                              allowOverwrite: Bool = false,
                               progress: @escaping @MainActor (Double) -> Void) async throws {
         let name = destination.lastPathComponent
         guard destination.pathExtension.lowercased() == "mp4", !name.contains("\\"),
@@ -188,7 +187,7 @@ public enum SubtitleBurnInExporter {
             guard allowOverwrite else { throw BurnInError.fileAlreadyExists }
         }
         try Task.checkCancellation()
-        let preset = plan.options.quality.preset(codec: plan.options.codec)
+        let preset = quality.preset(codec: codec)
         guard await AVAssetExportSession.compatibility(ofExportPreset: preset, with: plan.asset, outputFileType: .mp4),
               let session = AVAssetExportSession(asset: plan.asset, presetName: preset) else {
             throw BurnInError.unsupportedEncoding
@@ -224,7 +223,7 @@ public enum SubtitleBurnInExporter {
             guard let video = try await exported.loadTracks(withMediaType: .video).first,
                   let audio = audioTracks.first, audioTracks.count == 1 else { throw BurnInError.invalidOutput }
             let formats = try await video.load(.formatDescriptions)
-            let expectedCodec = plan.options.codec == .h264 ? kCMVideoCodecType_H264 : kCMVideoCodecType_HEVC
+            let expectedCodec = codec == .h264 ? kCMVideoCodecType_H264 : kCMVideoCodecType_HEVC
             let actualSize = try await video.load(.naturalSize)
             let actualDuration = try await exported.load(.duration)
             let actualAudioRange = try await audio.load(.timeRange)
@@ -234,7 +233,7 @@ public enum SubtitleBurnInExporter {
                   abs(actualAudioRange.duration.seconds - expectedAudioRange.duration.seconds) < 0.5,
                   try await audio.load(.isDecodable), try await video.load(.isDecodable),
                   actualSize.width > 0, actualSize.height > 0 else { throw BurnInError.invalidOutput }
-            if plan.options.quality == .original {
+            if quality == .original {
                 guard abs(actualSize.width - plan.renderSize.width) < 2,
                       abs(actualSize.height - plan.renderSize.height) < 2 else { throw BurnInError.invalidOutput }
             }

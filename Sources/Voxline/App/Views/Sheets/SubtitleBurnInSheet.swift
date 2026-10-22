@@ -7,7 +7,6 @@ import VoxlineMedia
 
 struct SubtitleBurnInSheet: View {
     @State private var session: SubtitleBurnInSession
-    private var item: TaskMediaItem { session.item }
     @Environment(\.dismiss) private var dismiss
     @State private var targetDirectory: URL?
     @State private var showDirectoryPicker = false
@@ -56,12 +55,7 @@ struct SubtitleBurnInSheet: View {
                                 .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
                                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
-                        Picker(String(localized: "预览字幕", bundle: appLocalizationBundle), selection: $session.previewTime) {
-                            ForEach(item.cues) { cue in
-                                Text("\(SubtitleExporter.formatSRTTimestamp(milliseconds: cue.startMilliseconds)) · \(cue.sourceText.prefix(30))")
-                                    .tag(cue.startMilliseconds)
-                            }
-                        }
+                        BurnInPreviewCuePicker(options: session.previewOptions, selection: $session.previewCueID)
                         .disabled(session.isPreparing || session.isExporting)
                         Button(session.isPreparing ? String(localized: "正在生成预览…", bundle: appLocalizationBundle) : String(localized: "更新预览", bundle: appLocalizationBundle)) { session.refreshPreview() }
                             .disabled(session.isPreparing || session.isExporting)
@@ -134,8 +128,6 @@ struct SubtitleBurnInSheet: View {
             }
         }
         .frame(width: 820)
-        .onChange(of: session.options) { _, _ in session.invalidatePreview() }
-        .onChange(of: session.previewTime) { _, _ in session.previewImage = nil }
         .onChange(of: session.fileName) { _, _ in session.exportedURL = nil }
         .onDisappear { session.close() }
         .fileImporter(isPresented: $showDirectoryPicker, allowedContentTypes: [.folder]) { result in

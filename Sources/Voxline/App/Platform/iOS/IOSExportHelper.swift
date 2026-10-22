@@ -1,5 +1,6 @@
 #if os(iOS)
 import SwiftUI
+import AVKit
 import UIKit
 import VoxlineCore
 
@@ -40,5 +41,41 @@ struct ShareActivitySheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+/// A presented export keeps one player and its temporary file for the preview's lifetime.
+struct IOSExportVideoPreview: View {
+    let url: URL
+    @State private var retainedFile: TemporaryExportFile?
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+
+    init(url: URL, retainedFile: TemporaryExportFile? = nil) {
+        self.url = url
+        _retainedFile = State(initialValue: retainedFile)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VideoPlayer(player: player)
+                .ignoresSafeArea()
+                .navigationTitle(String(localized: "视频预览", bundle: appLocalizationBundle))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(String(localized: "完成", bundle: appLocalizationBundle)) { dismiss() }
+                    }
+                }
+        }
+        .task(id: url) {
+            player?.pause()
+            player = AVPlayer(url: url)
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+            retainedFile = nil
+        }
+    }
 }
 #endif

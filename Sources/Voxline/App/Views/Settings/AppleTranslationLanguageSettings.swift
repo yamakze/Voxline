@@ -8,7 +8,6 @@ struct AppleTranslationLanguageSettings: View {
     @Binding var source: String
     @Binding var target: String
     @Binding var batchSize: Int
-    var allowsEditing = true
     @Environment(\.scenePhase) private var scenePhase
     @State private var refreshID = UUID()
     @State private var languages: [Locale.Language] = []
@@ -27,11 +26,7 @@ struct AppleTranslationLanguageSettings: View {
 
     var body: some View {
         Group {
-            if !allowsEditing {
-                LabeledContent(String(localized: "原文语言", bundle: appLocalizationBundle), value: Locale.current.localizedString(forIdentifier: source) ?? source)
-                LabeledContent(String(localized: "目标语言", bundle: appLocalizationBundle), value: Locale.current.localizedString(forIdentifier: target) ?? target)
-                LabeledContent(String(localized: "每批字幕数", bundle: appLocalizationBundle), value: String(batchSize))
-            } else if isLoadingLanguages {
+            if isLoadingLanguages {
                 ProgressView(String(localized: "读取系统语言…", bundle: appLocalizationBundle))
             } else if languages.isEmpty {
                 Text(String(localized: "当前系统未提供可用的本机翻译语言。", bundle: appLocalizationBundle))

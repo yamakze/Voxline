@@ -6,7 +6,7 @@ import VoxlineWorkflow
 
 @Suite("Proofreading commits", .serialized) @MainActor
 struct ProofreadingSessionTests {
-    @Test func failedSaveRetainsDraftAndRetryUsesTheSameEditingSession() throws {
+    @Test func failedSaveRetainsDraftAndRetryUsesTheSameEditingSession() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let cue = try SubtitleCue(id: UUID(), startMilliseconds: 0, endMilliseconds: 1000, sourceText: "Before")
@@ -18,6 +18,7 @@ struct ProofreadingSessionTests {
         session.updateSubtitles(item.cues)
         #expect(session.hasUntranslatedCues)
         session.searchQuery = "人工译文"
+        await session.refreshSearchResults()
         #expect(session.transcriptRows.isEmpty)
         session.beginEditing(cue)
         session.sourceDraft = "Corrected"
@@ -50,6 +51,7 @@ struct ProofreadingSessionTests {
         #expect(!session.hasUntranslatedCues)
         session.updateSubtitles(saved.cues) // The page receives the same successful save via observation.
         session.searchQuery = "Corrected"
+        await session.refreshSearchResults()
         #expect(session.transcriptRows.first?.cue == saved.cues.first)
         session.beginEditing(try #require(saved.cues.first))
         session.sourceDraft = "Unsaved draft"
@@ -68,7 +70,7 @@ struct ProofreadingSessionTests {
         #expect(TaskLibrary(tasksDirectory: root).task(for: task.id)?.items.first == item)
     }
 
-    @Test func undoPersistsThePreviousTimelineAndRejectsInterveningEdits() throws {
+    @Test func undoPersistsThePreviousTimelineAndRejectsInterveningEdits() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let cues = try (0..<2).map { try SubtitleCue(id: UUID(), startMilliseconds: Int64($0 * 1000),
@@ -79,6 +81,7 @@ struct ProofreadingSessionTests {
         try library.save(task)
         let session = ProofreadingSession(item: original)
         session.searchQuery = "Line 0"
+        await session.refreshSearchResults()
         #expect(session.transcriptRows.count == 1)
         #expect(session.transcriptRows.first?.nextCue == cues[1])
         var deleted = original
