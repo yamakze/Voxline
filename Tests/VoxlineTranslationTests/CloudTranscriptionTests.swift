@@ -128,7 +128,7 @@ struct CloudTranscriptionTests {
         #expect(ASRStubProtocol.stopped.withLock { $0 })
     }
 
-    @Test func geminiContractAndModelTimingsRemainReviewableAndInvalidAlignmentKeepsRecognition() async throws {
+    @Test func geminiContractPreservesRecognitionWhenOptionalModelAlignmentIsUnusable() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -161,11 +161,32 @@ struct CloudTranscriptionTests {
         #expect(try SubtitleSegmenter.segment(padded, sourceID: UUID(), mediaDurationMilliseconds: 7000)
             .cues.first?.endMilliseconds == 7000)
         ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello.","segments":[{"start":2.8,"end":9.5,"text":"Hello."}]}"#)) }
-        do { _ = try await provider.transcribeEvidence(audio: audio); Issue.record("Invalid model timing accepted") }
+        let coarse = try await provider.transcribeEvidence(audio: audio)
+        #expect(coarse.cloudResult?.segments?.first?.end == 9.5)
+        #expect(coarse.segments.first?.timingSource == .audioRange)
+        let coarseCues = try SubtitleSegmenter.segment(coarse, sourceID: UUID(), mediaDurationMilliseconds: 7000).cues
+        #expect(coarseCues.first?.startMilliseconds == 5000)
+        #expect(coarseCues.first?.endMilliseconds == 7000)
+        ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello, world!","segments":[{"start":0.2,"end":1.5,"text":"Hello world"}]}"#)) }
+        let punctuation = try await provider.transcribeEvidence(audio: audio)
+        #expect(punctuation.segments.first?.timingSource == .modelGenerated)
+        ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Keep every word.","segments":[{"start":0.2,"end":1.5,"text":"Keep word."}]}"#)) }
+        let mismatch = try await provider.transcribeEvidence(audio: audio)
+        #expect(mismatch.segments.first?.text == "Keep every word.")
+        #expect(mismatch.segments.first?.timingSource == .audioRange)
+        #expect(mismatch.cloudResult?.segments?.first?.text == "Keep word.")
+        ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello.","segments":[{"start":0.2,"end":1.5}]}"#)) }
+        let missingAnnotation = try await provider.transcribeEvidence(audio: audio)
+        #expect(missingAnnotation.segments.first?.text == "Hello.")
+        #expect(missingAnnotation.segments.first?.timingSource == .audioRange)
+        // A valid-looking payload is still incomplete when the service reports truncation.
+        let truncated = try JSONSerialization.data(withJSONObject: ["choices": [["finish_reason": "length",
+            "message": ["content": #"{"text":"Hello.","segments":[]}"#]]]])
+        ASRStubProtocol.response.withLock { $0 = (200, truncated) }
+        do { _ = try await provider.transcribeEvidence(audio: audio); Issue.record("Truncated recognition accepted") }
         catch let error as TranscriptionFailure {
-            #expect(error.evidence.cloudResult?.text == "Hello.")
-            #expect(error.evidence.cloudResult?.segments?.first?.end == 9.5)
-            #expect(throws: (any Error).self) { try CloudTranscriptionAlignment.completedEvidence(from: error.evidence) }
+            #expect(error.evidence.outcome == .failed)
+            #expect(error.evidence.cloudResult == nil)
         }
         #expect(try FileManager.default.subpathsOfDirectory(atPath: root.path).contains { $0.hasSuffix(".response.json") })
     }

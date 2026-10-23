@@ -36,30 +36,45 @@ public enum CloudTranscriptionAlignment {
         }
         let offset = Double(evidence.sourceStartMilliseconds) / 1000
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let audioRangeSegments: [RawTranscriptionSegment] = text.isEmpty ? [] : [.init(
+            startSeconds: offset, endSeconds: Double(rangeEnd) / 1000,
+            text: text, words: nil, timingSource: .audioRange)]
         if let segments = result.segments {
             let joined = segments.map(\.text).joined()
-            func content(_ value: String) -> String { value.filter { !$0.isWhitespace } }
-            guard content(joined) == content(text), text.isEmpty || !segments.isEmpty else {
+            func content(_ value: String) -> String {
+                value.filter { !$0.isWhitespace && (result.timingSource != .modelGenerated || !$0.isPunctuation) }
+            }
+            let matchesTranscript = content(joined) == content(text) && (text.isEmpty || !segments.isEmpty)
+            guard matchesTranscript || (result.timingSource == .modelGenerated && !text.isEmpty) else {
                 throw CloudTranscriptionError.invalidResponse
             }
-            evidence.segments = segments.map {
+            // Model annotations are advisory: keep the full transcript if their words disagree.
+            evidence.segments = matchesTranscript ? segments.map {
                 .init(startSeconds: offset + $0.start, endSeconds: offset + $0.end, text: $0.text,
                       words: nil, averageLogProbability: $0.averageLogProbability,
                       noSpeechProbability: $0.noSpeechProbability, timingSource: result.timingSource)
-            }
+            } : audioRangeSegments
         } else {
-            guard result.timingSource == .audioRange else { throw CloudTranscriptionError.invalidResponse }
-            evidence.segments = text.isEmpty ? [] : [.init(startSeconds: offset,
-                endSeconds: Double(rangeEnd) / 1000,
-                text: text, words: nil, timingSource: .audioRange)]
+            guard result.timingSource != .service else { throw CloudTranscriptionError.invalidResponse }
+            evidence.segments = audioRangeSegments
         }
         evidence.partialDecodedText = nil
         evidence.partialDecodedTokens = nil
         evidence.failureReason = nil
         evidence.outcome = .completed
         // Validate before publishing and before a retry can replace any committed cues.
-        _ = try SubtitleSegmenter.segment(evidence, sourceID: UUID(),
-            mediaDurationMilliseconds: rangeEnd)
+        do {
+            _ = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: rangeEnd)
+        } catch let error as SubtitleSegmentationError where result.timingSource == .modelGenerated && !text.isEmpty {
+            switch error {
+            case .invalidSegment, .invalidCueTiming:
+                // Generated timing cannot invalidate a complete short-audio transcript.
+                // cloudResult retains the original annotations for diagnosis and retry.
+                evidence.segments = audioRangeSegments
+                _ = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: rangeEnd)
+            default: throw error
+            }
+        }
         return evidence
     }
 }

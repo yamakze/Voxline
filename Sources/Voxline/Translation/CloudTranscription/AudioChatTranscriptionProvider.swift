@@ -138,4 +138,17 @@ private struct GeminiTranscript: Decodable {
     let text: String
     let segments: [Segment]?
     struct Segment: Decodable { let start: Double; let end: Double; let text: String }
+
+    private enum CodingKeys: String, CodingKey { case text, segments }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decode(String.self, forKey: .text)
+        do { segments = try container.decodeIfPresent([Segment].self, forKey: .segments) }
+        catch is DecodingError {
+            // Optional model annotations may be incomplete; the raw response is retained.
+            // The provider marks this as audio-range timing rather than precise alignment.
+            segments = nil
+        }
+    }
 }
