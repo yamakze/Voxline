@@ -55,6 +55,7 @@ graph TD
 - **媒体检查**：`MediaInspector` 读取容器格式、时长、多语言音轨信息，并基于头尾采样生成采样指纹。
 - **音频提取**：`AudioExtractor` 基于 `AVAssetReader` 提取目标音轨，生成 16 kHz 单声道 Float32 PCM，并以最大 120 秒分块落盘缓存。
 - **播控与时间线**：`MediaPlaybackController` 封装 `AVPlayer`，提供 0.5x ~ 2.0x 变速回放、±5s 定位、二分法检索字幕时间线，向界面层发布活动字幕与低频时钟；对外提供 `LoadRequest` 统一两端媒体重载凭证。
+- **Mac 暂停定位画面**：暂停定位后由独立 actor 使用 `AVAssetReader` 从前一个同步样本解码至目标视频帧，界面显示该帧，时钟保留精确定位时间。此路径处理部分 H.264 文件在原生精确 seek 后保留旧画面的情况；连续定位取消旧请求，恢复播放或离页时释放暂停帧，不增加持续播放时的逐帧处理。解码失败通过既有操作错误入口呈现。
 - **视频硬字幕压制**：`SubtitleBurnInExporter` 基于 Core Image 滤镜与 `AVAssetExportSession` 在 GPU 上逐帧渲染字幕，支持字号缩放、自动换行与排版；导出时支持 H.264 与 HEVC 编码选择。
 - **内封软字幕**：`SubtitleEmbeddingExporter` 通过 `AVAssetReader` 与 `AVAssetWriter` 将字幕写入独立 tx3g 轨道并封装为 MP4，视频与音频样本直通封装。
 - **临时文件管理**：`TemporaryExportFile` 采用 RAII 模式管理导出与预览期间的沙盒临时文件，在对象析构或显式关闭时自动清理磁盘残留。

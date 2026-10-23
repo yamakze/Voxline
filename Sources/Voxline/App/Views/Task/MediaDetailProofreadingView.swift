@@ -168,6 +168,9 @@ public struct MediaDetailProofreadingView: View {
             session.updateSubtitles(cues)
             playbackController.updateSubtitles(cues)
         }
+        .onChange(of: playbackController.errorMessage) { _, message in
+            if playbackController.isReady, let message { session.errorMessage = message }
+        }
         .onAppear { session.updateSubtitles(item.cues) }
         .task(id: session.searchQuery) { await session.refreshSearchResults() }
         .onDisappear {
@@ -234,6 +237,13 @@ public struct MediaDetailProofreadingView: View {
                         NativeVideoPlayer(player: player)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(Color.black)
+                            .overlay {
+                                if let frame = playbackController.pausedVideoFrame {
+                                    Image(decorative: frame.image, scale: 1)
+                                        .resizable().scaledToFit()
+                                        .allowsHitTesting(false).accessibilityHidden(true)
+                                }
+                            }
                     } else {
                         // Podcasts Audio artwork style
                         ZStack {

@@ -47,17 +47,27 @@ public final class MediaPlaybackController {
     private let inspector: MediaInspector
     private var generation = UUID()
     private var seekID = UUID()
+    private var playbackIntentID = UUID()
     private var timeObserver: Any?
     private var itemObservation: NSKeyValueObservation?
     private var playbackObservation: NSKeyValueObservation?
     private var notificationObservers: [NSObjectProtocol] = []
     private var mediaURL: URL?
     private var mediaAccessStarted = false
+    #if os(macOS)
+    public private(set) var pausedVideoFrame: PausedVideoFrame?
+    @ObservationIgnored private var pausedFrameSource: PausedVideoFrameSource?
+    @ObservationIgnored private var pausedFrameTask: Task<Void, Never>?
+    #endif
 
     public init(mediaStore: LocalMediaStore = .shared, inspector: MediaInspector = .shared) {
         self.mediaStore = mediaStore
         self.inspector = inspector
     }
+
+    #if os(macOS)
+    isolated deinit { pausedFrameTask?.cancel() }
+    #endif
 
     public var formattedCurrentTime: String {
         let roundedSeconds = (currentTimeSeconds * 1000).rounded() / 1000
@@ -107,6 +117,9 @@ public final class MediaPlaybackController {
             // One selected audio track; source starts and video transforms share the subtitle timeline.
             let composition = AVMutableComposition()
             let videoTracks = try await asset.loadTracks(withMediaType: .video)
+            #if os(macOS)
+            var frameSource: PausedVideoFrameSource?
+            #endif
             for track in Array(videoTracks.prefix(1)) + [audio] {
                 guard let output = composition.addMutableTrack(withMediaType: track.mediaType,
                                                                preferredTrackID: kCMPersistentTrackID_Invalid) else {
@@ -114,10 +127,19 @@ public final class MediaPlaybackController {
                 }
                 let range = try await track.load(.timeRange)
                 try output.insertTimeRange(range, of: track, at: range.start)
-                if track.mediaType == .video { output.preferredTransform = try await track.load(.preferredTransform) }
+                if track.mediaType == .video {
+                    let transform = try await track.load(.preferredTransform)
+                    output.preferredTransform = transform
+                    #if os(macOS)
+                    frameSource = PausedVideoFrameSource(url: bookmark.url, trackID: track.trackID, transform: transform)
+                    #endif
+                }
             }
             try Task.checkCancellation()
             guard generation == loadID else { return }
+            #if os(macOS)
+            pausedFrameSource = frameSource
+            #endif
             durationSeconds = Double(inspection.durationMilliseconds) / 1000
             let playerItem = AVPlayerItem(asset: composition)
             let newPlayer = AVPlayer(playerItem: playerItem)
@@ -151,6 +173,13 @@ public final class MediaPlaybackController {
                 Task { @MainActor [weak self] in
                     guard let self, self.generation == loadID else { return }
                     self.isPlaying = player.timeControlStatus != .paused && self.isReady
+                    #if os(macOS)
+                    if player.timeControlStatus != .paused {
+                        self.pausedFrameTask?.cancel()
+                        self.pausedFrameTask = nil
+                        self.pausedVideoFrame = nil
+                    }
+                    #endif
                 }
             }
             timeObserver = newPlayer.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
@@ -195,6 +224,12 @@ public final class MediaPlaybackController {
     public func releaseMedia() {
         generation = UUID()
         seekID = UUID()
+        #if os(macOS)
+        pausedFrameTask?.cancel()
+        pausedFrameTask = nil
+        pausedFrameSource = nil
+        pausedVideoFrame = nil
+        #endif
         itemObservation?.invalidate()
         playbackObservation?.invalidate()
         itemObservation = nil
@@ -226,25 +261,57 @@ public final class MediaPlaybackController {
 
     public func togglePlayPause() {
         guard isReady, let player else { return }
-        if player.timeControlStatus != .paused { player.pause() }
+        if player.timeControlStatus != .paused { pause() }
         else if currentTimeSeconds >= durationSeconds { seek(to: 0, resumePlayback: true) }
         else { player.playImmediately(atRate: playbackRate) }
     }
 
-    public func pause() { player?.pause() }
+    public func pause() {
+        playbackIntentID = UUID()
+        player?.pause()
+    }
 
     public func seek(to seconds: Double, resumePlayback: Bool = false) {
         guard isReady, let player, seconds.isFinite else { return }
         let clamped = max(0, min(seconds, durationSeconds))
         let loadID = generation
         let requestID = UUID()
+        let resumeIntentID = playbackIntentID
         seekID = requestID
+        #if os(macOS)
+        pausedFrameTask?.cancel()
+        pausedFrameTask = nil
+        errorMessage = nil
+        #endif
         player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
             Task { @MainActor [weak self] in
                 guard finished, let self, self.generation == loadID, self.seekID == requestID else { return }
                 let actual = self.player?.currentTime().seconds
                 if let actual, actual.isFinite { self.updatePlaybackTime(max(0, min(actual, self.durationSeconds))) }
-                if resumePlayback, self.isReady { self.player?.playImmediately(atRate: self.playbackRate) }
+                if resumePlayback, self.playbackIntentID == resumeIntentID, self.isReady {
+                    self.player?.playImmediately(atRate: self.playbackRate)
+                }
+                #if os(macOS)
+                if self.player?.timeControlStatus == .paused, let source = self.pausedFrameSource {
+                    let time = CMTime(seconds: clamped, preferredTimescale: 60_000)
+                    self.pausedFrameTask = Task { [weak self] in
+                        do {
+                            let frame = try await source.frame(at: time)
+                            try Task.checkCancellation()
+                            guard let self, self.generation == loadID, self.seekID == requestID,
+                                  self.player?.timeControlStatus == .paused else { return }
+                            self.pausedVideoFrame = frame
+                            self.pausedFrameTask = nil
+                        } catch is CancellationError { return }
+                        catch {
+                            guard let self, self.generation == loadID, self.seekID == requestID,
+                                  self.player?.timeControlStatus == .paused else { return }
+                            self.errorMessage = error.localizedDescription
+                            self.pausedFrameTask = nil
+                        }
+                    }
+                }
+                #endif
             }
         }
     }

@@ -9,6 +9,8 @@ struct NativeVideoPlayer: NSViewRepresentable {
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
         view.controlsStyle = .none
+        // Proofreading seeks while paused; Live Text retains a separately analysed frame.
+        view.allowsVideoFrameAnalysis = false
         view.player = player
         return view
     }

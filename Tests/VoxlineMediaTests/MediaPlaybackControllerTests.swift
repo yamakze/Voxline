@@ -67,6 +67,7 @@ struct MediaPlaybackControllerTests {
 
         controller.seek(toMilliseconds: 400)
         try await waitFor { abs(controller.currentTimeSeconds - 0.4) < 0.01 }
+        try await waitFor { controller.pausedVideoFrame != nil }
         #expect(controller.activeSubtitle?.id == item.cues[1].id)
         #expect(controller.completedSubtitleEndMilliseconds == 400)
         controller.seek(to: .nan)
@@ -76,6 +77,7 @@ struct MediaPlaybackControllerTests {
         // Native VideoPlayer controls also operate directly on this same AVPlayer.
         player.playImmediately(atRate: 0.5)
         try await waitFor { controller.isPlaying }
+        #expect(controller.pausedVideoFrame == nil)
         player.pause()
         try await waitFor { !controller.isPlaying && player.timeControlStatus == .paused }
         controller.setRate(2)
@@ -88,6 +90,12 @@ struct MediaPlaybackControllerTests {
         #expect(controller.activeSubtitle == nil && controller.completedSubtitleEndMilliseconds == 1000)
         controller.togglePlayPause()
         #expect(controller.playbackRate == 2)
+        controller.pause() // A pending replay seek must not restart playback after this pause.
+        try await waitFor {
+            controller.pausedVideoFrame?.time == .zero && player.timeControlStatus == .paused
+        }
+        #expect(!controller.isPlaying)
+        controller.togglePlayPause()
         try await waitFor { controller.isPlaying && controller.currentTimeSeconds < 0.9 }
         controller.pause()
         try await waitFor { !controller.isPlaying }
@@ -128,8 +136,46 @@ struct MediaPlaybackControllerTests {
         player.play()
         try await Task.sleep(for: .milliseconds(80))
         #expect(controller.player == nil && !controller.isReady && !controller.isPlaying)
+        #expect(controller.pausedVideoFrame == nil)
         #expect(controller.currentTimeSeconds == 0 && controller.durationSeconds == 0)
         #expect(controller.activeSubtitle == nil && controller.completedSubtitleEndMilliseconds == 0)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_PLAYBACK_VIDEO"] != nil))
+    func interframeVideoRendersPausedSeeksAndDiscardsSupersededFrames() async throws {
+        let path = try #require(ProcessInfo.processInfo.environment["VOXLINE_PLAYBACK_VIDEO"])
+        let url = URL(fileURLWithPath: path)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let inspector = MediaInspector()
+        let item = try await fixture(at: url, inspector: inspector)
+        let store = LocalMediaStore(directory: directory)
+        try await store.save(mediaID: item.id, identity: #require(item.media), url: url)
+        let controller = MediaPlaybackController(mediaStore: store, inspector: inspector)
+        defer { controller.releaseMedia() }
+        await controller.loadMedia(for: item)
+        try await waitFor { controller.isReady || controller.errorMessage != nil }
+        #expect(controller.errorMessage == nil)
+        var frames: [Data] = []
+        for target in [3.32, 43.6, 67.24] {
+            controller.seek(to: target)
+            try await waitFor {
+                guard let frame = controller.pausedVideoFrame else { return controller.errorMessage != nil }
+                return abs(frame.time.seconds - target) < 0.1
+            }
+            #expect(controller.errorMessage == nil)
+            let frame = try #require(controller.pausedVideoFrame)
+            frames.append(try #require(frame.image.dataProvider?.data) as Data)
+            #expect(abs(controller.currentTimeSeconds - target) < 0.01)
+            #expect(controller.player?.timeControlStatus == .paused)
+        }
+        #expect(frames[0] != frames[1] && frames[1] != frames[2])
+        controller.seek(to: 43.6)
+        controller.seek(to: 3.32)
+        try await waitFor { abs((controller.pausedVideoFrame?.time.seconds ?? -1) - 3.32) < 0.1 }
+        #expect(abs(controller.currentTimeSeconds - 3.32) < 0.01)
+        controller.releaseMedia()
+        #expect(controller.pausedVideoFrame == nil && controller.player == nil)
     }
 
     @Test func audioPreviewHasNoVideoAndFailuresAndLateLoadCannotReviveReleasedPlayer() async throws {
