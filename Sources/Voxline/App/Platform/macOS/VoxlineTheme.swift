@@ -23,6 +23,117 @@ public extension Color {
             : NSColor(red: 0.64, green: 0.34, blue: 0.04, alpha: 1.0)
     }))
 
+    /// Voxline AppIcon 提取的冰川天青水蓝色微染基准色
+    static let voxlineGlacierAzure = Color(nsColor: NSColor(name: nil, dynamicProvider: { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(red: 0.22, green: 0.74, blue: 0.97, alpha: 1.0) // Sky 400
+            : NSColor(red: 0.055, green: 0.647, blue: 0.914, alpha: 1.0) // Sky 500
+    }))
+}
+
+/// 外观模式枚举
+public enum AppearanceMode: Int, CaseIterable, Identifiable {
+    case system = 0
+    case light = 1
+    case dark = 2
+
+    public var id: Int { rawValue }
+
+    public var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
+/// 主题微染选项（二元：默认 AppIcon 冰川天青蓝 vs 无）
+public enum TintOption: String, CaseIterable, Identifiable {
+    case appIcon = "appIcon"
+    case none = "none"
+
+    public var id: String { rawValue }
+}
+
+/// 全局外观与微染状态管理器
+@Observable @MainActor
+public final class AppearanceManager {
+    public static let shared = AppearanceManager()
+
+    private let modeKey = "voxline.appearance.mode"
+    private let tintOptionKey = "voxline.appearance.tintOption"
+    private let tintOpacityKey = "voxline.appearance.tintOpacity"
+
+    public var mode: AppearanceMode {
+        didSet {
+            UserDefaults.standard.set(mode.rawValue, forKey: modeKey)
+        }
+    }
+
+    public var tintOption: TintOption {
+        didSet {
+            UserDefaults.standard.set(tintOption.rawValue, forKey: tintOptionKey)
+        }
+    }
+
+    /// 范围 0.0 ~ 0.08，默认 0.05
+    public var tintOpacity: Double {
+        didSet {
+            UserDefaults.standard.set(tintOpacity, forKey: tintOpacityKey)
+        }
+    }
+
+    private init() {
+        let savedMode = UserDefaults.standard.integer(forKey: modeKey)
+        self.mode = AppearanceMode(rawValue: savedMode) ?? .system
+
+        let savedTint = UserDefaults.standard.string(forKey: tintOptionKey)
+        self.tintOption = (savedTint == TintOption.none.rawValue) ? .none : .appIcon
+
+        let savedOpacity = UserDefaults.standard.object(forKey: tintOpacityKey) as? Double
+        self.tintOpacity = savedOpacity ?? 0.05
+    }
+
+    /// 当前实际生效的微染颜色（若为 none 则返回 Color.clear）
+    public var currentTintColor: Color {
+        switch tintOption {
+        case .appIcon:
+            return Color.voxlineGlacierAzure
+        case .none:
+            return .clear
+        }
+    }
+
+    /// 计算在材质上叠加的有效微染透明度
+    public var effectiveTintOpacity: Double {
+        tintOption == .none ? 0.0 : tintOpacity
+    }
+}
+
+/// 窗口或顶级视图微染背景修饰器
+public struct VoxlineMicroTintBackgroundModifier: ViewModifier {
+    private var manager = AppearanceManager.shared
+
+    public init() {}
+
+    public func body(content: Content) -> some View {
+        content
+            .background {
+                if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
+                    manager.currentTintColor
+                        .opacity(manager.tintOpacity * 0.40)
+                        .ignoresSafeArea()
+                }
+            }
+    }
+}
+
+public extension View {
+    func voxlineMicroTintBackground() -> some View {
+        modifier(VoxlineMicroTintBackgroundModifier())
+    }
+
 }
 
 /// 全局 Dock 图标注入管理器

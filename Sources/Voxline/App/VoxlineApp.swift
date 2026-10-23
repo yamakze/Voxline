@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct VoxlineApp: App {
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @State private var appearanceManager = AppearanceManager.shared
 
     init() {
         VoxlineIconManager.shared.ensureDockIconIsSet()
@@ -25,6 +26,8 @@ struct VoxlineApp: App {
         #if os(macOS)
         WindowGroup(id: "workspace") {
             MainWindowView()
+                .preferredColorScheme(appearanceManager.mode.colorScheme)
+                .voxlineMicroTintBackground()
                 .tint(Color.voxlineAccent)
                 .task { TaskSyncCoordinator.shared.restore() }
         }
@@ -40,6 +43,8 @@ struct VoxlineApp: App {
 
         Settings {
             AppSettingsView()
+                .preferredColorScheme(appearanceManager.mode.colorScheme)
+                .voxlineMicroTintBackground()
                 .frame(minWidth: 720, minHeight: 520)
         }
         #elseif os(iOS)

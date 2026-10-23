@@ -761,8 +761,5 @@
 "细节" = "Details";
 "微染主题色" = "Theme Accent";
 "主题色浓度" = "Tint Intensity";
-"天蓝" = "Sky Blue";
-"靛蓝" = "Indigo";
-"翠色" = "Emerald";
-"通透红" = "Crimson";
-"灰" = "Graphite";
+"默认" = "Default";
+"无" = "None";

@@ -22,29 +22,35 @@ public struct NativeControlSurface: ViewModifier {
                 .background(Color(nsColor: .controlBackgroundColor), in: shape)
                 .overlay(shape.strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
         } else {
+            let manager = AppearanceManager.shared
             content
                 .background {
                     shape.fill(
                         colorScheme == .dark
                             ? LinearGradient(
                                 colors: [
-                                    Color(nsColor: .controlBackgroundColor).opacity(0.48),
-                                    Color(nsColor: .controlBackgroundColor).opacity(0.30)
+                                    Color(nsColor: .controlBackgroundColor).opacity(0.38),
+                                    Color(nsColor: .controlBackgroundColor).opacity(0.22)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                             : LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.60),
-                                    Color(nsColor: .controlBackgroundColor).opacity(0.38)
+                                    Color.white.opacity(0.52),
+                                    Color(nsColor: .controlBackgroundColor).opacity(0.28)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                     )
+                    .background {
+                        if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
+                            shape.fill(manager.currentTintColor.opacity(manager.effectiveTintOpacity * 0.85))
+                        }
+                    }
                     .background(.regularMaterial, in: shape)
-                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 8, y: 3)
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.04), radius: 8, y: 3)
                 }
                 .overlay {
                     shape.strokeBorder(
@@ -98,6 +104,7 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
                 .background(Color.voxlineControlBackground, in: .capsule)
                 .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
         } else {
+            let manager = AppearanceManager.shared
             content
                 .background {
                     Capsule()
@@ -105,7 +112,7 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
                             colorScheme == .dark
                                 ? LinearGradient(
                                     colors: [
-                                        Color.white.opacity(0.10),
+                                        Color.white.opacity(0.08),
                                         Color.white.opacity(0.02)
                                     ],
                                     startPoint: .top,
@@ -113,15 +120,20 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
                                 )
                                 : LinearGradient(
                                     colors: [
-                                        Color.white.opacity(0.35),
-                                        Color.white.opacity(0.08)
+                                        Color.white.opacity(0.28),
+                                        Color.white.opacity(0.06)
                                     ],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
                         )
+                        .background {
+                            if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
+                                Capsule().fill(manager.currentTintColor.opacity(manager.effectiveTintOpacity * 0.90))
+                            }
+                        }
                         .background(.ultraThinMaterial, in: .capsule)
-                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.25 : 0.09), radius: 10, y: 4)
+                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.08), radius: 10, y: 4)
                 }
                 .overlay(
                     Capsule().strokeBorder(
