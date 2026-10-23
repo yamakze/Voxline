@@ -9,6 +9,70 @@ import WhisperKit
 
 @Suite("Whisper transcription evidence and boundaries", .serialized)
 struct TranscriptionProviderTests {
+    @Test func incompleteWordTokenizationPreservesWholeWindowAndStillRejectsInvalidSegmentTiming() throws {
+        let tokenizer = WordGroupingTokenizer(wordGroups: [[1], [2]])
+        let tokens = [1, 2, 3]
+        let decoding = DecodingResult(language: "ja", languageProbs: ["ja": 1], tokens: tokens,
+            tokenLogProbs: tokens.map { [$0: Float(-0.2)] }, text: tokenizer.decode(tokens: tokens),
+            avgLogProb: -0.2, noSpeechProb: 0, temperature: 0, compressionRatio: 1)
+        let seeker = TranscriptionEvidenceSeeker(sourceStartMilliseconds: 240_000)
+        let (_, decoded) = seeker.findSeekPointAndSegments(decodingResult: decoding, options: .init(),
+            allSegmentsCount: 0, currentSeek: 0, segmentSize: 32_000, sampleRate: 16_000,
+            timeToken: tokenizer.specialTokens.timeTokenBegin,
+            specialToken: tokenizer.specialTokens.specialTokenBegin, tokenizer: tokenizer)
+        let original = try #require(decoded)
+        let weights = try MLMultiArray(shape: [3, 100], dataType: .float32)
+        for index in 0..<weights.count { weights[index] = 0 }
+        let selected = try #require(try seeker.addWordTimestamps(segments: original, alignmentWeights: weights,
+            tokenizer: tokenizer, seek: 0, segmentSize: 32_000, prependPunctuations: "", appendPunctuations: "",
+            lastSpeechTimestamp: 0, options: .init(), timings: .init()))
+        #expect(selected.map(\.tokens) == original.map(\.tokens))
+        #expect(selected.map(\.text) == ["前�後"])
+        #expect(selected.allSatisfy { $0.words == nil })
+        #expect(seeker.windows[0].usesSegmentTimings == true)
+        #expect(seeker.windows[0].decodedTokens == tokens)
+        let raw = selected.map { TranscriptionEvidenceSeeker.raw($0, offset: 240) }
+        let complete = try TranscriptionEvidenceSeeker.validatedSegments(windows: seeker.windows,
+            sourceOffsetSeconds: 240, frameCount: 32_000, returnedSegments: raw)
+        let audio = try TranscriptionAudio(localURL: URL(fileURLWithPath: "/unused.wav"),
+            sourceStartMilliseconds: 240_000, durationMilliseconds: 2000)
+        var evidence = TranscriptionEvidence(settings: .whisperKitBaseline, audio: audio)
+        evidence.windows = seeker.windows
+        evidence.segments = complete
+        evidence.outcome = .completed
+        let cues = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: 242_000).cues
+        #expect(cues.map(\.sourceText) == ["前�後"])
+        #expect(cues.first?.startMilliseconds == 240_000 && cues.first?.endMilliseconds == 242_000)
+
+        var invalid = original
+        invalid[0].end = 0
+        #expect(throws: (any Error).self) {
+            try seeker.addWordTimestamps(segments: invalid, alignmentWeights: weights,
+                tokenizer: tokenizer, seek: 0, segmentSize: 32_000, prependPunctuations: "", appendPunctuations: "",
+                lastSpeechTimestamp: 0, options: .init(), timings: .init())
+        }
+        invalid = original
+        invalid[0].tokenLogProbs = []
+        #expect(throws: (any Error).self) {
+            try seeker.addWordTimestamps(segments: invalid, alignmentWeights: weights,
+                tokenizer: tokenizer, seek: 0, segmentSize: 32_000, prependPunctuations: "", appendPunctuations: "",
+                lastSpeechTimestamp: 0, options: .init(), timings: .init())
+        }
+    }
+
+    @Test func singleWordKeepsWordAlignmentInsteadOfFallingBackToSegmentTime() throws {
+        let tokenizer = WordGroupingTokenizer(wordGroups: [[1]])
+        let original = TranscriptionSegment(start: 0, end: 1, text: "前", tokens: [1], tokenLogProbs: [[1: -0.2]])
+        let weights = try MLMultiArray(shape: [1, 50], dataType: .float32)
+        for index in 0..<weights.count { weights[index] = 0 }
+        let result = try #require(try WordTimestampAligner.align(segments: [original], alignmentWeights: weights,
+            tokenizer: tokenizer, seek: 0, prependPunctuations: "", appendPunctuations: "", lastSpeechTimestamp: 0))
+        #expect(result.map(\.text) == [original.text])
+        let word = try #require(result.first?.words?.first)
+        #expect(word.word == original.text && word.tokens == [1])
+        #expect(word.start == 0 && word.end > word.start && word.end <= 1)
+    }
+
     @Test func readsFractionalTailAndRejectsInconsistentDuration() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -431,5 +495,21 @@ struct TranscriptionProviderTests {
         try await store.unload(modelID: settings.modelID)
         let unloaded = try await store.inventory(modelID: settings.modelID)
         guard case .installed = unloaded.state else { Issue.record("Unload failed"); return }
+    }
+}
+
+private struct WordGroupingTokenizer: WhisperTokenizer {
+    let wordGroups: [[Int]]
+    let specialTokens = SpecialTokens(endToken: 50257, englishToken: 50259, noSpeechToken: 50362,
+        noTimestampsToken: 50363, specialTokenBegin: 50257, startOfPreviousToken: 50361,
+        startOfTranscriptToken: 50258, timeTokenBegin: 50364, transcribeToken: 50359,
+        translateToken: 50358, whitespaceToken: 220)
+    let allLanguageTokens: Set<Int> = []
+    func encode(text: String) -> [Int] { [1, 2, 3] }
+    func decode(tokens: [Int]) -> String { tokens.map { [1: "前", 2: "�", 3: "後"][$0] ?? "" }.joined() }
+    func convertTokenToId(_ token: String) -> Int? { nil }
+    func convertIdToToken(_ id: Int) -> String? { nil }
+    func splitToWordTokens(tokenIds: [Int]) -> (words: [String], wordTokens: [[Int]]) {
+        (wordGroups.map { decode(tokens: $0) }, wordGroups)
     }
 }

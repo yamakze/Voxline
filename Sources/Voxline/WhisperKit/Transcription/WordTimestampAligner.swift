@@ -6,10 +6,11 @@ import Foundation
 import WhisperKit
 
 enum WordTimestampAligner {
+    /// Nil means the tokenizer cannot partition the recognition losslessly; use segment timing instead.
     static func align(segments: [TranscriptionSegment], alignmentWeights: MLMultiArray,
                       tokenizer: WhisperTokenizer, seek: Int,
                       prependPunctuations: String, appendPunctuations: String,
-                      lastSpeechTimestamp: Float) throws -> [TranscriptionSegment] {
+                      lastSpeechTimestamp: Float) throws -> [TranscriptionSegment]? {
         let tokens = segments.flatMap(\.tokens)
         var logProbabilities = [Float]()
         for segment in segments {
@@ -23,38 +24,36 @@ enum WordTimestampAligner {
                 logProbabilities.append(probability)
             }
         }
+        let (words, wordTokens) = tokenizer.splitToWordTokens(tokenIds: tokens)
+        // The SDK Unicode splitter can leave an undecodable byte suffix unreturned.
+        // Its partial word list must never replace the complete segment text.
+        guard !wordTokens.isEmpty, words.count == wordTokens.count,
+              wordTokens.allSatisfy({ !$0.isEmpty }), wordTokens.lazy.joined().elementsEqual(tokens) else { return nil }
         let path = try dynamicTimeWarping(alignmentWeights, tokenCount: tokens.count)
         guard let lastStep = path.last else {
             throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐路径为空。", bundle: voxlineLocalizationBundle))
         }
-        let (words, wordTokens) = tokenizer.splitToWordTokens(tokenIds: tokens)
         var alignment = [WordTiming]()
-        if wordTokens.count > 1 {
-            var starts: [Float] = [0]
-            var ends = [Float]()
-            var previousToken = path.first?.token ?? 0
-            for step in path where step.token != previousToken {
-                previousToken = step.token
-                let time = Float(step.column) * Float(WhisperKit.secondsPerTimeToken)
-                starts.append(time)
-                ends.append(time)
-            }
-            ends.append(Float(lastStep.column) * Float(WhisperKit.secondsPerTimeToken))
-            guard starts.count == tokens.count, ends.count == tokens.count,
-                  wordTokens.flatMap({ $0 }) == tokens, words.count == wordTokens.count else {
-                throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐未完整覆盖识别词元。", bundle: voxlineLocalizationBundle))
-            }
-            var offset = 0
-            for (word, group) in zip(words, wordTokens) {
-                guard !group.isEmpty else {
-                    throw WhisperTranscriptionError.invalidAlignment(String(localized: "分词返回空词元组。", bundle: voxlineLocalizationBundle))
-                }
-                let end = offset + group.count
-                let probability = exp(logProbabilities[offset..<end].reduce(0, +) / Float(group.count))
-                alignment.append(WordTiming(word: word, tokens: group, start: starts[offset],
-                    end: ends[end - 1], probability: probability))
-                offset = end
-            }
+        var starts: [Float] = [0]
+        var ends = [Float]()
+        var previousToken = path.first?.token ?? 0
+        for step in path where step.token != previousToken {
+            previousToken = step.token
+            let time = Float(step.column) * Float(WhisperKit.secondsPerTimeToken)
+            starts.append(time)
+            ends.append(time)
+        }
+        ends.append(Float(lastStep.column) * Float(WhisperKit.secondsPerTimeToken))
+        guard starts.count == tokens.count, ends.count == tokens.count else {
+            throw WhisperTranscriptionError.invalidAlignment(String(localized: "词对齐未完整覆盖识别词元。", bundle: voxlineLocalizationBundle))
+        }
+        var offset = 0
+        for (word, group) in zip(words, wordTokens) {
+            let end = offset + group.count
+            let probability = exp(logProbabilities[offset..<end].reduce(0, +) / Float(group.count))
+            alignment.append(WordTiming(word: word, tokens: group, start: starts[offset],
+                end: ends[end - 1], probability: probability))
+            offset = end
         }
         let seeker = SegmentSeeker()
         let durations = seeker.calculateWordDurationConstraints(alignment: alignment)

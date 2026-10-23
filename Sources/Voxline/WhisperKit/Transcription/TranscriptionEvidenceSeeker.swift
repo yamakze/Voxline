@@ -61,10 +61,18 @@ final class TranscriptionEvidenceSeeker: SegmentSeeking, Sendable {
         }
         // Restrict DTW input to real audio frames, before alignment, rather than clipping output timestamps.
         let cropped = try Self.validAudioColumns(alignmentWeights, frameCount: segmentSize)
-        let aligned = try WordTimestampAligner.align(segments: segments, alignmentWeights: cropped,
+        guard let aligned = try WordTimestampAligner.align(segments: segments, alignmentWeights: cropped,
             tokenizer: tokenizer, seek: seek, prependPunctuations: prependPunctuations,
             appendPunctuations: appendPunctuations,
-            lastSpeechTimestamp: lastSpeechTimestamp)
+            lastSpeechTimestamp: lastSpeechTimestamp) else {
+            var original = segments
+            for index in original.indices { original[index].words = nil }
+            _ = try Self.segmentTimingsWithinWindow(original.map { Self.raw($0, offset: sourceOffsetSeconds) },
+                lower: sourceOffsetSeconds + Double(seek) / 16_000,
+                upper: sourceOffsetSeconds + Double(seek + segmentSize) / 16_000)
+            state.withLock { $0[$0.count - 1].usesSegmentTimings = true }
+            return original
+        }
         let raw = aligned.map { Self.raw($0, offset: sourceOffsetSeconds) }
         state.withLock { $0[$0.count - 1].alignedSegments = raw }
         guard aligned.map(\.text) == segments.map(\.text), aligned.map(\.tokens) == segments.map(\.tokens) else {

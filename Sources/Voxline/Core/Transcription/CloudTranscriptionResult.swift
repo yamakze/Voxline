@@ -40,11 +40,9 @@ public enum CloudTranscriptionAlignment {
             startSeconds: offset, endSeconds: Double(rangeEnd) / 1000,
             text: text, words: nil, timingSource: .audioRange)]
         if let segments = result.segments {
-            let joined = segments.map(\.text).joined()
-            func content(_ value: String) -> String {
-                value.filter { !$0.isWhitespace && (result.timingSource != .modelGenerated || !$0.isPunctuation) }
-            }
-            let matchesTranscript = content(joined) == content(text) && (text.isEmpty || !segments.isEmpty)
+            // Punctuation can carry meaning (1.5 vs 15, -3 vs 3). Advisory text cannot replace it.
+            let matchesTranscript = segments.lazy.flatMap(\.text).filter { !$0.isWhitespace }
+                .elementsEqual(text.lazy.filter { !$0.isWhitespace }) && (text.isEmpty || !segments.isEmpty)
             guard matchesTranscript || (result.timingSource == .modelGenerated && !text.isEmpty) else {
                 throw CloudTranscriptionError.invalidResponse
             }

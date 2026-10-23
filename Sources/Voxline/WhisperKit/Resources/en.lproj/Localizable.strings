@@ -3,7 +3,6 @@
 "WhisperKit 不支持语言代码 %@。" = "WhisperKit does not support the language code %1$@.";
 "保存的识别结果遗漏或改变了窗口文本。" = "The saved recognition result omitted or changed window text.";
 "分词器" = "Tokenizer";
-"分词返回空词元组。" = "Tokenization returned an empty token group.";
 "取消中" = "Canceling";
 "安装不完整：%@" = "Incomplete installation: %1$@";
 "对齐矩阵或实际音频窗口不足一个 20 毫秒帧。" = "The alignment matrix or actual audio window is less than a 20 millisecond frame.";

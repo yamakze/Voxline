@@ -167,9 +167,18 @@ struct CloudTranscriptionTests {
         let coarseCues = try SubtitleSegmenter.segment(coarse, sourceID: UUID(), mediaDurationMilliseconds: 7000).cues
         #expect(coarseCues.first?.startMilliseconds == 5000)
         #expect(coarseCues.first?.endMilliseconds == 7000)
-        ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello, world!","segments":[{"start":0.2,"end":1.5,"text":"Hello world"}]}"#)) }
-        let punctuation = try await provider.transcribeEvidence(audio: audio)
-        #expect(punctuation.segments.first?.timingSource == .modelGenerated)
+        for (transcript, annotation) in [("Hello, world!", "Hello world"), ("版本1.5", "版本15"),
+                                          ("Temperature -3", "Temperature 3"), ("Don't go.", "Dont go.")] {
+            let payload = try JSONSerialization.data(withJSONObject: ["text": transcript,
+                "segments": [["start": 0.2, "end": 1.5, "text": annotation]]])
+            let body = try response(String(decoding: payload, as: UTF8.self))
+            ASRStubProtocol.response.withLock { $0 = (200, body) }
+            let preserved = try await provider.transcribeEvidence(audio: audio)
+            #expect(preserved.segments.first?.timingSource == .audioRange)
+            #expect(preserved.cloudResult?.segments?.first?.text == annotation)
+            let cues = try SubtitleSegmenter.segment(preserved, sourceID: UUID(), mediaDurationMilliseconds: 7000).cues
+            #expect(cues.map(\.sourceText) == [transcript])
+        }
         ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Keep every word.","segments":[{"start":0.2,"end":1.5,"text":"Keep word."}]}"#)) }
         let mismatch = try await provider.transcribeEvidence(audio: audio)
         #expect(mismatch.segments.first?.text == "Keep every word.")
