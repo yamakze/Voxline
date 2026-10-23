@@ -1,24 +1,24 @@
 # 工程架构与设计边界
 
-采用 SwiftPM，iOS 采用 Xcode 工程。依赖提交由 Package.swift / Package.resolved 锁定。
+macOS 构建采用 SwiftPM，iOS 构建采用 Xcode 工程。两端依赖由根目录 `Package.swift` 与 `Package.resolved` 统一管理与版本锁定。
 
 ## 平台分层与代码组织
 
-源码位于 `Sources/Voxline/`，划分为 6 个职责明确的模块：
+源码位于 `Sources/Voxline/`，划分为 6 个单一职责模块：
 
 ```
 Sources/Voxline/
 ├── Core/               # 领域模型、状态机、SRT 编解码、断句切分
-├── Media/              # AVFoundation 音频提取、播放控制、原生软硬字幕导出
-├── Translation/        # OpenAI 兼容客户端、Apple 本机翻译、云端转写协议、Keychain 凭据
-├── WhisperKit/         # ModelManager 模型管理、端侧 WhisperKit 集成与生命周期调度
-├── Workflow/           # TaskLibrary 持久化、单执行者 TaskProcessingQueue、原子检查点与同步
-└── App/                # macOS 与 iOS 平台适配、SwiftUI 原生页面、材质控件与交互接线
+├── Media/              # 音频提取、播放控制、字幕时间线、音视频导出与封装
+├── Translation/        # OpenAI 兼容协议、Apple 本机翻译、云端转写协议、Keychain 凭据
+├── WhisperKit/         # ModelManager 模型管理、WhisperKit 调度与硬件推理
+├── Workflow/           # TaskLibrary 持久化、单执行者任务队列、检查点提交与同步
+└── App/                # macOS 与 iOS 界面、SwiftUI 页面、材质组件与交互绑定
 ```
 
-### 依赖关系与禁止模式
+### 依赖关系与架构边界
 
-模块之间遵循严格的单向无环依赖原则：
+模块间遵循单向无环依赖约束：
 
 ```mermaid
 graph TD
@@ -38,84 +38,75 @@ graph TD
     App --> Sparkle[Sparkle SDK · macOS]
 ```
 
-- **禁止底层反向依赖上层**：Core、Media、Translation、WhisperKit 与 Workflow 严禁导入 AppKit、UIKit 或 App 视图模块。
-- **Core 纯粹性保证**：VoxlineCore 只依赖 Foundation 与系统基本类型；严禁引入 AVFoundation、Core ML、UI 框架或第三方 SDK。
-- **SDK 隔离**：第三方 WhisperKit SDK 仅由 `VoxlineWhisperKit` 模块导入并封装，上层 UI 与工作流通过 `ModelManager` 协议交互，不直接暴露 SDK 内部类型。
-- **值类型与并发安全**：领域实体（`ProcessingTask`、`SubtitleCue`、`TaskParameters`）均为不可变或纯值类型（`Sendable`），在 Actor 间安全流转。
+- **单向无环依赖**：底层模块（Core、Media、Translation、WhisperKit、Workflow）严禁反向导入上层 AppKit、UIKit 或 App 视图层。
+- **Core 纯粹性**：VoxlineCore 仅依赖 Foundation 与系统基础类型，不引入音视频处理、Core ML、UI 框架或第三方库。
+- **第三方 SDK 封装**：WhisperKit SDK 仅由 `VoxlineWhisperKit` 模块导入并隔离，工作流与界面层通过内部协议与类型交互，不直接暴露外部 SDK 数据结构。
+- **并发与值类型语义**：核心领域实体（`ProcessingTask`、`SubtitleCue`、`TaskParameters`）均为 `Sendable` 纯值类型，支持在并发任务与 Actor 边界间安全传递。
 
----
+## 模块职责
 
-## 模块职责规范
-
-### 1. VoxlineCore
-- **领域模型**：`ProcessingTask`（任务根对象）、`MediaItem`（单媒体条目）、`SubtitleCue`（字幕句与时间戳）、`TaskParameters`（冻结参数快照）。
-- **执行检查点**：`MediaProcessingCheckpoint` 记录转写分块与翻译批次的提交状态与未完成证据。
+### VoxlineCore
+- **领域实体**：定义根任务 `ProcessingTask`、媒体条目 `TaskMediaItem`、字幕行 `SubtitleCue` 与参数快照 `TaskParameters`。
+- **执行检查点**：维护 `MediaProcessingCheckpoint`，记录分块转写与分批翻译的执行进度与诊断证据。
 - **SRT 编解码**：纯文本 SRT 解析器与生成器，支持原文、译文与双语三种导出投影。
-- **字幕断句切分**：`SubtitleSegmenter` 基于词级/段级时间戳、标点符号中点与时间中点进行自然分割。
+- **断句切分**：`SubtitleSegmenter` 基于词级/段级时间戳、标点中点与时间区间进行自然分割。
 
-### 2. VoxlineMedia
-- **媒体能力检查**：`MediaInspector` 快速读取容器元数据、时长、多语言音轨，并以头尾采样计算媒体采样指纹。
-- **音频提取**：`AudioExtractor` 通过 `AVAssetReader` 提取所选音轨，输出 16 kHz 单声道 Float32 PCM，并分块（最多 120 秒）落盘缓存。
-- **播放器控制**：`MediaPlaybackController` 封装 `AVPlayer`，支持 0.5x ~ 2.0x 变速回放、±5s 跳转、精确二分定位字幕时间线，向 UI 发布时钟与活动字幕索引。
-- **原生字幕烧录**：`SubtitleBurnInExporter` 基于 Core Image 滤镜与 `AVAssetExportSession`，在 GPU 上逐帧渲染烧录硬字幕，支持自定义字号、自动换行与居中排版。
-- **内封软字幕**：`SubtitleEmbeddingExporter` 利用 `AVAssetReader` 与 `AVAssetWriter`，将视频与所选音轨压缩样本直通封装为 MP4，并写入独立 tx3g 字幕轨。
+### VoxlineMedia
+- **媒体检查**：`MediaInspector` 读取容器格式、时长、多语言音轨信息，并基于头尾采样生成采样指纹。
+- **音频提取**：`AudioExtractor` 基于 `AVAssetReader` 提取目标音轨，生成 16 kHz 单声道 Float32 PCM，并以最大 120 秒分块落盘缓存。
+- **播控与时间线**：`MediaPlaybackController` 封装 `AVPlayer`，提供 0.5x ~ 2.0x 变速回放、±5s 定位、二分法检索字幕时间线，向界面层发布活动字幕与低频时钟；对外提供 `LoadRequest` 统一两端媒体重载凭证。
+- **视频硬字幕压制**：`SubtitleBurnInExporter` 基于 Core Image 滤镜与 `AVAssetExportSession` 在 GPU 上逐帧渲染字幕，支持字号缩放、自动换行与排版；导出时支持 H.264 与 HEVC 编码选择。
+- **内封软字幕**：`SubtitleEmbeddingExporter` 通过 `AVAssetReader` 与 `AVAssetWriter` 将字幕写入独立 tx3g 轨道并封装为 MP4，视频与音频样本直通封装。
+- **临时文件管理**：`TemporaryExportFile` 采用 RAII 模式管理导出与预览期间的沙盒临时文件，在对象析构或显式关闭时自动清理磁盘残留。
 
-### 3. VoxlineWhisperKit
-- **模型管理**：`WhisperModelStore` 与 `ModelManager` 管理 Tiny、Base、Small、Large v3、Turbo 5 种型号的下载、校验、本地磁盘占用统计与删除。
-- **生命周期调度**：同一进程复用唯一已加载模型实例；切换模型时先释放旧实例再加载新模型；空闲时自动卸载，避免显存泄露。
-- **有界转写 Provider**：`WhisperKitTranscriptionProvider` 接收最多 120 秒 PCM 输入，执行 Core ML 硬件加速推理，记录原始对齐证据。
+### VoxlineWhisperKit
+- **模型生命周期**：`WhisperModelStore` 与 `ModelManager` 管理 Tiny、Base、Small、Large v3、Turbo 5 款模型的下载、SHA-256 校验、本地磁盘占用统计与文件清理。
+- **资源驻留控制**：单进程内仅复用一个已加载模型实例；切换模型时先释放旧实例再加载新模型；空闲时自动卸载，避免占用统一内存。
+- **转写执行**：`WhisperKitTranscriptionProvider` 接收 120 秒以内的 PCM 数据，调用 Core ML 执行硬件加速推理，记录对齐时间戳与词级证据。
 
-### 4. VoxlineTranslation
-- **Apple 本机翻译**：`AppleTranslationCoordinator` 协调系统级离线翻译会话，核对系统语言包安装状态，实现完全离线端侧翻译。
-- **OpenAI 兼容翻译**：`OpenAICompatibleTranslationClient` 执行批量字幕翻译，提供滑动窗口上下文（前后各 2 句）、自定义批量大小、以及系统提示词定制。
-- **云端转写协议**：`CloudTranscriptionProtocol` 支持 OpenAI Audio Transcriptions、Google Gemini Audio Chat 与阿里云百炼 Qwen Audio Chat 协议。
-- **安全凭据存储**：`KeychainTranslationCredentialVault` 将 API Key 异步安全保存在设备本机 Keychain，不进入任务文件或同步文档。
+### VoxlineTranslation
+- **Apple 本机翻译**：`AppleTranslationCoordinator` 协调系统级翻译会话，核验系统语言资源就绪状态，实现离线端侧翻译。
+- **OpenAI 兼容翻译**：`OpenAICompatibleTranslationClient` 执行批量字幕翻译，提供双向滑动窗口（前后各 2 句）以保持语境连贯，支持自定义批大小与系统提示词。
+- **云端转写协议**：`CloudTranscriptionProtocol` 适配 OpenAI Audio Transcriptions、Google Gemini Audio Chat 与阿里云百炼 Qwen Audio Chat 协议。
+- **凭据管理**：`KeychainTranslationCredentialVault` 将 API Key 存储在系统 Keychain 中，凭据不写入任务文档或同步存储。
 
-### 5. VoxlineWorkflow
-- **任务存储**：`TaskLibrary` 管理本地 `.voxline` 任务文档的读写、任务顺序（`task-order.json`）与删除清理。
-- **执行队列**：`TaskProcessingQueue` 进程内单执行者顺序队列，驱动音频提取、转写与翻译流水线，处理取消、失败隔离与断点恢复。
-- **原子检查点提交**：将转写完成块与翻译批次原子落盘至任务文件。
-- **iCloud 同步协调**：`TaskSyncCoordinator` 协调用户授权的共享 iCloud Drive 文件夹，基于 `NSFileCoordinator` 与 `NSFileVersion` 实现版本与冲突保护。
+### VoxlineWorkflow
+- **任务持久化**：`TaskLibrary` 负责本地 `.voxline` 任务文档的读写、任务索引（`task-order.json`）维护与关联资源清理。
+- **执行调度**：`TaskProcessingQueue` 为进程内单执行者顺序队列，串行调度音频提取、转写与翻译流程，负责取消处理、错误隔离与断点恢复。
+- **检查点原子落盘**：将转写分块与翻译批次成果以原子写方式持久化至任务文件。
+- **iCloud 同步**：`TaskSyncCoordinator` 接入用户授权的 iCloud Drive 目录，通过 `NSFileCoordinator` 与 `NSFileVersion` 实现文件级协同与版本冲突保护。
 
-### 6. VoxlineApp
-- **跨平台适配**：`Platform/macOS` 与 `Platform/iOS` 分别处理窗口/标签页导航、原生文件选择器与触摸手势。
-- **Mac 窗口会话**：每个工作区持有独立的导航与 `ProofreadingSession`，离页时直接提交当前草稿。焦点值只将菜单命令送入当前窗口，窗口自身不通过焦点闭包调用子页面，避免焦点发布与监听形成刷新循环。
-- **共享视图**：任务列表、参数配置会话（`TaskConfigurationSession`）、双语校对播放器（`MediaDetailProofreadingView`）、字幕结构编辑器（`SubtitleStructureEditor`）与设置面板。
-- **视觉风格**：系统 26+ 使用 Liquid Glass 流体玻璃，旧系统使用原生 Material，全面适配深色模式与 VoiceOver 辅助功能。
-- **Mac 窗口合成**：采用系统窗口背景，不额外叠加整窗桌面模糊或光晕。普通面板与胶囊使用底板单阴影，字幕叠层的阴影不包含文字与控件。
+### VoxlineApp
+- **跨平台界面**：通过 SwiftUI 构建共享业务页面（任务库、参数配置、双语校对、结构编辑、设置），分别通过 `Platform/macOS` 与 `Platform/iOS` 适配平台窗口系统、原生工具栏与触摸手势。
+- **Mac 窗口会话隔离**：每个窗口会话维护独立的导航状态与 `ProofreadingSession`，离开校对视图时自动提交当前草稿。菜单快捷命令通过 Focus 路由至活动窗口，避免焦点发布与监听形成刷新循环。
+- **系统材质与无障碍**：适配 Liquid Glass 与原生 Material 材质分层；支持系统深色模式、VoiceOver 辅助标签、减少动态效果与降低透明度设置。
 
----
+## 执行模型与数据流
 
-## 核心设计与数据流
+### 任务持久化与检查点保护
 
-### 1. Task 持久化与原子检查点
+- **文档存储**：任务统一持久化为 `.voxline` 纯 JSON 文档（当前架构版本 7）。
+- **参数快照与修改**：任务启动时冻结当前配置（`TaskParameters`），修改全局默认设置不影响已有任务。任务处于停止状态时允许显式修改模型、翻译引擎与目标语言；更换目标语言时需确认并重置译文状态，原文与时间轴数据保持不变。
+- **原子提交机制**：`TaskLibrary.commitCheckpoint` 在内存中生成文档副本并执行原子替换。持久化失败时保留界面草稿与错误诊断，不损坏磁盘文件。
+- **并发编辑保护**：异步响应提交前校验当前字幕原文版本与人工编辑快照；若检测到用户已手动修改该行字幕，迟到的翻译或转写结果放弃写入，保障人工修改不被覆盖。
 
-- **文件格式**：任务根对象为 `ProcessingTask`（版本 7），持久化保存为 `.voxline` 纯 JSON 文档。
-- **参数冻结**：任务启动时冻结当前参数快照（`TaskParameters`）；修改全局设置默认值不影响已有任务。
-- **停止后参数调整**：任务停止后支持显式修改转写模型、翻译引擎与目标语言；已有字幕成果完整保留。更换目标语言需明确确认，自动将已有译文重置为待翻译。
-- **原子提交**：`TaskLibrary.commitCheckpoint` 在内存中生成副本、核对版本并原子替换任务文件。保存失败保留界面草稿，绝不损坏磁盘文件。
-- **防覆盖保护**：迟到的云端响应或异步回调在提交前严格核对当前字幕原文版本与人工编辑快照；若用户已手工修改，迟到响应拒绝覆盖。
+### 顺序队列与容错恢复
 
-### 2. 本地顺序执行与容错恢复
+- **单执行者调度**：`TaskProcessingQueue` 保证同一时刻仅有一个媒体条目占用本地神经网络引擎与推理资源，避免多任务并发引发显存争抢与系统发热降频。
+- **阶段状态独立**：音频提取、语音转写、双语翻译各自维护独立检查点。单项条目失败仅标记当前项并记录诊断信息，队列继续处理其余媒体。
+- **断点续做**：任务重启或意外中断后，恢复逻辑仅处理未完成的转写块与无有效译文的字幕段，已完成成果直接复用。
+- **时间边界异常修正**：词级对齐失效时回退至当前分析窗口的原始段时间；窗口末尾因边界裁切出现的零时长文本合并入邻近有效字幕段，空白切分不丢弃正文字符，保留原始窗口与对齐数据用于诊断排查。
 
-- **单执行者队列**：`TaskProcessingQueue` 保证同一时间只有一个任务条目占用硬件推理与转写资源，避免 GPU/ANE 显存争抢。
-- **阶段状态解耦**：音频提取、语音转写、双语翻译各自独立落盘检查点。单项失败（如某一段网络超时）仅将该项标记为失败并保留错误诊断，不阻塞队列中其他合法媒体。
-- **断点续做**：进程重启或手动中断后，恢复计划仅提取未完成的转写块与无有效译文的字幕，已完成的块直接复用，不重复跑模型。
-- **时间边界恢复**：词对齐失效时复用同窗口的有效原始段时间。窗口末端裁成零时长的文字并入紧邻的有效段，空白词随正文切分；不丢文字、不延长音频范围，原始窗口及异常对齐保留用于诊断。
+### 端侧处理闭环
 
-### 3. 全端侧离线闭环处理
+在默认配置下，应用支持在设备端闭环完成全流程处理：
+1. **输入与读取**：媒体文件通过系统安全书签直接读取，原始音视频不上传外部网络。
+2. **端侧推理**：WhisperKit 模型权重存放于应用沙盒，推理全程使用 Core ML 与本地硬件加速。
+3. **本地翻译**：调用系统 Apple Translation 框架与本地离线语言包完成翻译。
+4. **校对与导出**：本地 AVPlayer 驱动预览，GPU 完成字幕渲染压制或 Direct Stream Copy 无损封装。
 
-Voxline 核心主打端侧离线闭环能力：
-1. **输入阶段**：本地音视频经由沙盒安全书签打开，不向外部服务器上传音频文件。
-2. **转写阶段**：Core ML 加速的 WhisperKit 纯本地运行，权重常驻设备沙盒。
-3. **翻译阶段**：通过 Apple Translation 原生框架，利用系统下载的离线语言包在本地完成推理。
-4. **校对与导出**：本地 AVPlayer 同步播放，GPU 本地渲染烧录或无损封装 MP4。
-全程无需联网，确保绝对的数据主权与隐私安全。
+## 资源组织与本地化
 
----
-
-## 资源管理与本地化
-
-- **多语言资源**：简体中文与英文资源按模块归属于各自的 `Resources/*.lproj`（如 `Localizable.strings` 与 `Localizable.stringsdict`）。
-- **原生提取与调用**：使用 Foundation 原生 `String(localized:bundle:)`，保留字符串字面量以便编译器提取。
-- **应用图标与元数据**：iOS 使用资源目录软链接 `Resources/AppIcon.png`，macOS 使用 `Resources/AppIcon.icns`。版本号统一由根目录 `Version.xcconfig` 的 `MARKETING_VERSION` 驱动。
+- **多语言资源**：简体中文与英文资源按模块归属于各子模块的 `Resources/*.lproj`。
+- **本地化字符串**：统一通过 `String(localized:bundle:)` 引用，使用确定命名的本地化常量，保持编译器提取准确。
+- **图元与版本配置**：iOS 使用资源目录软链接 `Resources/AppIcon.png`，macOS 使用 `Resources/AppIcon.icns`。版本号与构建号在根目录 `Version.xcconfig` 的 `MARKETING_VERSION` 与 `CURRENT_PROJECT_VERSION` 中单点维护。
