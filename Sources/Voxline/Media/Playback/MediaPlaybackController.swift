@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Observation
+import OSLog
 import VoxlineCore
 
 @Observable
@@ -58,6 +59,7 @@ public final class MediaPlaybackController {
     public private(set) var pausedVideoFrame: PausedVideoFrame?
     @ObservationIgnored private var pausedFrameSource: PausedVideoFrameSource?
     @ObservationIgnored private var pausedFrameTask: Task<Void, Never>?
+    private static let logger = Logger(subsystem: "dev.voxline.app", category: "PausedVideoFrame")
     #endif
 
     public init(mediaStore: LocalMediaStore = .shared, inspector: MediaInspector = .shared) {
@@ -271,7 +273,7 @@ public final class MediaPlaybackController {
         player?.pause()
     }
 
-    public func seek(to seconds: Double, resumePlayback: Bool = false) {
+    public func seek(to seconds: Double, resumePlayback: Bool = false, isScrubbing: Bool = false) {
         guard isReady, let player, seconds.isFinite else { return }
         let clamped = max(0, min(seconds, durationSeconds))
         let loadID = generation
@@ -281,9 +283,10 @@ public final class MediaPlaybackController {
         #if os(macOS)
         pausedFrameTask?.cancel()
         pausedFrameTask = nil
-        errorMessage = nil
+        pausedVideoFrame = nil
         #endif
-        player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+        let tolerance = isScrubbing ? CMTime(seconds: 0.25, preferredTimescale: 600) : .zero
+        player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] finished in
             Task { @MainActor [weak self] in
                 guard finished, let self, self.generation == loadID, self.seekID == requestID else { return }
                 let actual = self.player?.currentTime().seconds
@@ -292,10 +295,12 @@ public final class MediaPlaybackController {
                     self.player?.playImmediately(atRate: self.playbackRate)
                 }
                 #if os(macOS)
-                if self.player?.timeControlStatus == .paused, let source = self.pausedFrameSource {
+                if !isScrubbing, self.player?.timeControlStatus == .paused, let source = self.pausedFrameSource {
                     let time = CMTime(seconds: clamped, preferredTimescale: 60_000)
                     self.pausedFrameTask = Task { [weak self] in
                         do {
+                            // Coalesce rapid subtitle jumps before creating another decoder.
+                            try await Task.sleep(for: .milliseconds(120))
                             let frame = try await source.frame(at: time)
                             try Task.checkCancellation()
                             guard let self, self.generation == loadID, self.seekID == requestID,
@@ -306,7 +311,8 @@ public final class MediaPlaybackController {
                         catch {
                             guard let self, self.generation == loadID, self.seekID == requestID,
                                   self.player?.timeControlStatus == .paused else { return }
-                            self.errorMessage = error.localizedDescription
+                            // AVPlayer remains usable when the optional still-frame decoder fails.
+                            Self.logger.error("Paused video frame unavailable: \(error.localizedDescription)")
                             self.pausedFrameTask = nil
                         }
                     }

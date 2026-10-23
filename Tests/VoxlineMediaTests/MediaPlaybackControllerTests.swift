@@ -65,6 +65,9 @@ struct MediaPlaybackControllerTests {
         let dimensions = try await Self.videoFrameSize(url: videoURL)
         #expect(dimensions.width > 0 && dimensions.height > 0)
 
+        controller.seek(to: 0.4, isScrubbing: true)
+        try await waitFor { abs(controller.currentTimeSeconds - 0.4) < 0.1 }
+        #expect(controller.pausedVideoFrame == nil)
         controller.seek(toMilliseconds: 400)
         try await waitFor { abs(controller.currentTimeSeconds - 0.4) < 0.01 }
         try await waitFor { controller.pausedVideoFrame != nil }

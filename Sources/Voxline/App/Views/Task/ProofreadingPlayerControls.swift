@@ -334,14 +334,27 @@ private struct PlaybackCurrentTime: View {
 private struct PlaybackProgressSlider: View {
     let playback: MediaPlaybackController
     var minimumDuration: Double = 1
+    @State private var isScrubbing = false
+    @State private var scrubPosition: Double?
 
     var body: some View {
         Slider(
             value: Binding(
-                get: { playback.currentTimeSeconds },
-                set: { playback.seek(to: $0) }
+                get: { scrubPosition ?? playback.currentTimeSeconds },
+                set: { value in
+                    if isScrubbing { scrubPosition = value }
+                    playback.seek(to: value, isScrubbing: isScrubbing)
+                }
             ),
-            in: 0...max(playback.durationSeconds, minimumDuration)
+            in: 0...max(playback.durationSeconds, minimumDuration),
+            onEditingChanged: { editing in
+                isScrubbing = editing
+                if editing { scrubPosition = playback.currentTimeSeconds }
+                else if let position = scrubPosition {
+                    scrubPosition = nil
+                    playback.seek(to: position)
+                }
+            }
         )
     }
 }

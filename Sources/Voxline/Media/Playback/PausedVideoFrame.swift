@@ -22,6 +22,7 @@ actor PausedVideoFrameSource {
     }
 
     func frame(at time: CMTime) async throws -> PausedVideoFrame {
+        try Task.checkCancellation()
         let track: AVAssetTrack
         if let videoTrack { track = videoTrack }
         else {
@@ -57,6 +58,7 @@ actor PausedVideoFrameSource {
             guard let result = Self.context.createCGImage(image, from: image.extent) else {
                 throw MediaAccessError.undecodableVideo
             }
+            try Task.checkCancellation()
             return PausedVideoFrame(image: result, time: timestamp)
         }
         throw reader.error ?? MediaAccessError.undecodableVideo
