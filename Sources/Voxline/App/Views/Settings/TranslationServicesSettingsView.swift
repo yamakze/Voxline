@@ -221,7 +221,7 @@ public struct TranslationServicesSettingsView: View {
             }
         }
         .padding(14)
-        .liquidGlassSurface()
+        .nativeControlSurface()
     }
 }
 

@@ -200,7 +200,7 @@ public struct CloudTranscriptionServicesSettingsView: View {
             }
         }
         .padding(14)
-        .liquidGlassSurface()
+        .nativeControlSurface()
     }
 }
 

@@ -66,7 +66,7 @@ public struct ModelManagementView: View {
                     }
                 }
                 .padding(16)
-                .liquidGlassSurface(cornerRadius: 12)
+                .nativeControlSurface(cornerRadius: 12)
 
                 // Models List
                 VStack(alignment: .leading, spacing: 12) {
@@ -307,7 +307,7 @@ private struct ModelCardRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .liquidGlassSurface(cornerRadius: 12)
+        .nativeControlSurface(cornerRadius: 12)
         .overlay(HoverBorder(cornerRadius: 12))
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contextMenu {

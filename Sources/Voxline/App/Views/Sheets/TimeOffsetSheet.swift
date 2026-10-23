@@ -77,7 +77,7 @@ public struct TimeOffsetSheet: View {
                 }
             }
             .padding()
-            .liquidGlassSurface()
+            .nativeControlSurface()
 
             HStack(spacing: 12) {
                 Spacer()

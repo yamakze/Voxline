@@ -247,7 +247,7 @@ struct IOSMediaDetailView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .liquidGlassSurface(cornerRadius: 10)
+                    .nativeControlSurface(cornerRadius: 10)
                     .padding(.horizontal, 16)
                     .padding(.bottom, item.kind == .video ? 16 : 8)
                     .allowsHitTesting(false)
@@ -441,7 +441,7 @@ struct IOSMediaDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .liquidGlassSurface(cornerRadius: 14)
+        .nativeControlSurface(cornerRadius: 14)
         .padding(.horizontal, 14)
         .padding(.bottom, 10)
         .shadow(color: .black.opacity(0.12), radius: 8, y: 3)

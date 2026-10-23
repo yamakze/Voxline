@@ -324,7 +324,7 @@ struct IOSTaskLibraryView: View {
                 if let fileState {
                     SyncFileStatusBadge(state: fileState)
                 }
-                statusBadge(task.status)
+                TaskStatusBadge(status: task.status)
             }
 
             if fileState == .conflict {
@@ -357,42 +357,6 @@ struct IOSTaskLibraryView: View {
             }
         }
         .padding(.vertical, 4)
-    }
-
-    @ViewBuilder
-    private func statusBadge(_ status: ProcessingTaskStatus) -> some View {
-        HStack(spacing: 4) {
-            switch status {
-            case .completed:
-                Circle().fill(Color.green).frame(width: 6, height: 6)
-                Text(String(localized: "已完成", bundle: appLocalizationBundle)).foregroundStyle(.green)
-            case .running:
-                ProgressView().controlSize(.mini)
-                Text(String(localized: "处理中", bundle: appLocalizationBundle)).foregroundStyle(Color.voxlineAccent)
-            case .queued:
-                Circle().fill(Color.blue).frame(width: 6, height: 6)
-                Text(String(localized: "排队中", bundle: appLocalizationBundle)).foregroundStyle(.blue)
-            case .draft:
-                Circle().fill(Color.secondary).frame(width: 6, height: 6)
-                Text(String(localized: "草稿", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
-            case .cancelled:
-                Circle().fill(Color.orange).frame(width: 6, height: 6)
-                Text(String(localized: "已取消", bundle: appLocalizationBundle)).foregroundStyle(.orange)
-            case .interrupted, .translationPaused:
-                Circle().fill(Color.orange).frame(width: 6, height: 6)
-                Text(String(localized: "已暂停", bundle: appLocalizationBundle)).foregroundStyle(.orange)
-            case .needsTranslation:
-                Circle().fill(Color.orange).frame(width: 6, height: 6)
-                Text(String(localized: "待翻译", bundle: appLocalizationBundle)).foregroundStyle(.orange)
-            case .partiallyFailed, .failed:
-                Circle().fill(Color.red).frame(width: 6, height: 6)
-                Text(String(localized: "失败", bundle: appLocalizationBundle)).foregroundStyle(.red)
-            }
-        }
-        .font(.caption2.weight(.medium))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Color.secondary.opacity(0.08), in: Capsule())
     }
 
     private func importTask(_ url: URL) {
@@ -695,7 +659,7 @@ private struct IOSTaskDetailView: View {
             }
         }
         .padding(16)
-        .liquidGlassSurface(cornerRadius: 14)
+        .nativeControlSurface(cornerRadius: 14)
     }
 
     private func metricTile(value: String, label: String, color: Color) -> some View {
@@ -741,7 +705,7 @@ private struct IOSTaskDetailView: View {
 
                 Spacer()
 
-                itemStatusTag(item.status)
+                StatusSignal(mediaStatus: item.status)
             }
 
             // 处理步骤进度指示（未完成时展示各步骤，已完成时由右上角状态标签统一展示，去除重复）
@@ -808,34 +772,6 @@ private struct IOSTaskDetailView: View {
     private func handleRetryItem(item: TaskMediaItem, in task: ProcessingTask) {
         do { try library.queue.start(taskID: task.id, mediaID: item.id) }
         catch { errorMessage = error.localizedDescription }
-    }
-
-    @ViewBuilder
-    private func itemStatusTag(_ status: TaskMediaStatus) -> some View {
-        HStack(spacing: 3) {
-            switch status {
-            case .completed:
-                Circle().fill(Color.green).frame(width: 5, height: 5)
-                Text(String(localized: "完成", bundle: appLocalizationBundle)).foregroundStyle(.green)
-            case .running:
-                ProgressView().controlSize(.mini)
-                Text(String(localized: "处理中", bundle: appLocalizationBundle)).foregroundStyle(Color.voxlineAccent)
-            case .pending:
-                Text(String(localized: "等待", bundle: appLocalizationBundle)).foregroundStyle(.secondary)
-            case .cancelled:
-                Text(String(localized: "已取消", bundle: appLocalizationBundle)).foregroundStyle(.orange)
-            case .interrupted, .translationPaused:
-                Text(String(localized: "暂停", bundle: appLocalizationBundle)).foregroundStyle(.orange)
-            case .failed:
-                Text(String(localized: "失败", bundle: appLocalizationBundle)).foregroundStyle(.red)
-            case .needsTranslation:
-                Text(String(localized: "待翻译", bundle: appLocalizationBundle)).foregroundStyle(.orange)
-            }
-        }
-        .font(.caption2.bold())
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(Color.secondary.opacity(0.08), in: Capsule())
     }
 
     private func shareTask(_ task: ProcessingTask) {

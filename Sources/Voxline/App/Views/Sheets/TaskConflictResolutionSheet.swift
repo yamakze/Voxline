@@ -273,7 +273,7 @@ public struct TaskConflictResolutionSheet: View {
             }
         }
         .padding(14)
-        .liquidGlassSurface()
+        .nativeControlSurface()
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(isSelected ? Color.voxlineAccent : Color.clear, lineWidth: 2)

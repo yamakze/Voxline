@@ -10,6 +10,7 @@ public struct NativeControlSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     #if os(macOS)
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.voxlinePreviewTintOpacity) private var previewTintOpacity
     #endif
 
     public init(cornerRadius: CGFloat = 14) {
@@ -30,8 +31,8 @@ public struct NativeControlSurface: ViewModifier {
                 .background {
                     ZStack {
                         shape.fill(.regularMaterial)
-                        if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
-                            shape.fill(manager.currentTintColor.opacity(manager.effectiveTintOpacity * 0.85))
+                        if let tint = manager.resolvedTintColor(opacity: previewTintOpacity, strength: 0.85) {
+                            shape.fill(tint)
                         }
                     }
                 }
@@ -71,15 +72,15 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
         } else if #available(macOS 26, *) {
             let manager = AppearanceManager.shared
             content
-                .glassEffect(.regular.tint(manager.currentTintColor.opacity(manager.effectiveTintOpacity * 0.90)), in: .capsule)
+                .glassEffect(.regular.tint(manager.resolvedTintColor(strength: 0.90) ?? .clear), in: .capsule)
         } else {
             let manager = AppearanceManager.shared
             content
                 .background {
                     ZStack {
                         Capsule().fill(.ultraThinMaterial)
-                        if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
-                            Capsule().fill(manager.currentTintColor.opacity(manager.effectiveTintOpacity * 0.90))
+                        if let tint = manager.resolvedTintColor(strength: 0.90) {
+                            Capsule().fill(tint)
                         }
                     }
                 }
@@ -165,7 +166,7 @@ public struct NativeSubtitleOverlaySurface: ViewModifier {
 }
 
 public extension View {
-    func liquidGlassSurface(cornerRadius: CGFloat = 14) -> some View {
+    func nativeControlSurface(cornerRadius: CGFloat = 14) -> some View {
         modifier(NativeControlSurface(cornerRadius: cornerRadius))
     }
 

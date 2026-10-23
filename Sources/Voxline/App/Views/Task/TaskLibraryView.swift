@@ -263,7 +263,7 @@ public struct TaskLibraryView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .liquidGlassSurface()
+        .nativeControlSurface()
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(rowBorderColor(for: entry.id), lineWidth: 1.2)

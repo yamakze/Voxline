@@ -141,7 +141,7 @@ public struct TaskDetailView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .liquidGlassSurface(cornerRadius: 12)
+        .nativeControlSurface(cornerRadius: 12)
     }
 
     // MARK: - Media processing queue
@@ -311,7 +311,7 @@ public struct TaskDetailView: View {
                         }
                     }
                 }
-                .liquidGlassSurface(cornerRadius: 12)
+                .nativeControlSurface(cornerRadius: 12)
             }
         }
     }

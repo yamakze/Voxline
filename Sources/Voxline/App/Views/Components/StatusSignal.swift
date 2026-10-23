@@ -9,6 +9,7 @@ public enum StatusSignalKind: Equatable, Sendable {
     case notDownloaded
     case running        // 处理中 / 运行中 / 下载中
     case paused         // 暂停 / 中断 / 待恢复
+    case needsTranslation
     case cancelled      // 取消 / 已终止
     case failed         // 失败 / 错误 / 损坏
 
@@ -20,7 +21,7 @@ public enum StatusSignalKind: Equatable, Sendable {
             return .secondary
         case .running:
             return .blue
-        case .paused:
+        case .paused, .needsTranslation:
             return .orange
         case .cancelled:
             return .secondary
@@ -41,6 +42,8 @@ public enum StatusSignalKind: Equatable, Sendable {
             return String(localized: "处理中", bundle: appLocalizationBundle)
         case .paused:
             return String(localized: "已暂停", bundle: appLocalizationBundle)
+        case .needsTranslation:
+            return String(localized: "待翻译", bundle: appLocalizationBundle)
         case .cancelled:
             return String(localized: "已取消", bundle: appLocalizationBundle)
         case .failed:
@@ -56,7 +59,9 @@ public enum StatusSignalKind: Equatable, Sendable {
             self = .waiting
         case .running:
             self = .running
-        case .needsTranslation, .interrupted, .translationPaused:
+        case .needsTranslation:
+            self = .needsTranslation
+        case .interrupted, .translationPaused:
             self = .paused
         case .cancelled:
             self = .cancelled
@@ -73,7 +78,9 @@ public enum StatusSignalKind: Equatable, Sendable {
             self = .waiting
         case .running:
             self = .running
-        case .needsTranslation, .interrupted, .translationPaused:
+        case .needsTranslation:
+            self = .needsTranslation
+        case .interrupted, .translationPaused:
             self = .paused
         case .cancelled:
             self = .cancelled
@@ -94,6 +101,17 @@ public enum StatusSignalKind: Equatable, Sendable {
             self = .cancelled
         case .failed, .corrupted:
             self = .failed
+        }
+    }
+
+    public init(stepState: ProcessingStepState) {
+        switch stepState {
+        case .completed: self = .ready
+        case .inProgress: self = .running
+        case .waiting: self = .waiting
+        case .paused: self = .paused
+        case .failed: self = .failed
+        case .cancelled: self = .cancelled
         }
     }
 }
@@ -135,6 +153,8 @@ public struct StatusSignal: View {
                 .strokeBorder(kind.tintColor.opacity(0.24), lineWidth: 0.8)
 
             iconView
+                .foregroundStyle(kind.tintColor)
+                .tint(kind.tintColor)
         }
         .frame(width: 20, height: 20)
         .help(helpText ?? accessibilityLabelText ?? kind.defaultLabel)
@@ -148,31 +168,27 @@ public struct StatusSignal: View {
         case .ready:
             Image(systemName: "checkmark")
                 .font(.system(size: 8.5, weight: .bold))
-                .foregroundStyle(Color.green)
         case .waiting:
             Image(systemName: "clock")
                 .font(.system(size: 8.5, weight: .semibold))
-                .foregroundStyle(Color.secondary)
         case .notDownloaded:
             Image(systemName: "arrow.down")
                 .font(.system(size: 8.5, weight: .semibold))
-                .foregroundStyle(Color.secondary)
         case .running:
             ProgressView()
                 .controlSize(.mini)
-                .tint(Color.blue)
         case .paused:
             Image(systemName: "pause.fill")
                 .font(.system(size: 7.5, weight: .bold))
-                .foregroundStyle(Color.orange)
+        case .needsTranslation:
+            Image(systemName: "character.bubble")
+                .font(.system(size: 8.5, weight: .semibold))
         case .cancelled:
             Image(systemName: "nosign")
                 .font(.system(size: 8.5, weight: .bold))
-                .foregroundStyle(Color.secondary)
         case .failed:
             Image(systemName: "xmark")
                 .font(.system(size: 8.5, weight: .bold))
-                .foregroundStyle(Color.red)
         }
     }
 

@@ -95,20 +95,16 @@ public final class AppearanceManager {
         self.tintOpacity = savedOpacity ?? 0.05
     }
 
-    /// 当前实际生效的微染颜色（若为 none 则返回 Color.clear）
-    public var currentTintColor: Color {
-        switch tintOption {
-        case .appIcon:
-            return Color.voxlineGlacierAzure
-        case .none:
-            return .clear
-        }
+    public func resolvedTintColor(opacity: Double? = nil, strength: Double = 1) -> Color? {
+        guard tintOption == .appIcon else { return nil }
+        let concentration = opacity ?? tintOpacity
+        guard concentration > 0 else { return nil }
+        return Color.voxlineGlacierAzure.opacity(concentration * strength)
     }
+}
 
-    /// 计算在材质上叠加的有效微染透明度
-    public var effectiveTintOpacity: Double {
-        tintOption == .none ? 0.0 : tintOpacity
-    }
+extension EnvironmentValues {
+    @Entry var voxlinePreviewTintOpacity: Double? = nil
 }
 
 /// 窗口或顶级视图微染背景修饰器
@@ -124,9 +120,8 @@ public struct VoxlineMicroTintBackgroundModifier: ViewModifier {
                 if reduceTransparency {
                     Color(nsColor: .windowBackgroundColor)
                         .ignoresSafeArea()
-                } else if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
-                    manager.currentTintColor
-                        .opacity(manager.tintOpacity * 0.40)
+                } else if let tint = manager.resolvedTintColor(strength: 0.40) {
+                    tint
                         .ignoresSafeArea()
                 }
             }

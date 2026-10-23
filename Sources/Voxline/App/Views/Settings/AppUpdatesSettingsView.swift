@@ -173,7 +173,7 @@ private struct MacAppUpdatesSettingsView: View {
             .accessibilityLabel(String(localized: "检查更新", bundle: appLocalizationBundle))
         }
         .padding(16)
-        .liquidGlassSurface(cornerRadius: 14)
+        .nativeControlSurface(cornerRadius: 14)
     }
 
     private var optionsCard: some View {
@@ -213,7 +213,7 @@ private struct MacAppUpdatesSettingsView: View {
             }
         }
         .padding(16)
-        .liquidGlassSurface(cornerRadius: 14)
+        .nativeControlSurface(cornerRadius: 14)
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -278,7 +278,7 @@ private struct IOSAppUpdatesSettingsView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(16)
-        .liquidGlassSurface(cornerRadius: 14)
+        .nativeControlSurface(cornerRadius: 14)
     }
 
     @ViewBuilder
@@ -297,7 +297,7 @@ private struct IOSAppUpdatesSettingsView: View {
                 Spacer()
             }
             .padding(16)
-            .liquidGlassSurface(cornerRadius: 14)
+            .nativeControlSurface(cornerRadius: 14)
 
         case .upToDate:
             HStack(spacing: 12) {
@@ -310,7 +310,7 @@ private struct IOSAppUpdatesSettingsView: View {
                 Spacer()
             }
             .padding(16)
-            .liquidGlassSurface(cornerRadius: 14)
+            .nativeControlSurface(cornerRadius: 14)
 
         case .noRelease:
             VStack(alignment: .leading, spacing: 12) {
@@ -334,7 +334,7 @@ private struct IOSAppUpdatesSettingsView: View {
                 }
             }
             .padding(16)
-            .liquidGlassSurface(cornerRadius: 14)
+            .nativeControlSurface(cornerRadius: 14)
 
         case .failed(let error):
             VStack(alignment: .leading, spacing: 12) {
@@ -418,7 +418,7 @@ private struct IOSAppUpdatesSettingsView: View {
                 }
             }
             .padding(16)
-            .liquidGlassSurface(cornerRadius: 14)
+            .nativeControlSurface(cornerRadius: 14)
         }
     }
 }

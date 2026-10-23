@@ -5,8 +5,12 @@ public struct AppearanceSettingsView: View {
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var manager = AppearanceManager.shared
+    @State private var draftTintOpacity: Double
+    @State private var isEditingTintOpacity = false
 
-    public init() {}
+    public init() {
+        _draftTintOpacity = State(initialValue: AppearanceManager.shared.tintOpacity)
+    }
 
     private var previewColorScheme: ColorScheme {
         switch manager.mode {
@@ -69,10 +73,17 @@ public struct AppearanceSettingsView: View {
                     HStack {
                         Text(String(localized: "主题色浓度", bundle: appLocalizationBundle))
                             .foregroundStyle(manager.tintOption == .none ? .secondary : .primary)
-                        Slider(value: $manager.tintOpacity, in: 0...0.08, step: 0.005)
+                        Slider(value: Binding(get: { draftTintOpacity }, set: { value in
+                            draftTintOpacity = value
+                            // Keyboard and accessibility changes do not always start a drag session.
+                            if !isEditingTintOpacity { manager.tintOpacity = value }
+                        }), in: 0...0.08, step: 0.005, onEditingChanged: { editing in
+                            isEditingTintOpacity = editing
+                            if !editing { manager.tintOpacity = draftTintOpacity }
+                        })
                             .accessibilityLabel(String(localized: "主题色浓度", bundle: appLocalizationBundle))
                             .disabled(manager.tintOption == .none)
-                        Text(manager.effectiveTintOpacity.formatted(.percent.precision(.fractionLength(0...1))))
+                        Text((manager.tintOption == .none ? 0 : draftTintOpacity).formatted(.percent.precision(.fractionLength(0...1))))
                             .monospacedDigit()
                             .foregroundStyle(manager.tintOption == .none ? .tertiary : .primary)
                             .frame(width: 36, alignment: .trailing)
@@ -84,6 +95,11 @@ public struct AppearanceSettingsView: View {
             }
             .padding(24)
         }
+        .onDisappear {
+            if isEditingTintOpacity { manager.tintOpacity = draftTintOpacity }
+            isEditingTintOpacity = false
+        }
+        .onAppear { draftTintOpacity = manager.tintOpacity }
     }
 
     // MARK: - 真实联动预览微视窗
@@ -161,9 +177,8 @@ public struct AppearanceSettingsView: View {
                     windowBg
 
                     // 微染光晕注入（开启减少透明度时统一不透明系统背景）
-                    if !reduceTransparency && manager.tintOption == .appIcon && manager.tintOpacity > 0 {
-                        manager.currentTintColor
-                            .opacity(manager.effectiveTintOpacity * 0.40)
+                    if !reduceTransparency, let tint = manager.resolvedTintColor(opacity: draftTintOpacity, strength: 0.40) {
+                        tint
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -183,12 +198,12 @@ public struct AppearanceSettingsView: View {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 6)
                                     .fill(manager.tintOption == .appIcon
-                                          ? manager.currentTintColor.opacity(0.20)
+                                          ? Color.voxlineGlacierAzure.opacity(0.20)
                                           : Color.secondary.opacity(0.15))
                                     .frame(width: 28, height: 28)
                                 Image(systemName: "waveform")
                                     .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(manager.tintOption == .appIcon ? manager.currentTintColor : .primary)
+                                    .foregroundStyle(manager.tintOption == .appIcon ? Color.voxlineGlacierAzure : .primary)
                             }
 
                             VStack(alignment: .leading, spacing: 4) {
@@ -207,7 +222,7 @@ public struct AppearanceSettingsView: View {
                                 .frame(width: 6, height: 6)
                         }
                         .padding(10)
-                        .liquidGlassSurface(cornerRadius: 8)
+                        .nativeControlSurface(cornerRadius: 8)
 
                         // 迷你字幕行模拟
                         HStack(spacing: 8) {
@@ -225,6 +240,7 @@ public struct AppearanceSettingsView: View {
             }
         }
         .environment(\.colorScheme, previewColorScheme)
+        .environment(\.voxlinePreviewTintOpacity, draftTintOpacity)
     }
 
     // MARK: - 二元微彩色块

@@ -55,7 +55,7 @@ graph TD
 - **媒体检查**：`MediaInspector` 读取容器格式、时长、多语言音轨信息，并基于头尾采样生成采样指纹。
 - **音频提取**：`AudioExtractor` 基于 `AVAssetReader` 提取目标音轨，生成 16 kHz 单声道 Float32 PCM，并以最大 120 秒分块落盘缓存。
 - **播控与时间线**：`MediaPlaybackController` 封装 `AVPlayer`，提供 0.5x ~ 2.0x 变速回放、±5s 定位、二分法检索字幕时间线，向界面层发布活动字幕与低频时钟；对外提供 `LoadRequest` 统一两端媒体重载凭证。
-- **Mac 暂停定位画面**：暂停定位后由独立 actor 使用 `AVAssetReader` 从前一个同步样本解码至目标视频帧，界面显示该帧，时钟保留精确定位时间。此路径处理部分 H.264 文件在原生精确 seek 后保留旧画面的情况；连续定位取消旧请求，恢复播放或离页时释放暂停帧，不增加持续播放时的逐帧处理。解码失败通过既有操作错误入口呈现。
+- **Mac 暂停定位画面**：暂停定位后由独立 actor 使用 `AVAssetReader` 从前一个同步样本解码至目标视频帧，界面显示该帧，时钟保留精确定位时间。此路径处理部分 H.264 文件在原生精确 seek 后保留旧画面的情况；滑块拖动时粗定位、松开后精确定位，连续跳转合并为最新暂停帧请求。恢复播放或离页时释放暂停帧，不增加持续播放时的逐帧处理。补偿解码失败记录系统日志并沿用原生播放器画面，不改变主播放器就绪状态或阻断校对；主播放器自身的错误仍独立呈现。
 - **视频硬字幕压制**：`SubtitleBurnInExporter` 基于 Core Image 滤镜与 `AVAssetExportSession` 在 GPU 上逐帧渲染字幕，支持字号缩放、自动换行与排版；导出时支持 H.264 与 HEVC 编码选择。
 - **内封软字幕**：`SubtitleEmbeddingExporter` 通过 `AVAssetReader` 与 `AVAssetWriter` 将字幕写入独立 tx3g 轨道并封装为 MP4，视频与音频样本直通封装。
 - **临时文件管理**：`TemporaryExportFile` 采用 RAII 模式管理导出与预览期间的沙盒临时文件，在对象析构或显式关闭时自动清理磁盘残留。
@@ -69,7 +69,7 @@ graph TD
 - **Apple 本机翻译**：`AppleTranslationCoordinator` 协调系统级翻译会话，核验系统语言资源就绪状态，实现离线端侧翻译。
 - **OpenAI 兼容翻译**：`OpenAICompatibleTranslationClient` 执行批量字幕翻译，提供双向滑动窗口（前后各 2 句）以保持语境连贯，支持自定义批大小与系统提示词。
 - **云端转写协议**：`CloudTranscriptionProtocol` 适配 OpenAI Audio Transcriptions、Google Gemini Audio Chat 与阿里云百炼 Qwen Audio Chat 协议。
-- **生成式时间标注**：Gemini 的分段为可选模型标注，标点差异保留分段时间；缺失字段、正文不一致或时间无效时，以本次短音频范围承载完整正文，明确记录为 `audioRange`，保留原始响应。服务返回未完成或正文无法解析仍报错；专用转写服务提供的时间戳仍按服务时间校验。
+- **生成式时间标注**：Gemini 的分段为可选模型标注，仅忽略空白比较正文；标点、数字或其他正文不一致、缺失字段、时间无效时，以本次短音频范围承载完整正文，明确记录为 `audioRange`，保留原始响应。服务返回未完成或正文无法解析仍报错；专用转写服务提供的时间戳仍按服务时间校验。
 - **凭据管理**：`KeychainTranslationCredentialVault` 将 API Key 存储在系统 Keychain 中，凭据不写入任务文档或同步存储。
 
 ### VoxlineWorkflow
@@ -82,6 +82,7 @@ graph TD
 - **跨平台界面**：通过 SwiftUI 构建共享业务页面（任务库、参数配置、双语校对、结构编辑、设置），分别通过 `Platform/macOS` 与 `Platform/iOS` 适配平台窗口系统、原生工具栏与触摸手势。
 - **Mac 窗口会话隔离**：每个窗口会话维护独立的导航状态与 `ProofreadingSession`，离开校对视图时自动提交当前草稿。菜单快捷命令通过 Focus 路由至活动窗口，避免焦点发布与监听形成刷新循环。
 - **系统材质与无障碍**：Mac 内容卡片使用 Material、微染和单层描边；悬浮控制层在 macOS 26 使用原生 Liquid Glass，macOS 15 使用 Material 回退。降低透明度时使用不透明系统背景，字幕层使用黑底保证可读性。外观设置预览复用实际材质组件；支持深色模式、VoiceOver 辅助标签与减少动态效果。
+- **微染预览与提交**：拖动浓度时只更新设置页预览，结束拖动后一次提交应用外观与偏好；键盘和辅助功能步进即时提交。颜色与浓度统一由外观管理器计算，内容材质通过 `nativeControlSurface` 调用。
 
 ## 执行模型与数据流
 

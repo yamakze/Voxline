@@ -197,7 +197,7 @@ public struct TaskSyncSettingsView: View {
                     }
                 }
                 .padding(14)
-                .liquidGlassSurface()
+                .nativeControlSurface()
             }
         }
     }
@@ -268,7 +268,7 @@ public struct TaskSyncSettingsView: View {
             }
         }
         .padding(14)
-        .liquidGlassSurface()
+        .nativeControlSurface()
     }
 
     // MARK: - Live Sync Monitor Card
@@ -332,7 +332,7 @@ public struct TaskSyncSettingsView: View {
             }
         }
         .padding(14)
-        .liquidGlassSurface()
+        .nativeControlSurface()
     }
 
     // MARK: - Error Banner

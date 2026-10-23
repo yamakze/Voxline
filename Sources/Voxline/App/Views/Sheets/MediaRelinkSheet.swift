@@ -80,7 +80,7 @@ public struct MediaRelinkSheet: View {
                 }
             }
             .padding()
-            .liquidGlassSurface()
+            .nativeControlSurface()
 
             HStack(spacing: 12) {
                 Spacer()

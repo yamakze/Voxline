@@ -145,45 +145,16 @@ public struct MediaProcessingStepsView: View {
 
     @ViewBuilder
     private func stepChip(title: String, state: ProcessingStepState, failureReason: String? = nil) -> some View {
-        let stateDescription: String = switch state {
-            case .completed:
-                String(localized: "已完成", bundle: appLocalizationBundle)
-            case .inProgress:
-                String(localized: "处理中", bundle: appLocalizationBundle)
-            case .waiting:
-                String(localized: "等待中", bundle: appLocalizationBundle)
-            case .paused:
-                String(localized: "已暂停", bundle: appLocalizationBundle)
-            case .failed:
-                String(localized: "失败", bundle: appLocalizationBundle)
-            case .cancelled:
-                String(localized: "已取消", bundle: appLocalizationBundle)
-        }
-        let detail = [stateDescription, failureReason].compactMap { $0 }.joined(separator: " · ")
-        let signalColor: Color = switch state {
-        case .completed: .green
-        case .inProgress: .accentColor
-        case .paused: .orange
-        case .failed: .red
-        case .waiting, .cancelled: .secondary
-        }
+        let signalKind = StatusSignalKind(stepState: state)
+        let detail = [signalKind.defaultLabel, failureReason].compactMap { $0 }.joined(separator: " · ")
+        let signalColor = signalKind.tintColor
         let backgroundOpacity = state == .inProgress ? 0.15 : (state == .waiting || state == .cancelled ? 0.08 : 0.12)
 
         HStack(spacing: 3) {
-            switch state {
-            case .completed:
-                Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.green)
-            case .inProgress:
-                ProgressView().controlSize(.mini)
-            case .waiting:
-                Circle().fill(Color.secondary.opacity(0.3)).frame(width: 6, height: 6)
-            case .paused:
-                Image(systemName: "pause.fill").font(.system(size: 8)).foregroundStyle(.orange)
-            case .failed:
-                Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.red)
-            case .cancelled:
-                Image(systemName: "minus").font(.system(size: 8, weight: .bold)).foregroundStyle(.secondary)
-            }
+            StatusSignal(kind: signalKind)
+                .scaleEffect(0.7)
+                .frame(width: 14, height: 14)
+                .accessibilityHidden(true)
             Text(title)
         }
         .padding(.horizontal, 6)
