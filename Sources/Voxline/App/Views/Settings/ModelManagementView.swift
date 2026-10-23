@@ -372,8 +372,10 @@ private struct ModelCardRow: View {
             switch status {
             case .ready:
                 Circle().fill(Color.green).frame(width: 7, height: 7)
+                    .accessibilityLabel(String(localized: "已就绪", bundle: appLocalizationBundle))
             case .notDownloaded:
                 Circle().fill(Color.secondary.opacity(0.40)).frame(width: 7, height: 7)
+                    .accessibilityLabel(String(localized: "未下载", bundle: appLocalizationBundle))
             case .downloading, .checking:
                 ProgressView().controlSize(.mini)
                 Text(String(localized: "下载中", bundle: appLocalizationBundle))
