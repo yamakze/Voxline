@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.2 - 2026-10-23
+
+### Improved
+
+- Reduced playback control updates and subtitle search work on long videos across macOS and iOS.
+- Reused burn-in previews when changing encoding or output quality, and cached localized language choices.
+- Limited burn-in preview menus to 50 evenly sampled cues, including the first and last; exported videos still include every subtitle.
+- Reduced Mac window compositing work by isolating surface shadows from text and controls.
+
+### Fixed
+
+- Preserved playback position when cancelling media relinking.
+- Kept iOS export preview players and temporary files stable across view updates.
+- Used subtitle IDs to distinguish preview choices with identical start times.
+
+---
+
+### 改进
+
+- 减少 macOS 与 iOS 长视频播放控件刷新及字幕搜索开销。
+- 切换编码或输出质量时复用烧录预览，缓存语言名称及其本地化排序结果。
+- 烧录预览菜单最多保留 50 条均匀采样台词，包含首尾；成品仍包含全部字幕。
+- 将 Mac 材质阴影与文字、控件分离，减少窗口合成开销。
+
+### 修复
+
+- 取消重新关联媒体时保留当前播放位置。
+- iOS 成品预览在界面刷新时保留播放器及临时文件。
+- 使用字幕 ID 区分起点时间相同的预览选项。
+
 ## 1.1.1 - 2026-10-21
 
 ### Improved
