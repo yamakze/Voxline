@@ -103,6 +103,26 @@ public struct ModelManagementView: View {
         #if os(iOS)
         .navigationTitle(String(localized: "模型管理", bundle: appLocalizationBundle))
         #endif
+        #if os(macOS)
+        .alert(
+            String(localized: "删除模型文件", bundle: appLocalizationBundle),
+            isPresented: Binding(
+                get: { modelPendingDeletion != nil },
+                set: { if !$0 { modelPendingDeletion = nil } }
+            ),
+            presenting: modelPendingDeletion
+        ) { target in
+            Button(String(localized: "删除模型文件", bundle: appLocalizationBundle), role: .destructive) {
+                let id = target.id
+                Task { await modelManager.delete(modelID: id) }
+            }
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
+        } message: { target in
+            let usage = modelManager.diskUsage[target.id] ?? 0
+            let mb = Double(usage) / 1_000_000.0
+            Text(String(format: String(localized: "确定要删除 %@ 吗？将释放约 %.0f MB 磁盘空间，后续使用需重新下载。", bundle: appLocalizationBundle), locale: .current, target.name, mb))
+        }
+        #else
         .confirmationDialog(
             String(localized: "删除模型文件", bundle: appLocalizationBundle),
             isPresented: Binding(
@@ -121,9 +141,23 @@ public struct ModelManagementView: View {
             let mb = Double(usage) / 1_000_000.0
             Text(String(format: String(localized: "确定要删除 %@ 吗？将释放约 %.0f MB 磁盘空间，后续使用需重新下载。", bundle: appLocalizationBundle), locale: .current, target.name, mb))
         }
+        #endif
         .task {
             await modelManager.refreshAll()
         }
+    }
+}
+
+// MARK: - Hover Border
+private struct HoverBorder: View {
+    let cornerRadius: CGFloat
+    @State private var isHovered = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .strokeBorder(isHovered ? Color.primary.opacity(0.12) : Color.primary.opacity(0.04), lineWidth: 1)
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .onHover { isHovered = $0 }
     }
 }
 
@@ -139,8 +173,6 @@ private struct ModelCardRow: View {
     let onDownload: () -> Void
     let onCancel: () -> Void
     let onRequestDelete: () -> Void
-
-    @State private var isHovered = false
 
     private var modelError: String? {
         switch status {
@@ -276,12 +308,8 @@ private struct ModelCardRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .liquidGlassSurface(cornerRadius: 12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(isHovered ? Color.primary.opacity(0.12) : Color.primary.opacity(0.04), lineWidth: 1)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 12))
-        .onHover { isHovered = $0 }
+        .overlay(HoverBorder(cornerRadius: 12))
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contextMenu {
             contextMenuItems
         }
@@ -390,26 +418,22 @@ private struct ModelCardRow: View {
         switch status {
         case .ready:
             #if os(macOS)
-            if let directory, usage > 0 {
+            if let directory {
                 Button {
                     NSWorkspace.shared.open(directory)
                 } label: {
                     Label(String(localized: "在访达中显示", bundle: appLocalizationBundle), systemImage: "folder")
                 }
+                Divider()
             }
             #endif
 
-            if usage > 0 {
-                #if os(macOS)
-                Divider()
-                #endif
-                Button(role: .destructive) {
-                    onRequestDelete()
-                } label: {
-                    Label(String(localized: "删除模型文件", bundle: appLocalizationBundle), systemImage: "trash")
-                }
-                .disabled(isOperating || isDeleting)
+            Button {
+                onRequestDelete()
+            } label: {
+                Label(String(localized: "删除模型文件", bundle: appLocalizationBundle), systemImage: "trash")
             }
+            .disabled(isOperating || isDeleting)
 
         case .notDownloaded, .cancelled:
             Button {
@@ -420,7 +444,7 @@ private struct ModelCardRow: View {
             .disabled(isOperating || isDeleting)
 
         case .downloading, .checking:
-            Button(role: .destructive) {
+            Button {
                 onCancel()
             } label: {
                 Label(String(localized: "取消下载", bundle: appLocalizationBundle), systemImage: "xmark.circle")
@@ -435,24 +459,22 @@ private struct ModelCardRow: View {
             .disabled(isOperating || isDeleting)
 
             #if os(macOS)
-            if let directory, usage > 0 {
+            if let directory {
                 Button {
                     NSWorkspace.shared.open(directory)
                 } label: {
                     Label(String(localized: "在访达中显示", bundle: appLocalizationBundle), systemImage: "folder")
                 }
+                Divider()
             }
             #endif
 
-            if usage > 0 {
-                Divider()
-                Button(role: .destructive) {
-                    onRequestDelete()
-                } label: {
-                    Label(String(localized: "删除模型文件", bundle: appLocalizationBundle), systemImage: "trash")
-                }
-                .disabled(isOperating || isDeleting)
+            Button {
+                onRequestDelete()
+            } label: {
+                Label(String(localized: "删除模型文件", bundle: appLocalizationBundle), systemImage: "trash")
             }
+            .disabled(isOperating || isDeleting)
 
         case .cancelling:
             EmptyView()
