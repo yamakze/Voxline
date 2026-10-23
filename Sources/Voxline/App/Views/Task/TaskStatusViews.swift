@@ -11,53 +11,7 @@ public struct TaskStatusBadge: View {
     }
 
     public var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: iconName)
-            Text(status.label)
-        }
-        .font(.caption.weight(.medium))
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(backgroundColor.opacity(0.12), in: .capsule)
-        #if os(macOS)
-        .overlay(
-            Capsule()
-                .strokeBorder(foregroundColor.opacity(0.25), lineWidth: 0.8)
-        )
-        #endif
-        .foregroundStyle(foregroundColor)
-    }
-
-    private var iconName: String {
-        switch status {
-        case .draft: return "pencil.circle"
-        case .queued: return "clock"
-        case .needsTranslation: return "exclamationmark.triangle"
-        case .running: return "arrow.triangle.2.circlepath.circle"
-        case .interrupted, .translationPaused: return "pause.circle"
-        case .completed: return "checkmark.circle.fill"
-        case .partiallyFailed: return "exclamationmark.circle"
-        case .failed: return "xmark.circle.fill"
-        case .cancelled: return "nosign"
-        }
-    }
-
-    private var backgroundColor: Color {
-        if case .cancelled = status { .gray } else { foregroundColor }
-    }
-
-    private var foregroundColor: Color {
-        switch status {
-        case .draft: return .secondary
-        case .queued: return .blue
-        case .needsTranslation: return .orange
-        case .running: return .blue
-        case .interrupted, .translationPaused: return .orange
-        case .completed: return .green
-        case .partiallyFailed: return .orange
-        case .failed: return .red
-        case .cancelled: return .secondary
-        }
+        StatusSignal(taskStatus: status)
     }
 }
 
@@ -70,53 +24,11 @@ public struct MediaStatusBadge: View {
     }
 
     public var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: iconName)
-            Text(status.label)
-        }
-        .font(.caption.weight(.medium))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(backgroundColor.opacity(0.12), in: .capsule)
-        #if os(macOS)
-        .overlay(
-            Capsule()
-                .strokeBorder(foregroundColor.opacity(0.25), lineWidth: 0.8)
-        )
-        #endif
-        .foregroundStyle(foregroundColor)
-    }
-
-    private var iconName: String {
-        switch status {
-        case .pending: return "clock"
-        case .needsTranslation: return "exclamationmark.triangle"
-        case .running(let stage):
-            switch stage {
-            case .audioExtraction: return "waveform"
-            case .transcription: return "text.bubble"
-            case .translation: return "character.book.closed"
+        HStack(spacing: 6) {
+            StatusSignal(mediaStatus: status)
+            if case .running(let stage) = status {
+                Text(stage.label).font(.caption).foregroundStyle(.secondary)
             }
-        case .completed: return "checkmark.circle.fill"
-        case .failed: return "xmark.circle.fill"
-        case .cancelled: return "nosign"
-        case .interrupted, .translationPaused: return "pause.circle"
-        }
-    }
-
-    private var backgroundColor: Color {
-        if case .cancelled = status { .gray } else { foregroundColor }
-    }
-
-    private var foregroundColor: Color {
-        switch status {
-        case .pending: return .secondary
-        case .needsTranslation: return .orange
-        case .running: return .blue
-        case .completed: return .green
-        case .failed: return .red
-        case .cancelled: return .secondary
-        case .interrupted, .translationPaused: return .orange
         }
     }
 }
@@ -145,46 +57,67 @@ public struct MediaProcessingStepsView: View {
 
     private var isImported: Bool { item.importedSubtitleOrigin != nil }
 
+    private var failureReason: String? {
+        if case .failed(let reason) = status {
+            return reason
+        }
+        return nil
+    }
+
+    private var translationFailureReason: String? {
+        if case .translationPaused(let reason) = status {
+            return reason
+        }
+        return item.translationState == .failed ? failureReason : nil
+    }
+
     public var body: some View {
         if isCompleted {
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.green)
-                Text(String(localized: "全部就绪", bundle: appLocalizationBundle))
-                    .font(.caption2.weight(.medium))
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color.green.opacity(0.12), in: .capsule)
-            .foregroundStyle(.green)
-            .help(completedSummaryTooltip)
+            StatusSignal(
+                kind: .ready,
+                accessibilityLabel: String(localized: "已就绪", bundle: appLocalizationBundle),
+                help: completedSummaryTooltip
+            )
+            .accessibilityValue(completedSummaryTooltip)
         } else if isImported {
             HStack(spacing: 4) {
-                stepChip(title: String(localized: "导入原文", bundle: appLocalizationBundle), state: .completed)
+                stepChip(
+                    title: String(localized: "导入原文", bundle: appLocalizationBundle),
+                    state: .completed
+                )
 
                 if hasTranslation {
                     connectorLine(isActive: item.translationState != .waiting)
-                    stepChip(title: status.isTranslationPaused ? String(localized: "翻译暂停", bundle: appLocalizationBundle) : String(localized: "字幕翻译", bundle: appLocalizationBundle), state: item.translationState)
+                    stepChip(
+                        title: String(localized: "字幕翻译", bundle: appLocalizationBundle),
+                        state: item.translationState,
+                        failureReason: translationFailureReason
+                    )
                 }
-
-                connectorLine(isActive: isCompleted)
-                stepChip(title: String(localized: "就绪", bundle: appLocalizationBundle), state: isCompleted ? .completed : (isFailed ? .failed : (isCancelled ? .cancelled : .waiting)))
             }
             .font(.caption2)
         } else {
             HStack(spacing: 4) {
-                stepChip(title: String(localized: "提取音频", bundle: appLocalizationBundle), state: item.extractionState)
+                stepChip(
+                    title: String(localized: "提取音频", bundle: appLocalizationBundle),
+                    state: item.extractionState,
+                    failureReason: item.extractionState == .failed ? failureReason : nil
+                )
                 connectorLine(isActive: item.transcriptionState != .waiting)
-                stepChip(title: transcriptionTitle, state: item.transcriptionState)
+                stepChip(
+                    title: transcriptionTitle,
+                    state: item.transcriptionState,
+                    failureReason: item.transcriptionState == .failed ? failureReason : nil
+                )
 
                 if hasTranslation {
                     connectorLine(isActive: item.translationState != .waiting)
-                    stepChip(title: status.isTranslationPaused ? String(localized: "翻译暂停", bundle: appLocalizationBundle) : String(localized: "字幕翻译", bundle: appLocalizationBundle), state: item.translationState)
+                    stepChip(
+                        title: String(localized: "字幕翻译", bundle: appLocalizationBundle),
+                        state: item.translationState,
+                        failureReason: translationFailureReason
+                    )
                 }
-
-                connectorLine(isActive: isCompleted)
-                stepChip(title: String(localized: "就绪", bundle: appLocalizationBundle), state: isCompleted ? .completed : (isFailed ? .failed : (isCancelled ? .cancelled : .waiting)))
             }
             .font(.caption2)
         }
@@ -210,18 +143,32 @@ public struct MediaProcessingStepsView: View {
         return false
     }
 
-    private var isFailed: Bool {
-        if case .failed = status { return true }
-        return false
-    }
-
-    private var isCancelled: Bool {
-        if case .cancelled = status { return true }
-        return false
-    }
-
     @ViewBuilder
-    private func stepChip(title: String, state: ProcessingStepState) -> some View {
+    private func stepChip(title: String, state: ProcessingStepState, failureReason: String? = nil) -> some View {
+        let stateDescription: String = switch state {
+            case .completed:
+                String(localized: "已完成", bundle: appLocalizationBundle)
+            case .inProgress:
+                String(localized: "处理中", bundle: appLocalizationBundle)
+            case .waiting:
+                String(localized: "等待中", bundle: appLocalizationBundle)
+            case .paused:
+                String(localized: "已暂停", bundle: appLocalizationBundle)
+            case .failed:
+                String(localized: "失败", bundle: appLocalizationBundle)
+            case .cancelled:
+                String(localized: "已取消", bundle: appLocalizationBundle)
+        }
+        let detail = [stateDescription, failureReason].compactMap { $0 }.joined(separator: " · ")
+        let signalColor: Color = switch state {
+        case .completed: .green
+        case .inProgress: .accentColor
+        case .paused: .orange
+        case .failed: .red
+        case .waiting, .cancelled: .secondary
+        }
+        let backgroundOpacity = state == .inProgress ? 0.15 : (state == .waiting || state == .cancelled ? 0.08 : 0.12)
+
         HStack(spacing: 3) {
             switch state {
             case .completed:
@@ -241,13 +188,12 @@ public struct MediaProcessingStepsView: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
-        .background(
-            state == .inProgress
-                ? Color.accentColor.opacity(0.15)
-                : (state == .completed ? Color.green.opacity(0.12) : Color.secondary.opacity(0.08)),
-            in: .capsule
-        )
-        .foregroundStyle(state == .inProgress ? Color.accentColor : (state == .completed ? Color.primary : Color.secondary))
+        .background(signalColor.opacity(backgroundOpacity), in: .capsule)
+        .foregroundStyle(state == .completed ? Color.primary : signalColor)
+        .help("\(title) · \(detail)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(detail)
     }
 
     @ViewBuilder

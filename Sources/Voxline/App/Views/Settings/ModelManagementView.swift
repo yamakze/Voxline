@@ -342,8 +342,8 @@ private struct ModelCardRow: View {
             }
         } else {
             switch status {
-            case .ready, .cancelled, .notDownloaded:
-                statusBadge(status: status)
+            case .ready, .cancelled, .notDownloaded, .failed, .corrupted:
+                StatusSignal(modelStatus: status)
 
             case .downloading, .checking:
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) {
@@ -351,9 +351,6 @@ private struct ModelCardRow: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-
-            case .failed, .corrupted:
-                statusBadge(status: status)
 
             case .cancelling:
                 HStack(spacing: 6) {
@@ -363,56 +360,6 @@ private struct ModelCardRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private func statusBadge(status: ModelStatus) -> some View {
-        HStack(spacing: 5) {
-            switch status {
-            case .ready:
-                Circle().fill(Color.green).frame(width: 7, height: 7)
-                    .accessibilityLabel(String(localized: "已就绪", bundle: appLocalizationBundle))
-            case .notDownloaded:
-                Circle().fill(Color.secondary.opacity(0.40)).frame(width: 7, height: 7)
-                    .accessibilityLabel(String(localized: "未下载", bundle: appLocalizationBundle))
-            case .downloading, .checking:
-                ProgressView().controlSize(.mini)
-                Text(String(localized: "下载中", bundle: appLocalizationBundle))
-                    .foregroundStyle(Color.accentColor)
-            case .cancelling:
-                ProgressView().controlSize(.mini)
-                Text(String(localized: "正在取消", bundle: appLocalizationBundle))
-                    .foregroundStyle(.secondary)
-            case .cancelled:
-                Circle().fill(Color.orange).frame(width: 7, height: 7)
-                Text(String(localized: "已取消", bundle: appLocalizationBundle))
-                    .foregroundStyle(.orange)
-            case .failed, .corrupted:
-                Circle().fill(Color.red).frame(width: 7, height: 7)
-                Text(String(localized: "异常", bundle: appLocalizationBundle))
-                    .foregroundStyle(.red)
-            }
-        }
-        .font(.caption2.weight(.medium))
-        .padding(.horizontal, isSignalOnly(status) ? 6 : 8)
-        .padding(.vertical, isSignalOnly(status) ? 6 : 3.5)
-        .background(
-            Color.secondary.opacity(0.08),
-            in: .capsule
-        )
-        #if os(macOS)
-        .overlay(
-            Capsule()
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.8)
-        )
-        #endif
-    }
-
-    private func isSignalOnly(_ status: ModelStatus) -> Bool {
-        switch status {
-        case .ready, .notDownloaded: return true
-        default: return false
         }
     }
 

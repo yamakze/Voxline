@@ -3,6 +3,7 @@ import SwiftUI
 
 public struct AppearanceSettingsView: View {
     @Environment(\.colorScheme) private var systemColorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var manager = AppearanceManager.shared
 
     public init() {}
@@ -71,7 +72,7 @@ public struct AppearanceSettingsView: View {
                         Slider(value: $manager.tintOpacity, in: 0...0.08, step: 0.005)
                             .accessibilityLabel(String(localized: "主题色浓度", bundle: appLocalizationBundle))
                             .disabled(manager.tintOption == .none)
-                        Text(manager.tintOption == .none ? "0%" : "\(Int(round(manager.tintOpacity * 100)))%")
+                        Text(manager.effectiveTintOpacity.formatted(.percent.precision(.fractionLength(0...1))))
                             .monospacedDigit()
                             .foregroundStyle(manager.tintOption == .none ? .tertiary : .primary)
                             .frame(width: 36, alignment: .trailing)
@@ -90,7 +91,6 @@ public struct AppearanceSettingsView: View {
         let isDark = previewColorScheme == .dark
         let windowBg = isDark ? Color(red: 0.12, green: 0.13, blue: 0.15) : Color(red: 0.96, green: 0.96, blue: 0.97)
         let sidebarBg = isDark ? Color(red: 0.16, green: 0.17, blue: 0.19) : Color(red: 0.92, green: 0.92, blue: 0.93)
-        let cardBg = isDark ? Color.white.opacity(0.08) : Color.white.opacity(0.85)
 
         return VStack(spacing: 0) {
             // 迷你标题栏（交通灯小圆点）
@@ -160,10 +160,10 @@ public struct AppearanceSettingsView: View {
                 ZStack {
                     windowBg
 
-                    // 微染光晕注入
-                    if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
+                    // 微染光晕注入（开启减少透明度时统一不透明系统背景）
+                    if !reduceTransparency && manager.tintOption == .appIcon && manager.tintOpacity > 0 {
                         manager.currentTintColor
-                            .opacity(manager.effectiveTintOpacity * 0.90)
+                            .opacity(manager.effectiveTintOpacity * 0.40)
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -178,7 +178,7 @@ public struct AppearanceSettingsView: View {
                                 .frame(width: 32, height: 10)
                         }
 
-                        // 迷你任务卡片（模拟 Liquid Glass + 微染透光）
+                        // 迷你任务卡片（真实反映 NativeControlSurface）
                         HStack(spacing: 10) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 6)
@@ -207,20 +207,7 @@ public struct AppearanceSettingsView: View {
                                 .frame(width: 6, height: 6)
                         }
                         .padding(10)
-                        .background {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(cardBg)
-                                .overlay {
-                                    if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .fill(manager.currentTintColor.opacity(manager.effectiveTintOpacity * 1.5))
-                                    }
-                                }
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .strokeBorder(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.06), lineWidth: 1)
-                                }
-                        }
+                        .liquidGlassSurface(cornerRadius: 8)
 
                         // 迷你字幕行模拟
                         HStack(spacing: 8) {
@@ -295,6 +282,7 @@ public struct AppearanceSettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 #endif

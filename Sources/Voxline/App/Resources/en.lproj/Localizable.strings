@@ -162,6 +162,7 @@
 "基于 Apple 原生 iCloud Drive 文件协调系统，数据仅在您个人的 iCloud 沙盒内流转。" = "Powered by native iCloud Drive. Your data stays securely within your personal iCloud.";
 "基本信息" = "General";
 "处理中" = "Processing";
+"等待中" = "Waiting";
 "处理中…" = "Processing…";
 "处理未开始或操作失败" = "Processing did not start or failed";
 "复制原文" = "Copy Source Text";

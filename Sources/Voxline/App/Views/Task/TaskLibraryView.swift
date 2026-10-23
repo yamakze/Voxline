@@ -299,7 +299,7 @@ public struct TaskLibraryView: View {
         }
         .accessibilityElement(children: isEditing ? .contain : .ignore)
         .accessibilityLabel(entry.title)
-        .accessibilityValue(entry.error ?? "")
+        .accessibilityValue(rowAccessibilityValue(for: entry))
         .accessibilityAddTraits(!isEditing && entry.task != nil ? .isButton : [])
         .accessibilityAction {
             guard !isEditing else { return }
@@ -360,6 +360,24 @@ public struct TaskLibraryView: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func rowAccessibilityValue(for entry: TaskLibrary.Entry) -> String {
+        var components: [String] = []
+        if let task = entry.task {
+            components.append(task.status.label)
+            components.append(String(localized: "\(task.items.count) 媒体", bundle: appLocalizationBundle))
+            components.append(String(localized: "\(task.completedCount) 完成", bundle: appLocalizationBundle))
+            if task.failedCount > 0 {
+                components.append(String(localized: "\(task.failedCount) 失败", bundle: appLocalizationBundle))
+            }
+        } else {
+            components.append(String(localized: "云端占位", bundle: appLocalizationBundle))
+        }
+        if let problem = entry.error, !problem.isEmpty {
+            components.append(problem)
+        }
+        return components.joined(separator: " · ")
     }
 }
 

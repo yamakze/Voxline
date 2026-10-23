@@ -114,13 +114,17 @@ public final class AppearanceManager {
 /// 窗口或顶级视图微染背景修饰器
 public struct VoxlineMicroTintBackgroundModifier: ViewModifier {
     private var manager = AppearanceManager.shared
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init() {}
 
     public func body(content: Content) -> some View {
         content
             .background {
-                if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
+                if reduceTransparency {
+                    Color(nsColor: .windowBackgroundColor)
+                        .ignoresSafeArea()
+                } else if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
                     manager.currentTintColor
                         .opacity(manager.tintOpacity * 0.40)
                         .ignoresSafeArea()

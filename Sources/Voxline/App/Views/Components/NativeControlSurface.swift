@@ -1,5 +1,7 @@
 import SwiftUI
-#if os(iOS)
+#if os(macOS)
+import AppKit
+#elseif os(iOS)
 import UIKit
 #endif
 
@@ -19,63 +21,26 @@ public struct NativeControlSurface: ViewModifier {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         if reduceTransparency {
             content
-                .background(Color(nsColor: .controlBackgroundColor), in: shape)
+                .background(Color.voxlineControlBackground, in: shape)
                 .overlay(shape.strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
         } else {
+            // These panels contain task and settings content; glass belongs to the control layer.
             let manager = AppearanceManager.shared
             content
                 .background {
-                    shape.fill(
-                        colorScheme == .dark
-                            ? LinearGradient(
-                                colors: [
-                                    Color(nsColor: .controlBackgroundColor).opacity(0.38),
-                                    Color(nsColor: .controlBackgroundColor).opacity(0.22)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            : LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.52),
-                                    Color(nsColor: .controlBackgroundColor).opacity(0.28)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                    )
-                    .background {
+                    ZStack {
+                        shape.fill(.regularMaterial)
                         if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
                             shape.fill(manager.currentTintColor.opacity(manager.effectiveTintOpacity * 0.85))
                         }
                     }
-                    .background(.regularMaterial, in: shape)
-                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.04), radius: 8, y: 3)
                 }
-                .overlay {
+                .overlay(
                     shape.strokeBorder(
-                        colorScheme == .dark
-                            ? LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.18),
-                                    Color.white.opacity(0.06),
-                                    Color.white.opacity(0.02)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            : LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.85),
-                                    Color.white.opacity(0.35),
-                                    Color.black.opacity(0.06)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
+                        colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06),
                         lineWidth: 1
                     )
-                }
+                )
         }
         #else
         if reduceTransparency {
@@ -102,58 +67,25 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
         if reduceTransparency {
             content
                 .background(Color.voxlineControlBackground, in: .capsule)
-                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+                .overlay(Capsule().strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
+        } else if #available(macOS 26, *) {
+            let manager = AppearanceManager.shared
+            content
+                .glassEffect(.regular.tint(manager.currentTintColor.opacity(manager.effectiveTintOpacity * 0.90)), in: .capsule)
         } else {
             let manager = AppearanceManager.shared
             content
                 .background {
-                    Capsule()
-                        .fill(
-                            colorScheme == .dark
-                                ? LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.08),
-                                        Color.white.opacity(0.02)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                                : LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.28),
-                                        Color.white.opacity(0.06)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                        )
-                        .background {
-                            if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
-                                Capsule().fill(manager.currentTintColor.opacity(manager.effectiveTintOpacity * 0.90))
-                            }
+                    ZStack {
+                        Capsule().fill(.ultraThinMaterial)
+                        if manager.tintOption == .appIcon && manager.tintOpacity > 0 {
+                            Capsule().fill(manager.currentTintColor.opacity(manager.effectiveTintOpacity * 0.90))
                         }
-                        .background(.ultraThinMaterial, in: .capsule)
-                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.08), radius: 10, y: 4)
+                    }
                 }
                 .overlay(
                     Capsule().strokeBorder(
-                        colorScheme == .dark
-                            ? LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.35),
-                                    Color.white.opacity(0.12)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            : LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.90),
-                                    Color.white.opacity(0.40)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
+                        colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.08),
                         lineWidth: 1
                     )
                 )
@@ -194,23 +126,14 @@ public struct NativeSubtitleOverlaySurface: ViewModifier {
         } else {
             content
                 .background {
-                    shape.fill(Color.black.opacity(0.60))
-                        .background(.ultraThinMaterial, in: shape)
-                        .shadow(color: .black.opacity(0.40), radius: 12, y: 5)
+                    ZStack {
+                        shape.fill(.ultraThinMaterial)
+                        shape.fill(Color.black.opacity(0.55))
+                    }
                 }
-                .overlay {
-                    shape.strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.32),
-                                Color.white.opacity(0.12)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1
-                    )
-                }
+                .overlay(
+                    shape.strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                )
         }
         #else
         if reduceTransparency {

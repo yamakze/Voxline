@@ -81,7 +81,7 @@ graph TD
 ### VoxlineApp
 - **跨平台界面**：通过 SwiftUI 构建共享业务页面（任务库、参数配置、双语校对、结构编辑、设置），分别通过 `Platform/macOS` 与 `Platform/iOS` 适配平台窗口系统、原生工具栏与触摸手势。
 - **Mac 窗口会话隔离**：每个窗口会话维护独立的导航状态与 `ProofreadingSession`，离开校对视图时自动提交当前草稿。菜单快捷命令通过 Focus 路由至活动窗口，避免焦点发布与监听形成刷新循环。
-- **系统材质与无障碍**：适配 Liquid Glass 与原生 Material 材质分层；支持系统深色模式、VoiceOver 辅助标签、减少动态效果与降低透明度设置。
+- **系统材质与无障碍**：Mac 内容卡片使用 Material、微染和单层描边；悬浮控制层在 macOS 26 使用原生 Liquid Glass，macOS 15 使用 Material 回退。降低透明度时使用不透明系统背景，字幕层使用黑底保证可读性。外观设置预览复用实际材质组件；支持深色模式、VoiceOver 辅助标签与减少动态效果。
 
 ## 执行模型与数据流
 
