@@ -342,12 +342,8 @@ private struct ModelCardRow: View {
             }
         } else {
             switch status {
-            case .ready, .cancelled:
-                // 「已就绪」放到item最右侧显示
+            case .ready, .cancelled, .notDownloaded:
                 statusBadge(status: status)
-
-            case .notDownloaded:
-                EmptyView()
 
             case .downloading, .checking:
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) {
@@ -376,14 +372,12 @@ private struct ModelCardRow: View {
             switch status {
             case .ready:
                 Circle().fill(Color.green).frame(width: 7, height: 7)
-                Text(String(localized: "已就绪", bundle: appLocalizationBundle))
-                    .foregroundStyle(.green)
+            case .notDownloaded:
+                Circle().fill(Color.secondary.opacity(0.40)).frame(width: 7, height: 7)
             case .downloading, .checking:
                 ProgressView().controlSize(.mini)
                 Text(String(localized: "下载中", bundle: appLocalizationBundle))
                     .foregroundStyle(Color.accentColor)
-            case .notDownloaded:
-                EmptyView()
             case .cancelling:
                 ProgressView().controlSize(.mini)
                 Text(String(localized: "正在取消", bundle: appLocalizationBundle))
@@ -399,8 +393,8 @@ private struct ModelCardRow: View {
             }
         }
         .font(.caption2.weight(.medium))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3.5)
+        .padding(.horizontal, isSignalOnly(status) ? 6 : 8)
+        .padding(.vertical, isSignalOnly(status) ? 6 : 3.5)
         .background(
             Color.secondary.opacity(0.08),
             in: .capsule
@@ -411,6 +405,13 @@ private struct ModelCardRow: View {
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.8)
         )
         #endif
+    }
+
+    private func isSignalOnly(_ status: ModelStatus) -> Bool {
+        switch status {
+        case .ready, .notDownloaded: return true
+        default: return false
+        }
     }
 
     @ViewBuilder
