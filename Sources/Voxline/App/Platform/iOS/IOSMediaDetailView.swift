@@ -12,7 +12,7 @@ struct IOSMediaDetailView: View {
     let mediaID: UUID
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isScrollingTranscript = false
+    @State private var followsPlayback = true
     @State private var session: ProofreadingSession
     @State private var playback = MediaPlaybackController()
     @State private var importingMedia = false
@@ -355,7 +355,10 @@ struct IOSMediaDetailView: View {
                         isActive: activeIDs.contains(cue.id),
                         canRetranslate: task?.parameters.translation != nil,
                         isTaskRunning: library.queue.taskID != nil,
-                        onSeek: { playback.seek(toMilliseconds: $0) },
+                        onSeek: {
+                            followsPlayback = true
+                            playback.seek(toMilliseconds: $0)
+                        },
                         onRetranslate: { targetCue in
                             do { try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: [targetCue.id]) }
                             catch { session.errorMessage = error.localizedDescription }
@@ -370,10 +373,15 @@ struct IOSMediaDetailView: View {
             }
             .listStyle(.plain)
             .onScrollPhaseChange { _, phase in
-                isScrollingTranscript = phase == .tracking || phase == .interacting || phase == .decelerating
+                if phase == .tracking || phase == .interacting || phase == .decelerating {
+                    followsPlayback = false
+                }
+            }
+            .onChange(of: playback.isPlaying) { _, playing in
+                if playing { followsPlayback = true }
             }
             .onChange(of: playback.activeSubtitle?.id) { _, newID in
-                if let newID, playback.isPlaying, !isScrollingTranscript,
+                if let newID, playback.isPlaying, followsPlayback, session.searchQuery.isEmpty,
                    session.editingSnapshot == nil, !session.isSelecting {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
                         proxy.scrollTo(newID, anchor: .center)

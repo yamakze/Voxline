@@ -104,7 +104,7 @@ struct MediaPlaybackControllerTests {
         try await waitFor { !controller.isPlaying }
         controller.seek(to: 0.2)
         try await waitFor { abs(controller.currentTimeSeconds - 0.2) < 0.01 }
-        #expect(controller.formattedCurrentTime == "00:00.200")
+        #expect(controller.formattedCurrentTime == "00:00")
         let shifted = try SubtitleTimeOffset.shifted([item.cues[1]], by: -100, withinDuration: 1000)
         controller.seek(to: 0.35)
         try await waitFor { abs(controller.currentTimeSeconds - 0.35) < 0.01 }
@@ -177,6 +177,31 @@ struct MediaPlaybackControllerTests {
         controller.seek(to: 3.32)
         try await waitFor { abs((controller.pausedVideoFrame?.time.seconds ?? -1) - 3.32) < 0.1 }
         #expect(abs(controller.currentTimeSeconds - 3.32) < 0.01)
+        // A continuous drag replaces in-flight native seeks; its final exact target must win.
+        for target in stride(from: 20.0, through: 60.0, by: 2) {
+            controller.seek(to: target, isScrubbing: true)
+            #expect(controller.currentTimeSeconds == target)
+            #expect(controller.progressTimeSeconds == target)
+        }
+        controller.seek(to: 43.6)
+        #expect(controller.currentTimeSeconds == 43.6)
+        #expect(controller.progressTimeSeconds == 43.6)
+        try await waitFor { abs((controller.pausedVideoFrame?.time.seconds ?? -1) - 43.6) < 0.1 }
+        let nativePlayer = try #require(controller.player)
+        try await waitFor { abs(nativePlayer.currentTime().seconds - 43.6) < 0.01 }
+        let settledFrameTime = try #require(controller.pausedVideoFrame).time
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(nativePlayer.timeControlStatus == .paused)
+        #expect(controller.pausedVideoFrame?.time == settledFrameTime)
+        #expect(abs(nativePlayer.currentTime().seconds - 43.6) < 0.01)
+        #expect(controller.formattedCurrentTime == "00:43")
+        // Starting playback while a paused frame is still being prepared supersedes that work.
+        controller.seek(to: 67.24)
+        controller.togglePlayPause()
+        try await waitFor { controller.isPlaying && nativePlayer.timeControlStatus == .playing }
+        #expect(controller.currentTimeSeconds >= 67.2)
+        #expect(controller.pausedVideoFrame == nil)
+        controller.pause()
         controller.releaseMedia()
         #expect(controller.pausedVideoFrame == nil && controller.player == nil)
     }

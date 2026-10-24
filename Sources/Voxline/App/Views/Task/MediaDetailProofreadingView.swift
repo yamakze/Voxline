@@ -14,7 +14,7 @@ public struct MediaDetailProofreadingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable private var session: ProofreadingSession
     @State private var playbackController = MediaPlaybackController()
-    @State private var isScrollingTranscript = false
+    @State private var followsPlayback = true
     @State private var queue = TaskProcessingQueue.shared
     @FocusState private var isSearchFocused: Bool
 
@@ -454,7 +454,10 @@ public struct MediaDetailProofreadingView: View {
                                     isPast: isPast,
                                     canRetranslate: true,
                                     isTaskRunning: queue.taskID != nil,
-                                    onSeek: { playbackController.seek(toMilliseconds: $0) },
+                                    onSeek: {
+                                        followsPlayback = true
+                                        playbackController.seek(toMilliseconds: $0)
+                                    },
                                     onRetranslate: { targetCue in
                                         do { try queue.startRetranslation(taskID: taskID, mediaID: item.id, cueIDs: [targetCue.id]) }
                                         catch { session.errorMessage = error.localizedDescription }
@@ -475,10 +478,16 @@ public struct MediaDetailProofreadingView: View {
                         .padding(.horizontal, 24)
                     }
                     .onScrollPhaseChange { _, phase in
-                        isScrollingTranscript = phase == .tracking || phase == .interacting || phase == .decelerating
+                        if phase == .tracking || phase == .interacting || phase == .decelerating {
+                            followsPlayback = false
+                        }
+                    }
+                    .onChange(of: playbackController.isPlaying) { _, playing in
+                        if playing { followsPlayback = true }
                     }
                     .onChange(of: playbackController.activeSubtitle?.id) { _, newActiveID in
-                        if let newActiveID, !isScrollingTranscript, session.editingSnapshot == nil, !session.isSelecting {
+                        if let newActiveID, followsPlayback, session.searchQuery.isEmpty,
+                           session.editingSnapshot == nil, !session.isSelecting {
                             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
                                 proxy.scrollTo(newActiveID, anchor: .center)
                             }

@@ -321,7 +321,7 @@ struct ProofreadingPlayerControls: View {
     #endif
 }
 
-/// Read the playback clock here so its 30 Hz updates do not invalidate the control bar.
+/// Observe only whole seconds here; the smooth progress clock belongs to the slider.
 private struct PlaybackCurrentTime: View {
     let playback: MediaPlaybackController
 
@@ -336,23 +336,31 @@ private struct PlaybackProgressSlider: View {
     var minimumDuration: Double = 1
     @State private var isScrubbing = false
     @State private var scrubPosition: Double?
+    @State private var resumeAfterScrubbing = false
 
     var body: some View {
         Slider(
             value: Binding(
-                get: { scrubPosition ?? playback.currentTimeSeconds },
+                get: { scrubPosition ?? playback.progressTimeSeconds },
                 set: { value in
                     if isScrubbing { scrubPosition = value }
-                    playback.seek(to: value, isScrubbing: isScrubbing)
+                    if isScrubbing || value != playback.currentTimeSeconds {
+                        playback.seek(to: value, isScrubbing: isScrubbing)
+                    }
                 }
             ),
             in: 0...max(playback.durationSeconds, minimumDuration),
             onEditingChanged: { editing in
                 isScrubbing = editing
-                if editing { scrubPosition = playback.currentTimeSeconds }
+                if editing {
+                    resumeAfterScrubbing = playback.isPlaying
+                    playback.pause()
+                    scrubPosition = playback.currentTimeSeconds
+                }
                 else if let position = scrubPosition {
+                    playback.seek(to: position, resumePlayback: resumeAfterScrubbing)
                     scrubPosition = nil
-                    playback.seek(to: position)
+                    resumeAfterScrubbing = false
                 }
             }
         )

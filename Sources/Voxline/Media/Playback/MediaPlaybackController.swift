@@ -30,6 +30,8 @@ public final class MediaPlaybackController {
     public private(set) var isMediaUnavailable = false
     public private(set) var errorMessage: String?
     public private(set) var currentTimeSeconds: Double = 0
+    public private(set) var progressTimeSeconds: Double = 0
+    public private(set) var elapsedWholeSeconds = 0
     public private(set) var durationSeconds: Double = 0
     public private(set) var playbackRate: Float = 1
     public private(set) var volume: Float = 1.0
@@ -48,6 +50,8 @@ public final class MediaPlaybackController {
     private let inspector: MediaInspector
     private var generation = UUID()
     private var seekID = UUID()
+    @ObservationIgnored private var isSeeking = false
+    @ObservationIgnored private var nextProgressUpdate = ContinuousClock.now
     private var playbackIntentID = UUID()
     private var timeObserver: Any?
     private var itemObservation: NSKeyValueObservation?
@@ -72,15 +76,11 @@ public final class MediaPlaybackController {
     #endif
 
     public var formattedCurrentTime: String {
-        let roundedSeconds = (currentTimeSeconds * 1000).rounded() / 1000
-        let total = Int(roundedSeconds)
-        let milliseconds = Int(((roundedSeconds - Double(total)) * 1000).rounded())
-        return String(format: "%02d:%02d.%03d", total / 60, total % 60, milliseconds)
+        TimecodeFormatter.formatDuration(seconds: Double(elapsedWholeSeconds))
     }
 
     public var formattedDuration: String {
-        let total = Int(durationSeconds)
-        return String(format: "%02d:%02d", total / 60, total % 60)
+        TimecodeFormatter.formatDuration(seconds: durationSeconds)
     }
 
     public func loadMedia(for item: TaskMediaItem) async {
@@ -185,10 +185,11 @@ public final class MediaPlaybackController {
                     #endif
                 }
             }
-            timeObserver = newPlayer.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] time in
-                let seconds = time.seconds
+            timeObserver = newPlayer.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    guard let self, self.generation == loadID, seconds.isFinite else { return }
+                    guard let self, self.generation == loadID, !self.isSeeking,
+                          let seconds = self.player?.currentTime().seconds, seconds.isFinite else { return }
+                    // A queued observer callback can outlive a seek; read the current native clock.
                     self.updatePlaybackTime(max(0, min(seconds, self.durationSeconds)))
                 }
             }
@@ -198,7 +199,7 @@ public final class MediaPlaybackController {
                 Task { @MainActor [weak self] in
                     guard let self, self.generation == loadID else { return }
                     self.isPlaying = false
-                    self.updatePlaybackTime(self.durationSeconds)
+                    self.updatePlaybackTime(self.durationSeconds, immediateProgress: true)
                 }
             })
             notificationObservers.append(NotificationCenter.default.addObserver(
@@ -227,6 +228,7 @@ public final class MediaPlaybackController {
     public func releaseMedia() {
         generation = UUID()
         seekID = UUID()
+        isSeeking = false
         #if os(macOS)
         pausedFrameTask?.cancel()
         pausedFrameTask = nil
@@ -252,6 +254,9 @@ public final class MediaPlaybackController {
         isMediaUnavailable = false
         errorMessage = nil
         currentTimeSeconds = 0
+        progressTimeSeconds = 0
+        elapsedWholeSeconds = 0
+        nextProgressUpdate = .now
         subtitles = []
         activeSubtitles = []
         activeCueIndices = nil
@@ -266,12 +271,14 @@ public final class MediaPlaybackController {
         guard isReady, let player else { return }
         if player.timeControlStatus != .paused { pause() }
         else if currentTimeSeconds >= durationSeconds { seek(to: 0, resumePlayback: true) }
+        else if isSeeking { seek(to: currentTimeSeconds, resumePlayback: true) }
         else { player.playImmediately(atRate: playbackRate) }
     }
 
     public func pause() {
         playbackIntentID = UUID()
         player?.pause()
+        if isSeeking { seek(to: currentTimeSeconds) }
     }
 
     public func seek(to seconds: Double, resumePlayback: Bool = false, isScrubbing: Bool = false) {
@@ -281,46 +288,60 @@ public final class MediaPlaybackController {
         let requestID = UUID()
         let resumeIntentID = playbackIntentID
         seekID = requestID
+        isSeeking = true
+        // Keep controls and subtitle focus on the requested position until native seeking settles.
+        // Periodic callbacks may still carry the previous position during this interval.
+        updatePlaybackTime(clamped, immediateProgress: true)
         #if os(macOS)
         pausedFrameTask?.cancel()
         pausedFrameTask = nil
-        pausedVideoFrame = nil
         #endif
         let tolerance = isScrubbing ? CMTime(seconds: 0.25, preferredTimescale: 600) : .zero
-        player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] finished in
+        let time = CMTime(seconds: clamped, preferredTimescale: 60_000)
+        let completion: @Sendable (Bool) -> Void = { [weak self] finished in
             Task { @MainActor [weak self] in
-                guard finished, let self, self.generation == loadID, self.seekID == requestID else { return }
+                guard let self, self.generation == loadID, self.seekID == requestID else { return }
+                self.isSeeking = false
                 let actual = self.player?.currentTime().seconds
-                if let actual, actual.isFinite { self.updatePlaybackTime(max(0, min(actual, self.durationSeconds))) }
+                if let actual, actual.isFinite {
+                    self.updatePlaybackTime(max(0, min(actual, self.durationSeconds)), immediateProgress: true)
+                }
+                guard finished else { return }
                 if resumePlayback, self.playbackIntentID == resumeIntentID, self.isReady {
                     self.player?.playImmediately(atRate: self.playbackRate)
                 }
-                #if os(macOS)
-                if !isScrubbing, self.player?.timeControlStatus == .paused, let source = self.pausedFrameSource {
-                    let time = CMTime(seconds: clamped, preferredTimescale: 60_000)
-                    self.pausedFrameTask = Task { [weak self] in
-                        do {
-                            // Coalesce rapid subtitle jumps before creating another decoder.
-                            try await Task.sleep(for: .milliseconds(120))
-                            let frame = try await source.frame(at: time)
-                            try Task.checkCancellation()
-                            guard let self, self.generation == loadID, self.seekID == requestID,
-                                  self.player?.timeControlStatus == .paused else { return }
-                            self.pausedVideoFrame = frame
-                            self.pausedFrameTask = nil
-                        } catch is CancellationError { return }
-                        catch {
-                            guard let self, self.generation == loadID, self.seekID == requestID,
-                                  self.player?.timeControlStatus == .paused else { return }
-                            // AVPlayer remains usable when the optional still-frame decoder fails.
-                            Self.logger.error("Paused video frame unavailable: \(error.localizedDescription)")
-                            self.pausedFrameTask = nil
-                        }
-                    }
-                }
-                #endif
             }
         }
+        #if os(macOS)
+        if !isScrubbing, !resumePlayback, player.timeControlStatus == .paused, let source = pausedFrameSource {
+            // Stop coarse seeks before preparing the final still. Native exact seeking must not
+            // expose interframe decoding while the paused-frame layer is being prepared.
+            player.currentItem?.cancelPendingSeeks()
+            pausedFrameTask = Task { [weak self] in
+                let frame: PausedVideoFrame?
+                do {
+                    try await Task.sleep(for: .milliseconds(120))
+                    frame = try await source.frame(at: time)
+                } catch is CancellationError { return }
+                catch {
+                    // The native player remains the explicit fallback for optional still decoding.
+                    Self.logger.error("Paused video frame unavailable: \(error.localizedDescription)")
+                    frame = nil
+                }
+                guard !Task.isCancelled, let self, self.generation == loadID, self.seekID == requestID,
+                      player.timeControlStatus == .paused else { return }
+                self.pausedVideoFrame = frame
+                // Give the paused-frame view the new image before native synchronization starts.
+                await Task.yield()
+                guard !Task.isCancelled, self.generation == loadID, self.seekID == requestID else { return }
+                self.pausedFrameTask = nil
+                player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: completion)
+            }
+            return
+        }
+        pausedVideoFrame = nil
+        #endif
+        player.seek(to: time, toleranceBefore: tolerance, toleranceAfter: tolerance, completionHandler: completion)
     }
 
     public func seek(toMilliseconds ms: Int64) { seek(to: Double(ms) / 1000) }
@@ -369,8 +390,15 @@ public final class MediaPlaybackController {
     }
 
     /// Transport time drives only controls; subtitle consumers observe boundary changes.
-    private func updatePlaybackTime(_ seconds: Double) {
+    private func updatePlaybackTime(_ seconds: Double, immediateProgress: Bool = false) {
         currentTimeSeconds = seconds
+        let now = ContinuousClock.now
+        if immediateProgress || now >= nextProgressUpdate {
+            progressTimeSeconds = seconds
+            nextProgressUpdate = now.advanced(by: .milliseconds(100))
+        }
+        let wholeSeconds = Int(seconds.rounded(.down))
+        if elapsedWholeSeconds != wholeSeconds { elapsedWholeSeconds = wholeSeconds }
         let milliseconds = Int64((seconds * 1000).rounded(.down))
         let indices = subtitleTimeline.interval(atMilliseconds: milliseconds)?.cueIndices ?? []
         if activeCueIndices != indices {
