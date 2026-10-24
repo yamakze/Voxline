@@ -7,12 +7,19 @@ import VoxlineTranslation
 /// The two external operations of a media run; checkpoints remain owned by the queue.
 public protocol MediaTranscriptionPipeline: Sendable {
     func extract(item: TaskMediaItem, progress: @escaping @Sendable (AudioExtractionProgress) -> Void) async throws -> [TranscriptionAudio]
+    func recoverRecognition(_ evidence: TranscriptionEvidence) throws -> TranscriptionEvidence?
     func speechChunks(from audio: [TranscriptionAudio], settings: TranscriptionSettings) async throws -> [TranscriptionAudio]
     func transcribe(mediaID: UUID, audio: TranscriptionAudio, settings: TranscriptionSettings,
                     progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> TranscriptionEvidence
 }
 
 public extension MediaTranscriptionPipeline {
+    func recoverRecognition(_ evidence: TranscriptionEvidence) throws -> TranscriptionEvidence? {
+        if evidence.cloudResult != nil { return try CloudTranscriptionAlignment.completedEvidence(from: evidence) }
+        guard WhisperKitTranscriptionProvider.hasCompleteRecognition(evidence) else { return nil }
+        return try WhisperKitTranscriptionProvider.recoverCompletedEvidence(evidence)
+    }
+
     func speechChunks(from audio: [TranscriptionAudio], settings: TranscriptionSettings) async throws -> [TranscriptionAudio] { audio }
 }
 
@@ -48,19 +55,21 @@ public struct ConfiguredMediaTranscriptionPipeline: MediaTranscriptionPipeline {
 
     public func transcribe(mediaID: UUID, audio: TranscriptionAudio, settings: TranscriptionSettings,
                     progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> TranscriptionEvidence {
+        let provider: any TranscriptionProvider
         if settings.provider == .openAICompatible {
             let key = try await CloudTranscriptionServiceStore.shared.apiKey(for: settings)
             if settings.cloud?.protocolKind.usesSpeechChunks == true {
-                let provider = try AudioChatTranscriptionProvider(settings: settings, apiKey: key,
+                provider = try AudioChatTranscriptionProvider(settings: settings, apiKey: key,
                     padShortAudio: { try TranscriptionAudioUpload.paddedToOneSecond($0) },
                     evidenceDirectory: evidenceDirectory, mediaID: mediaID, onProgress: progress)
-                return try await provider.transcribeEvidence(audio: audio)
+            } else {
+                provider = try OpenAITranscriptionProvider(settings: settings, apiKey: key,
+                    evidenceDirectory: evidenceDirectory, mediaID: mediaID, onProgress: progress)
             }
-            let provider = try OpenAITranscriptionProvider(settings: settings, apiKey: key,
+        } else {
+            provider = try WhisperKitTranscriptionProvider(settings: settings, store: modelStore,
                 evidenceDirectory: evidenceDirectory, mediaID: mediaID, onProgress: progress)
-            return try await provider.transcribeEvidence(audio: audio)
         }
-        let provider = try WhisperKitTranscriptionProvider(settings: settings, store: modelStore, evidenceDirectory: evidenceDirectory, mediaID: mediaID, onProgress: progress)
-        return try await provider.transcribeEvidence(audio: audio)
+        return try await provider.transcribe(audio: audio)
     }
 }

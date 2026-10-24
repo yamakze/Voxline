@@ -30,7 +30,7 @@ struct CloudTranscriptionTests {
         let session = session()
         defer { session.invalidateAndCancel() }
         let provider = try OpenAITranscriptionProvider(settings: settings, apiKey: "test-only-key", session: session, evidenceDirectory: root)
-        let evidence = try await provider.transcribeEvidence(audio: audio)
+        let evidence = try await provider.transcribe(audio: audio)
         #expect(evidence.outcome == .completed)
         #expect(evidence.segments.first?.startSeconds == 120.25)
         #expect(evidence.segments.first?.endSeconds == 121.5)
@@ -51,6 +51,35 @@ struct CloudTranscriptionTests {
         #expect(files.contains { $0.hasSuffix(".json") })
     }
 
+    @Test(arguments: [CloudTranscriptionProtocol.audioTranscriptions, .qwenAudioChat])
+    func completedRecognitionSurvivesUnavailableDiagnosticCache(protocolKind: CloudTranscriptionProtocol) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let audioURL = root.appendingPathComponent("input.wav")
+        try Data("RIFF".utf8).write(to: audioURL)
+        let audio = try TranscriptionAudio(localURL: audioURL, sourceStartMilliseconds: 0, durationMilliseconds: 2000)
+        let config = try CloudTranscriptionServiceConfig(name: "ASR", baseURL: URL(string: "https://asr.example/v1")!,
+            modelID: "test", protocolKind: protocolKind).settings(languageCode: "en")
+        let session = session()
+        defer { session.invalidateAndCancel() }
+        let response = protocolKind == .audioTranscriptions
+            ? #"{"text":"Hello.","segments":[{"start":0.25,"end":1.5,"text":"Hello."}]}"#
+            : #"{"choices":[{"finish_reason":"stop","message":{"content":"Hello."}}]}"#
+        ASRStubProtocol.response.withLock { $0 = (200, Data(response.utf8)) }
+        let provider: any TranscriptionProvider
+        if protocolKind == .audioTranscriptions {
+            provider = try OpenAITranscriptionProvider(settings: config, apiKey: "", session: session, evidenceDirectory: audioURL)
+        } else {
+            provider = try AudioChatTranscriptionProvider(settings: config, apiKey: "", padShortAudio: { _ in Data() },
+                session: session, evidenceDirectory: audioURL)
+        }
+        let evidence = try await provider.transcribe(audio: audio)
+        #expect(evidence.outcome == .completed)
+        let result = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: 2000)
+        #expect(result.cues.map(\.sourceText) == ["Hello."])
+    }
+
     @Test func failuresNeverRetryAndRetainEvidenceWithoutUpstreamPrivateBody() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -63,7 +92,7 @@ struct CloudTranscriptionTests {
         ASRStubProtocol.response.withLock { $0 = (503, Data("private-upstream-value".utf8)) }
         ASRStubProtocol.count.withLock { $0 = 0 }
         let provider = try OpenAITranscriptionProvider(settings: settings(), apiKey: "", session: session, evidenceDirectory: root)
-        do { _ = try await provider.transcribeEvidence(audio: audio); Issue.record("Expected failure") }
+        do { _ = try await provider.transcribe(audio: audio); Issue.record("Expected failure") }
         catch let error as TranscriptionFailure {
             #expect(error.evidence.outcome == .failed)
             #expect(error.localizedDescription.contains("503"))
@@ -72,7 +101,7 @@ struct CloudTranscriptionTests {
         }
         #expect(ASRStubProtocol.count.withLock { $0 } == 1)
         ASRStubProtocol.response.withLock { $0 = (200, Data(#"{"text":"Unaligned text","segments":[]}"#.utf8)) }
-        do { _ = try await provider.transcribeEvidence(audio: audio); Issue.record("Missing timestamps accepted") }
+        do { _ = try await provider.transcribe(audio: audio); Issue.record("Missing timestamps accepted") }
         catch let error as TranscriptionFailure {
             #expect(error.evidence.outcome == .failed)
             #expect(error.evidence.partialDecodedText == "Unaligned text")
@@ -107,7 +136,7 @@ struct CloudTranscriptionTests {
         ASRStubProtocol.count.withLock { $0 = 0 }
         ASRStubProtocol.stopped.withLock { $0 = false }
         defer { ASRStubProtocol.hanging.withLock { $0 = false } }
-        let work = Task { try await provider.transcribeEvidence(audio: audio) }
+        let work = Task { try await provider.transcribe(audio: audio) }
         for _ in 0..<100 {
             if ASRStubProtocol.count.withLock({ $0 }) > 0 { break }
             try await Task.sleep(for: .milliseconds(10))
@@ -150,18 +179,18 @@ struct CloudTranscriptionTests {
             try JSONSerialization.data(withJSONObject: ["choices": [["finish_reason": "stop", "message": ["content": text]]]])
         }
         ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello.","segments":[{"start":0.2,"end":1.5,"text":"Hello."}]}"#)) }
-        let evidence = try await provider.transcribeEvidence(audio: audio)
+        let evidence = try await provider.transcribe(audio: audio)
         #expect(evidence.segments.first?.timingSource == .modelGenerated)
         let cues = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: 7000).cues
         #expect(cues.first?.startMilliseconds == 5200)
         #expect(ASRStubProtocol.lastRequest.withLock { $0?.url?.path } == "/openai/chat/completions")
         ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello.","segments":[{"start":1.8,"end":9.5,"text":"Hello."}]}"#)) }
-        let padded = try await provider.transcribeEvidence(audio: audio)
+        let padded = try await provider.transcribe(audio: audio)
         #expect(padded.cloudResult?.segments?.first?.end == 9.5)
         #expect(try SubtitleSegmenter.segment(padded, sourceID: UUID(), mediaDurationMilliseconds: 7000)
             .cues.first?.endMilliseconds == 7000)
         ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello.","segments":[{"start":2.8,"end":9.5,"text":"Hello."}]}"#)) }
-        let coarse = try await provider.transcribeEvidence(audio: audio)
+        let coarse = try await provider.transcribe(audio: audio)
         #expect(coarse.cloudResult?.segments?.first?.end == 9.5)
         #expect(coarse.segments.first?.timingSource == .audioRange)
         let coarseCues = try SubtitleSegmenter.segment(coarse, sourceID: UUID(), mediaDurationMilliseconds: 7000).cues
@@ -173,26 +202,26 @@ struct CloudTranscriptionTests {
                 "segments": [["start": 0.2, "end": 1.5, "text": annotation]]])
             let body = try response(String(decoding: payload, as: UTF8.self))
             ASRStubProtocol.response.withLock { $0 = (200, body) }
-            let preserved = try await provider.transcribeEvidence(audio: audio)
+            let preserved = try await provider.transcribe(audio: audio)
             #expect(preserved.segments.first?.timingSource == .audioRange)
             #expect(preserved.cloudResult?.segments?.first?.text == annotation)
             let cues = try SubtitleSegmenter.segment(preserved, sourceID: UUID(), mediaDurationMilliseconds: 7000).cues
             #expect(cues.map(\.sourceText) == [transcript])
         }
         ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Keep every word.","segments":[{"start":0.2,"end":1.5,"text":"Keep word."}]}"#)) }
-        let mismatch = try await provider.transcribeEvidence(audio: audio)
+        let mismatch = try await provider.transcribe(audio: audio)
         #expect(mismatch.segments.first?.text == "Keep every word.")
         #expect(mismatch.segments.first?.timingSource == .audioRange)
         #expect(mismatch.cloudResult?.segments?.first?.text == "Keep word.")
         ASRStubProtocol.response.withLock { $0 = (200, try! response(#"{"text":"Hello.","segments":[{"start":0.2,"end":1.5}]}"#)) }
-        let missingAnnotation = try await provider.transcribeEvidence(audio: audio)
+        let missingAnnotation = try await provider.transcribe(audio: audio)
         #expect(missingAnnotation.segments.first?.text == "Hello.")
         #expect(missingAnnotation.segments.first?.timingSource == .audioRange)
         // A valid-looking payload is still incomplete when the service reports truncation.
         let truncated = try JSONSerialization.data(withJSONObject: ["choices": [["finish_reason": "length",
             "message": ["content": #"{"text":"Hello.","segments":[]}"#]]]])
         ASRStubProtocol.response.withLock { $0 = (200, truncated) }
-        do { _ = try await provider.transcribeEvidence(audio: audio); Issue.record("Truncated recognition accepted") }
+        do { _ = try await provider.transcribe(audio: audio); Issue.record("Truncated recognition accepted") }
         catch let error as TranscriptionFailure {
             #expect(error.evidence.outcome == .failed)
             #expect(error.evidence.cloudResult == nil)
@@ -224,25 +253,25 @@ struct CloudTranscriptionTests {
         ASRStubProtocol.response.withLock { $0 = (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"你好。"}}]}"#.utf8)) }
         ASRStubProtocol.statuses.withLock { $0 = [429, 503] }
         defer { ASRStubProtocol.statuses.withLock { $0 = [] } }
-        let evidence = try await provider.transcribeEvidence(audio: audio)
+        let evidence = try await provider.transcribe(audio: audio)
         #expect(delays.withLock { $0 } == [0, 0])
         #expect(evidence.segments.first?.startSeconds == 3)
         #expect(evidence.segments.first?.endSeconds == 5)
         #expect(evidence.segments.first?.timingSource == .audioRange)
         ASRStubProtocol.response.withLock { $0.0 = 503 }
         ASRStubProtocol.count.withLock { $0 = 0 }
-        do { _ = try await provider.transcribeEvidence(audio: audio); Issue.record("Retry limit missing") }
+        do { _ = try await provider.transcribe(audio: audio); Issue.record("Retry limit missing") }
         catch let error as TranscriptionFailure { #expect(error.localizedDescription.contains("503")) }
         #expect(ASRStubProtocol.count.withLock { $0 } == 4)
         ASRStubProtocol.response.withLock { $0 = (200, Data(#"{"choices":[{"finish_reason":"length","message":{"content":"Partial text"}}]}"#.utf8)) }
-        do { _ = try await provider.transcribeEvidence(audio: audio); Issue.record("Truncated response accepted") }
+        do { _ = try await provider.transcribe(audio: audio); Issue.record("Truncated response accepted") }
         catch let error as TranscriptionFailure { #expect(error.evidence.partialDecodedText == "Partial text") }
         ASRStubProtocol.count.withLock { $0 = 0 }
         let silent = try TranscriptionAudio(localURL: url, sourceStartMilliseconds: 0, durationMilliseconds: 10_000, isSilent: true)
-        #expect(try await provider.transcribeEvidence(audio: silent).segments.isEmpty)
+        #expect(try await provider.transcribe(audio: silent).segments.isEmpty)
         #expect(ASRStubProtocol.count.withLock { $0 } == 0)
         let long = try TranscriptionAudio(localURL: url, sourceStartMilliseconds: 0, durationMilliseconds: 10_000)
-        await #expect(throws: TranscriptionFailure.self) { try await provider.transcribeEvidence(audio: long) }
+        await #expect(throws: TranscriptionFailure.self) { try await provider.transcribe(audio: long) }
     }
 
     @Test func qwenShortPCMUploadsSilenceWithoutChangingRecognitionRange() async throws {
@@ -274,13 +303,13 @@ struct CloudTranscriptionTests {
         #expect((0..<320).allSatisfy { decodedSamples[$0] == samples[$0] })
         #expect((320..<16_000).allSatisfy { decodedSamples[$0] == 0 })
         ASRStubProtocol.response.withLock { $0 = (200, Data(#"{"choices":[{"finish_reason":"stop","message":{"content":"Tail"}}]}"#.utf8)) }
-        let evidence = try await provider.transcribeEvidence(audio: audio)
+        let evidence = try await provider.transcribe(audio: audio)
         #expect(evidence.durationMilliseconds == 20 && evidence.sourceStartMilliseconds == 4_130_000)
         #expect(evidence.segments.first?.endSeconds == 4130.02)
         #expect(evidence.segments.first?.timingSource == .audioRange)
         #expect(try Data(contentsOf: url) == original)
         let inconsistent = try TranscriptionAudio(localURL: url, sourceStartMilliseconds: 0, durationMilliseconds: 80)
-        await #expect(throws: TranscriptionFailure.self) { try await provider.transcribeEvidence(audio: inconsistent) }
+        await #expect(throws: TranscriptionFailure.self) { try await provider.transcribe(audio: inconsistent) }
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXLINE_QWEN_RETRY_FIXTURE"] != nil))
@@ -305,7 +334,7 @@ struct CloudTranscriptionTests {
             let audio = try TranscriptionAudio(localURL: URL(fileURLWithPath: path),
                 sourceStartMilliseconds: chunk.range.sourceStartMilliseconds, durationMilliseconds: chunk.range.durationMilliseconds)
             let sourceID = try task.items[0].beginTranscriptionChunk(chunk.id)
-            let evidence = try await provider.transcribeEvidence(audio: audio)
+            let evidence = try await provider.transcribe(audio: audio)
             let result = try SubtitleSegmenter.segment(evidence, sourceID: sourceID,
                 mediaDurationMilliseconds: checkpoint.media.durationMilliseconds)
             try task.items[0].commitTranscriptionChunk(chunk.id, result: result)

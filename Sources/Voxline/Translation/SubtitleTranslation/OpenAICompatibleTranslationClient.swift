@@ -115,18 +115,9 @@ public enum SubtitleTranslationError: Error, LocalizedError, Equatable {
         case .timeout: retryAfter = nil
         default: return nil
         }
-        if let value = retryAfter?.trimmingCharacters(in: .whitespacesAndNewlines) {
-            if !value.isEmpty, value.allSatisfy({ $0.isASCII && $0.isNumber }),
-               let seconds = Double(value), seconds.isFinite { return seconds }
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.timeZone = TimeZone(secondsFromGMT: 0)
-            formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss z"
-            if let date = formatter.date(from: value) { return max(0, date.timeIntervalSince(now)) }
-        }
-        // Three retries; the queue owns the attempt limit and cancellation.
-        return [5.0, 15.0, 45.0][min(max(attempt - 1, 0), 2)] * (1 + jitter * 0.2)
+        return HTTPRetryDelay.seconds(retryAfter: retryAfter, attempt: attempt, now: now, jitter: jitter)
     }
+
     public var errorDescription: String? {
         switch self {
         case .invalidRequest: String(localized: "翻译输入为空、重复或与当前字幕不一致。", bundle: voxlineLocalizationBundle)

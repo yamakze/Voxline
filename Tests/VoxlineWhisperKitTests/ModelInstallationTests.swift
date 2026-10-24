@@ -163,7 +163,7 @@ struct ModelInstallationTests {
             let settings = TranscriptionSettings(modelID: model.id, languageMode: .specified, languageCode: "en")
             let provider = try WhisperKitTranscriptionProvider(settings: settings, store: store,
                 evidenceDirectory: directory.appendingPathComponent("Evidence"))
-            let evidence = try await provider.transcribeEvidence(audio: audio)
+            let evidence = try await provider.transcribe(audio: audio)
             #expect(evidence.outcome == .completed)
             #expect(evidence.segments.contains { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
             let result = try SubtitleSegmenter.segment(evidence, sourceID: UUID(), mediaDurationMilliseconds: audio.durationMilliseconds)

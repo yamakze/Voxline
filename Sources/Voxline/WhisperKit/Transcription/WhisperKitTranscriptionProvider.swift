@@ -1,8 +1,10 @@
 import Foundation
+import OSLog
 import VoxlineCore
 import WhisperKit
 
 public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
+    private static let logger = Logger(subsystem: "dev.voxline.app", category: "TranscriptionDiagnostics")
     public let settings: TranscriptionSettings
     private let store: WhisperModelStore
     private let evidenceDirectory: URL?
@@ -22,10 +24,6 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
         self.evidenceDirectory = evidenceDirectory
         self.mediaID = mediaID
         self.onProgress = onProgress
-    }
-
-    public func transcribe(audio: TranscriptionAudio) async throws -> [RawTranscriptionSegment] {
-        try await transcribeEvidence(audio: audio).segments
     }
 
     /// A timing failure in the final window still retains a complete recognition.
@@ -81,7 +79,7 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
     }
 
     /// Bounded input only. Local re-transcription must extract an explicit range first, preserving its source offset.
-    public func transcribeEvidence(audio: TranscriptionAudio) async throws -> TranscriptionEvidence {
+    public func transcribe(audio: TranscriptionAudio) async throws -> TranscriptionEvidence {
         let seeker = TranscriptionEvidenceSeeker(sourceStartMilliseconds: audio.sourceStartMilliseconds)
         var evidence = TranscriptionEvidence(settings: settings, audio: audio)
         do {
@@ -102,13 +100,9 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
             catch { throw TranscriptionFailure(cause: cause, evidence: evidence, evidenceURL: nil, storageError: error.localizedDescription) }
             throw TranscriptionFailure(cause: cause, evidence: evidence, evidenceURL: url)
         }
-        // A completed inference is published only after its unfiltered evidence is safely written.
+        // Diagnostic caches are optional; the workflow still requires an atomic subtitle commit.
         do { _ = try persist(evidence) }
-        catch {
-            evidence.outcome = .failed
-            evidence.failureReason = String(localized: "推理完成，但原始证据无法保存。", bundle: voxlineLocalizationBundle)
-            throw TranscriptionFailure(cause: error, evidence: evidence, evidenceURL: nil, storageError: error.localizedDescription)
-        }
+        catch { Self.logger.error("Completed transcription diagnostics unavailable: \(error.localizedDescription)") }
         onProgress(.completed(segmentCount: evidence.segments.count))
         return evidence
     }
@@ -124,9 +118,7 @@ public struct WhisperKitTranscriptionProvider: TranscriptionProvider {
         let directory = mediaID.map { root.appendingPathComponent($0.uuidString, isDirectory: true) } ?? root
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("\(UUID().uuidString).json")
-        let encoder = JSONEncoder()
-        encoder.nonConformingFloatEncodingStrategy = .convertToString(positiveInfinity: "+Infinity", negativeInfinity: "-Infinity", nan: "NaN")
-        try encoder.encode(evidence).write(to: url, options: .atomic)
+        try TranscriptionEvidenceCodec.encode(evidence).write(to: url, options: .atomic)
         return url
     }
 }

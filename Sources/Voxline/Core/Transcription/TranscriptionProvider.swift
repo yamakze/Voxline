@@ -1,7 +1,7 @@
 import Foundation
 
 public protocol TranscriptionProvider: Sendable {
-    func transcribe(audio: TranscriptionAudio) async throws -> [RawTranscriptionSegment]
+    func transcribe(audio: TranscriptionAudio) async throws -> TranscriptionEvidence
 }
 
 public struct TranscriptionAudio: Sendable {

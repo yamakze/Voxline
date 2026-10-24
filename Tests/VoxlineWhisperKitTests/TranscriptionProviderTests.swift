@@ -400,7 +400,7 @@ struct TranscriptionProviderTests {
             let audio = try TranscriptionAudio(localURL: URL(fileURLWithPath: chunkRoot).appendingPathComponent(String(format: "%06d.wav", index)),
                 sourceStartMilliseconds: Int64(index * 120_000), durationMilliseconds: index == 8 ? 117_673 : 120_000)
             do {
-                let evidence = try await provider.transcribeEvidence(audio: audio)
+                let evidence = try await provider.transcribe(audio: audio)
                 results.append(evidence)
                 print("S001_PROVIDER chunk=\(index) windows=\(evidence.windows.count) segments=\(evidence.segments.count)")
             } catch let failure as TranscriptionFailure {
@@ -459,13 +459,13 @@ struct TranscriptionProviderTests {
         }
         let automatic = try WhisperKitTranscriptionProvider(settings: .whisperKitBaseline, store: store, evidenceDirectory: root)
         let headAudio = try TranscriptionAudio(localURL: headURL, sourceStartMilliseconds: 0, durationMilliseconds: 30_000)
-        let automaticResult = try await automatic.transcribeEvidence(audio: headAudio)
+        let automaticResult = try await automatic.transcribe(audio: headAudio)
         #expect(automaticResult.windows.allSatisfy { $0.language == "en" })
         #expect(!automaticResult.segments.isEmpty)
         print("S001_PROVIDER_AUTOMATIC language=en windows=\(automaticResult.windows.count)")
 
         let mutation = Mutex<Task<Void, Never>?>(nil)
-        let activeOperation = Mutex<Task<[RawTranscriptionSegment], any Error>?>(nil)
+        let activeOperation = Mutex<Task<TranscriptionEvidence, any Error>?>(nil)
         let cancelledProvider = try WhisperKitTranscriptionProvider(settings: settings, store: store, evidenceDirectory: root) { progress in
             if case .decoding(let count) = progress, count > 6 {
                 mutation.withLock { operation in

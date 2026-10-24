@@ -25,11 +25,7 @@ public struct AudioChatTranscriptionProvider: TranscriptionProvider {
             .appendingPathComponent(mediaID.uuidString)
     }
 
-    public func transcribe(audio: TranscriptionAudio) async throws -> [RawTranscriptionSegment] {
-        try await transcribeEvidence(audio: audio).segments
-    }
-
-    public func transcribeEvidence(audio: TranscriptionAudio) async throws -> TranscriptionEvidence {
+    public func transcribe(audio: TranscriptionAudio) async throws -> TranscriptionEvidence {
         var evidence = TranscriptionEvidence(settings: settings, audio: audio)
         do {
             try Task.checkCancellation()
@@ -60,9 +56,7 @@ public struct AudioChatTranscriptionProvider: TranscriptionProvider {
                     if (200..<300).contains(http.statusCode) { responseData = data; break }
                     if [429, 503].contains(http.statusCode), attempt < 3 {
                         attempt += 1
-                        let temporary = SubtitleTranslationError.temporarilyUnavailable(statusCode: http.statusCode,
-                            retryAfter: http.value(forHTTPHeaderField: "Retry-After"))
-                        guard let delay = temporary.retryDelay(attempt: attempt, jitter: 0) else { throw CloudTranscriptionError.invalidResponse }
+                        let delay = HTTPRetryDelay.seconds(retryAfter: http.value(forHTTPHeaderField: "Retry-After"), attempt: attempt)
                         onProgress(.retryingAudio(attempt: attempt, delaySeconds: delay))
                         try await wait(delay)
                         continue
@@ -70,7 +64,7 @@ public struct AudioChatTranscriptionProvider: TranscriptionProvider {
                     throw CloudTranscriptionError.http(status: http.statusCode, requestID: http.value(forHTTPHeaderField: "x-request-id"))
                 }
                 // Preserve successful raw recognition even if structural parsing or timing later fails.
-                try CloudTranscriptionEvidence.writeResponse(responseData, to: evidenceDirectory)
+                CloudTranscriptionEvidence.recordResponse(responseData, to: evidenceDirectory)
                 let response = try JSONDecoder().decode(ChatResponse.self, from: responseData)
                 guard response.choices.count == 1, let choice = response.choices.first else { throw CloudTranscriptionError.invalidResponse }
                 evidence.partialDecodedText = choice.message.content
@@ -88,7 +82,7 @@ public struct AudioChatTranscriptionProvider: TranscriptionProvider {
             }
             try Task.checkCancellation()
             evidence = try CloudTranscriptionAlignment.completedEvidence(from: evidence)
-            _ = try CloudTranscriptionEvidence.write(evidence, to: evidenceDirectory)
+            CloudTranscriptionEvidence.recordCompleted(evidence, to: evidenceDirectory)
             onProgress(.completed(segmentCount: evidence.segments.count))
             return evidence
         } catch {

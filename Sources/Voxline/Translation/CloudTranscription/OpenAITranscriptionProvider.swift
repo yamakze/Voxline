@@ -19,11 +19,7 @@ public struct OpenAITranscriptionProvider: TranscriptionProvider {
             .appendingPathComponent(mediaID.uuidString)
     }
 
-    public func transcribe(audio: TranscriptionAudio) async throws -> [RawTranscriptionSegment] {
-        try await transcribeEvidence(audio: audio).segments
-    }
-
-    public func transcribeEvidence(audio: TranscriptionAudio) async throws -> TranscriptionEvidence {
+    public func transcribe(audio: TranscriptionAudio) async throws -> TranscriptionEvidence {
         var evidence = TranscriptionEvidence(settings: settings, audio: audio)
         var uploadURL: URL?
         do {
@@ -51,7 +47,7 @@ public struct OpenAITranscriptionProvider: TranscriptionProvider {
                 // Never expose upstream bodies containing credentials or unrelated private data.
                 throw CloudTranscriptionError.http(status: response.statusCode, requestID: response.value(forHTTPHeaderField: "x-request-id"))
             }
-            try CloudTranscriptionEvidence.writeResponse(data, to: evidenceDirectory)
+            CloudTranscriptionEvidence.recordResponse(data, to: evidenceDirectory)
             let result = try JSONDecoder().decode(VerboseTranscription.self, from: data)
             evidence.partialDecodedText = result.text
             evidence.cloudResult = .init(text: result.text, segments: result.segments.map {
@@ -60,7 +56,7 @@ public struct OpenAITranscriptionProvider: TranscriptionProvider {
             }, timingSource: .service)
             try Task.checkCancellation()
             evidence = try CloudTranscriptionAlignment.completedEvidence(from: evidence)
-            _ = try CloudTranscriptionEvidence.write(evidence, to: evidenceDirectory)
+            CloudTranscriptionEvidence.recordCompleted(evidence, to: evidenceDirectory)
             onProgress(.completed(segmentCount: evidence.segments.count))
             return evidence
         } catch {

@@ -287,8 +287,7 @@ public final class TaskProcessingQueue {
             let savedRecognition: TranscriptionEvidence?
             switch chunks[index].state {
             case .failed(_, let evidence), .cancelled(let evidence):
-                if let evidence, evidence.settings == parameters.transcription,
-                   evidence.cloudResult != nil || WhisperKitTranscriptionProvider.hasCompleteRecognition(evidence) {
+                if let evidence, evidence.settings == parameters.transcription {
                     savedRecognition = evidence
                 } else { savedRecognition = nil }
             default: savedRecognition = nil
@@ -299,10 +298,8 @@ public final class TaskProcessingQueue {
             progressText = String(localized: "正在转写 \(Int(Double(index) / Double(chunks.count) * 100))%", bundle: voxlineLocalizationBundle)
             let evidence: TranscriptionEvidence
             do {
-                if let savedRecognition {
-                    evidence = try savedRecognition.cloudResult != nil
-                        ? CloudTranscriptionAlignment.completedEvidence(from: savedRecognition)
-                        : WhisperKitTranscriptionProvider.recoverCompletedEvidence(savedRecognition)
+                if let savedRecognition, let recovered = try pipeline.recoverRecognition(savedRecognition) {
+                    evidence = recovered
                 } else {
                     evidence = try await pipeline.transcribe(mediaID: mediaID, audio: input, settings: parameters.transcription) { progress in
                         Task { @MainActor in
