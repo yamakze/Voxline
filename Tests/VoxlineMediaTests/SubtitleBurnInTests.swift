@@ -148,7 +148,7 @@ struct SubtitleBurnInTests {
         let outsideDifference = zip(beforePixels, afterPixels).map { abs(Int($0) - Int($1)) }.reduce(0, +)
         #expect(Double(outsideDifference) / Double(beforePixels.count) < 5)
         let existing = try Data(contentsOf: destination)
-        await #expect(throws: BurnInError.fileAlreadyExists) {
+        await #expect(throws: VideoExportFileError.fileAlreadyExists) {
             try await SubtitleBurnInExporter.export(plan, to: destination, codec: options.codec, quality: options.quality) { _ in }
         }
         #expect(try Data(contentsOf: destination) == existing)
@@ -221,7 +221,7 @@ struct SubtitleBurnInTests {
         defer { plan.releaseAccess() }
         let hardlink = directory.appendingPathComponent("source.mp4")
         try FileManager.default.linkItem(at: plan.sourceURL, to: hardlink)
-        await #expect(throws: BurnInError.sourceIsOutput) {
+        await #expect(throws: VideoExportFileError.sourceIsOutput) {
             try await SubtitleBurnInExporter.export(plan, to: hardlink, codec: options.codec, quality: options.quality, allowOverwrite: true) { _ in }
         }
         #expect(try Data(contentsOf: hardlink) == Data(contentsOf: plan.sourceURL))

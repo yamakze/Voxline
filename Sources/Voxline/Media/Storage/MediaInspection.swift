@@ -19,6 +19,12 @@ public struct MediaInspection: Sendable {
     public let videoTracks: [MediaTrack]
     public let audioTracks: [MediaTrack]
 
+    /// Only playback and frame rendering require video decoding; audio extraction does not.
+    public func requireDecodableVideo() throws {
+        guard let video = videoTracks.first else { throw MediaAccessError.noVideo }
+        guard video.isDecodable else { throw MediaAccessError.undecodableVideo }
+    }
+
     public func identity(audioTrackID: Int32) throws -> MediaIdentity {
         guard let track = audioTracks.first(where: { $0.id == audioTrackID }), track.isDecodable else {
             throw MediaAccessError.invalidAudioTrack
@@ -86,7 +92,6 @@ public actor MediaInspector {
         guard !audios.isEmpty else { throw MediaAccessError.noAudio }
         let videoTracks = try await trackInformation(videos)
         let audioTracks = try await trackInformation(audios)
-        guard videoTracks.allSatisfy(\.isDecodable) else { throw MediaAccessError.undecodableVideo }
         guard audioTracks.contains(where: \.isDecodable) else { throw MediaAccessError.undecodableAudio }
         var hasher = SHA256()
         // At most 2 MiB, independent of the movie size. Size participates in identity.

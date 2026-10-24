@@ -50,28 +50,17 @@ public enum SubtitleEmbeddingExporter {
         let cues = try SubtitleCue.clampedToMedia(item.cues, media: identity)
         guard !cues.isEmpty else { throw SubtitleExportError.emptyCues }
         let texts = try cues.map { try SubtitleExporter.subtitleText(for: $0, kind: kind) }
-        guard destination.isFileURL, destination.pathExtension.lowercased() == "mp4",
-              !destination.lastPathComponent.contains("\\"), !destination.lastPathComponent.contains("\0"),
-              !destination.deletingPathExtension().lastPathComponent.isEmpty else { throw BurnInError.invalidFileName }
-        let manager = FileManager.default
-        guard destination.standardizedFileURL.resolvingSymlinksInPath() != sourceURL.standardizedFileURL.resolvingSymlinksInPath() else { throw BurnInError.sourceIsOutput }
-        if manager.fileExists(atPath: destination.path) {
-            let source = try manager.attributesOfItem(atPath: sourceURL.path)
-            let target = try manager.attributesOfItem(atPath: destination.path)
-            if source[.systemNumber] as? NSNumber == target[.systemNumber] as? NSNumber,
-               source[.systemFileNumber] as? NSNumber == target[.systemFileNumber] as? NSNumber { throw BurnInError.sourceIsOutput }
-            guard allowOverwrite else { throw BurnInError.fileAlreadyExists }
-        }
+        let outputFile = try VideoExportDestination(destination: destination, source: sourceURL, allowOverwrite: allowOverwrite)
         let asset = AVURLAsset(url: sourceURL)
         let duration = try await asset.load(.duration)
         guard let video = try await asset.loadTracks(withMediaType: .video).first,
-              let audio = try await asset.loadTracks(withMediaType: .audio).first(where: { $0.trackID == identity.audioTrackID }) else { throw BurnInError.videoRequired }
+              let audio = try await asset.loadTracks(withMediaType: .audio).first(where: { $0.trackID == identity.audioTrackID }) else { throw SubtitleEmbeddingError.videoRequired }
         let size = try await video.load(.naturalSize)
         let transform = try await video.load(.preferredTransform)
         let displaySize = CGRect(origin: .zero, size: size).applying(transform).standardized.size
         let videoRange = try await video.load(.timeRange)
         let audioRange = try await audio.load(.timeRange)
-        let temporary = destination.deletingLastPathComponent().appendingPathComponent(".\(UUID()).partial.mp4")
+        let temporary = outputFile.temporaryURL
         let reader = try AVAssetReader(asset: asset)
         let writer = try AVAssetWriter(outputURL: temporary, fileType: .mp4)
         let videoTimeScale = try await video.load(.naturalTimeScale)
@@ -186,17 +175,12 @@ public enum SubtitleEmbeddingExporter {
                   try await outputAudio.load(.isDecodable),
                   try await outputVideo.load(.isDecodable) else { throw SubtitleEmbeddingError.invalidOutput }
             try Task.checkCancellation()
-            if manager.fileExists(atPath: destination.path) {
-                guard allowOverwrite else { throw BurnInError.fileAlreadyExists }
-                _ = try manager.replaceItemAt(destination, withItemAt: temporary)
-            } else { try manager.moveItem(at: temporary, to: destination) }
+            try outputFile.publish()
             await progress(1)
         } catch {
             reader.cancelReading(); writer.cancelWriting()
-            if manager.fileExists(atPath: temporary.path) {
-                do { try manager.removeItem(at: temporary) }
-                catch let cleanup { throw SubtitleEmbeddingError.failure(String(localized: "\(error.localizedDescription)；临时文件清理失败：\(cleanup.localizedDescription)", bundle: voxlineLocalizationBundle)) }
-            }
+            do { try outputFile.removeTemporaryFile() }
+            catch let cleanup { throw SubtitleEmbeddingError.failure(String(localized: "\(error.localizedDescription)；临时文件清理失败：\(cleanup.localizedDescription)", bundle: voxlineLocalizationBundle)) }
             if Task.isCancelled { throw CancellationError() }
             throw error
         }

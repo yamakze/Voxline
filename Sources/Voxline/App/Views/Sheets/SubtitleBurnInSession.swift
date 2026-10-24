@@ -94,8 +94,8 @@ final class SubtitleBurnInSession {
                 try Task.checkCancellation()
                 temporaryExport = temporaryFile
                 exportedURL = destination
-            } catch BurnInError.fileAlreadyExists {
-                if allowOverwrite { errorMessage = BurnInError.fileAlreadyExists.localizedDescription }
+            } catch VideoExportFileError.fileAlreadyExists {
+                if allowOverwrite { errorMessage = VideoExportFileError.fileAlreadyExists.localizedDescription }
                 else { requiresOverwriteConfirmation = true }
             } catch {
                 errorMessage = error is CancellationError ? String(localized: "烧录已取消，未发布输出文件。", bundle: appLocalizationBundle) : error.localizedDescription

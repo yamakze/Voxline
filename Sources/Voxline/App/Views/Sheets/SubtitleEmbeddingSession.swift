@@ -55,8 +55,8 @@ final class SubtitleEmbeddingSession {
                 exportedURL = destination
             } catch is CancellationError {
                 errorMessage = String(localized: "导出已取消。", bundle: appLocalizationBundle)
-            } catch BurnInError.fileAlreadyExists {
-                if allowOverwrite { errorMessage = BurnInError.fileAlreadyExists.localizedDescription }
+            } catch VideoExportFileError.fileAlreadyExists {
+                if allowOverwrite { errorMessage = VideoExportFileError.fileAlreadyExists.localizedDescription }
                 else { requiresOverwriteConfirmation = true }
             } catch {
                 errorMessage = error.localizedDescription

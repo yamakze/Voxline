@@ -34,7 +34,7 @@ public struct BurnInOptions: Sendable, Equatable {
 
 public enum BurnInError: LocalizedError, Equatable {
     case videoRequired, missingMedia, unsupportedColor, unsupportedEncoding, invalidGeometry
-    case sourceIsOutput, invalidFileName, fileAlreadyExists, invalidOutput, failure(String)
+    case invalidOutput, failure(String)
     public var errorDescription: String? {
         switch self {
         case .videoRequired: String(localized: "字幕烧录需要包含画面的视频。", bundle: voxlineLocalizationBundle)
@@ -42,9 +42,6 @@ public enum BurnInError: LocalizedError, Equatable {
         case .unsupportedColor: String(localized: "当前烧录仅支持 SDR 视频；HDR 或广色域输入不会自动转换。", bundle: voxlineLocalizationBundle)
         case .unsupportedEncoding: String(localized: "系统不支持所选编码与质量，请选择其他输出设置。", bundle: voxlineLocalizationBundle)
         case .invalidGeometry: String(localized: "无法确定视频的尺寸、方向或帧时间。", bundle: voxlineLocalizationBundle)
-        case .sourceIsOutput: String(localized: "输出文件不能是原视频，请使用新的文件名。", bundle: voxlineLocalizationBundle)
-        case .invalidFileName: String(localized: "请输入不含路径的 .mp4 文件名。", bundle: voxlineLocalizationBundle)
-        case .fileAlreadyExists: String(localized: "输出文件已存在。", bundle: voxlineLocalizationBundle)
         case .invalidOutput: String(localized: "导出文件的编码、尺寸、时长或音轨不符合所选输出。", bundle: voxlineLocalizationBundle)
         case .failure(let reason): String(localized: "烧录失败：\(reason)", bundle: voxlineLocalizationBundle)
         }
@@ -106,6 +103,7 @@ public enum SubtitleBurnInExporter {
         var retained = false
         defer { if access && !retained { bookmark.url.stopAccessingSecurityScopedResource() } }
         let inspection = try await inspector.inspect(bookmark.url)
+        try inspection.requireDecodableVideo()
         guard identity.matchesContent(of: try inspection.identity(audioTrackID: identity.audioTrackID)) else {
             throw DomainValidationError.differentMedia
         }
@@ -169,23 +167,7 @@ public enum SubtitleBurnInExporter {
     public static func export(_ plan: SubtitleBurnInPlan, to destination: URL, codec: BurnInCodec, quality: BurnInQuality,
                               allowOverwrite: Bool = false,
                               progress: @escaping @MainActor (Double) -> Void) async throws {
-        let name = destination.lastPathComponent
-        guard destination.pathExtension.lowercased() == "mp4", !name.contains("\\"),
-              !name.contains("\0"), !destination.deletingPathExtension().lastPathComponent.isEmpty else {
-            throw BurnInError.invalidFileName
-        }
-        let manager = FileManager.default
-        let exists = manager.fileExists(atPath: destination.path)
-        guard destination.standardizedFileURL != plan.sourceURL.standardizedFileURL else { throw BurnInError.sourceIsOutput }
-        if exists {
-            let sourceAttributes = try manager.attributesOfItem(atPath: plan.sourceURL.path)
-            let targetAttributes = try manager.attributesOfItem(atPath: destination.path)
-            if sourceAttributes[.systemNumber] as? NSNumber == targetAttributes[.systemNumber] as? NSNumber,
-               sourceAttributes[.systemFileNumber] as? NSNumber == targetAttributes[.systemFileNumber] as? NSNumber {
-                throw BurnInError.sourceIsOutput
-            }
-            guard allowOverwrite else { throw BurnInError.fileAlreadyExists }
-        }
+        let outputFile = try VideoExportDestination(destination: destination, source: plan.sourceURL, allowOverwrite: allowOverwrite)
         try Task.checkCancellation()
         let preset = quality.preset(codec: codec)
         guard await AVAssetExportSession.compatibility(ofExportPreset: preset, with: plan.asset, outputFileType: .mp4),
@@ -203,8 +185,7 @@ public enum SubtitleBurnInExporter {
         let audioMix = AVMutableAudioMix()
         audioMix.inputParameters = [audioParameters]
         session.audioMix = audioMix
-        let temporary = destination.deletingLastPathComponent()
-            .appendingPathComponent(".\(destination.deletingPathExtension().lastPathComponent).\(UUID().uuidString).partial.mp4")
+        let temporary = outputFile.temporaryURL
         let monitor = Task { @MainActor in
             for await state in session.states(updateInterval: 0.2) {
                 if case .exporting(let value) = state { progress(value.fractionCompleted) }
@@ -238,18 +219,12 @@ public enum SubtitleBurnInExporter {
                       abs(actualSize.height - plan.renderSize.height) < 2 else { throw BurnInError.invalidOutput }
             }
             try Task.checkCancellation()
-            // Recheck for files created during export; an unconfirmed file is never overwritten.
-            if manager.fileExists(atPath: destination.path) {
-                guard allowOverwrite else { throw BurnInError.fileAlreadyExists }
-                _ = try manager.replaceItemAt(destination, withItemAt: temporary)
-            } else { try manager.moveItem(at: temporary, to: destination) }
+            try outputFile.publish()
             progress(1)
         } catch {
             session.cancelExport()
-            if manager.fileExists(atPath: temporary.path) {
-                do { try manager.removeItem(at: temporary) }
-                catch let cleanupError { throw BurnInError.failure(String(localized: "\(error.localizedDescription)；临时文件清理失败：\(cleanupError.localizedDescription)", bundle: voxlineLocalizationBundle)) }
-            }
+            do { try outputFile.removeTemporaryFile() }
+            catch let cleanupError { throw BurnInError.failure(String(localized: "\(error.localizedDescription)；临时文件清理失败：\(cleanupError.localizedDescription)", bundle: voxlineLocalizationBundle)) }
             if Task.isCancelled { throw CancellationError() }
             throw error
         }

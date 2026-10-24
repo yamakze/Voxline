@@ -203,12 +203,12 @@ struct SubtitleEmbeddingTests {
         let output = directory.appendingPathComponent("output.mp4")
         let original = Data("existing-output".utf8)
         try original.write(to: output)
-        await #expect(throws: BurnInError.fileAlreadyExists) {
+        await #expect(throws: VideoExportFileError.fileAlreadyExists) {
             try await SubtitleEmbeddingExporter.export(item: item, kind: .source, to: output, mediaStore: store)
         }
         let link = directory.appendingPathComponent("original.mp4")
         try FileManager.default.linkItem(at: source, to: link)
-        await #expect(throws: BurnInError.sourceIsOutput) {
+        await #expect(throws: VideoExportFileError.sourceIsOutput) {
             try await SubtitleEmbeddingExporter.export(item: item, kind: .source, to: link, allowOverwrite: true, mediaStore: store)
         }
         var work: Task<Void, Error>?

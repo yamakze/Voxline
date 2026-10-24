@@ -143,7 +143,7 @@ struct SubtitleBurnInSheet: View {
     private func startExport(allowOverwrite: Bool) {
         guard let directory = targetDirectory else { return }
         guard !session.fileName.contains("/"), !session.fileName.contains("\\") else {
-            session.errorMessage = BurnInError.invalidFileName.localizedDescription
+            session.errorMessage = VideoExportFileError.invalidFileName.localizedDescription
             return
         }
         session.startExport(to: directory.appendingPathComponent(session.fileName), accessDirectory: directory, allowOverwrite: allowOverwrite)

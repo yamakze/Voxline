@@ -106,6 +106,7 @@ public final class MediaPlaybackController {
             var retainsAccess = false
             defer { if accessStarted && !retainsAccess { bookmark.url.stopAccessingSecurityScopedResource() } }
             let inspection = try await inspector.inspect(bookmark.url)
+            if item.kind == .video { try inspection.requireDecodableVideo() }
             let current = try inspection.identity(audioTrackID: identity.audioTrackID)
             guard identity.matchesContent(of: current) else { throw DomainValidationError.differentMedia }
             if bookmark.isStale {
