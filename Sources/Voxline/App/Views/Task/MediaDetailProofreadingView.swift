@@ -234,16 +234,9 @@ public struct MediaDetailProofreadingView: View {
                 Group {
                 if let player = playbackController.player, playbackController.isReady {
                     if item.kind == .video {
-                        NativeVideoPlayer(player: player)
+                        NativeVideoPlayer(player: player, pausedFrame: playbackController.pausedVideoFrame?.image)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(Color.black)
-                            .overlay {
-                                if let frame = playbackController.pausedVideoFrame {
-                                    Image(decorative: frame.image, scale: 1)
-                                        .resizable().scaledToFit()
-                                        .allowsHitTesting(false).accessibilityHidden(true)
-                                }
-                            }
                     } else {
                         // Podcasts Audio artwork style
                         ZStack {
