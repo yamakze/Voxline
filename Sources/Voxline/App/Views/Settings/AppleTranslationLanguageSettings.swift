@@ -5,6 +5,12 @@ import AppKit
 #endif
 
 struct AppleTranslationLanguageSettings: View {
+    private struct StatusRequest: Equatable {
+        let source: String
+        let target: String
+        let refreshID: UUID
+    }
+
     @Binding var source: String
     @Binding var target: String
     @Binding var batchSize: Int
@@ -161,7 +167,7 @@ struct AppleTranslationLanguageSettings: View {
             preparationID = nil
         }
         #endif
-        .task(id: source + "→" + target + refreshID.uuidString) {
+        .task(id: StatusRequest(source: source, target: target, refreshID: refreshID)) {
             do {
                 let (from, to) = try await AppleTranslationCoordinator.languagePair(sourceID: source, targetID: target)
                 let currentStatus = await LanguageAvailability().status(from: from, to: to)

@@ -11,6 +11,7 @@ public struct TimeOffsetSheet: View {
     @State private var offsetText = "0.000"
     @State private var validationError: String?
     @State private var saveError: String?
+    @State private var hasChanges = false
     @State private var shiftedCues: [SubtitleCue] = []
 
     public init(cues: [SubtitleCue], mediaDurationMilliseconds: Int64? = nil,
@@ -66,7 +67,7 @@ public struct TimeOffsetSheet: View {
                         .font(.callout)
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                } else if shiftedCues != cues {
+                } else if hasChanges {
                     if let first = cues.first, let shifted = shiftedCues.first {
                         let origStr = TimecodeFormatter.formatTimestamp(milliseconds: first.startMilliseconds)
                         let newStr = TimecodeFormatter.formatTimestamp(milliseconds: shifted.startMilliseconds)
@@ -90,7 +91,7 @@ public struct TimeOffsetSheet: View {
                     applyOffset()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(shiftedCues == cues || validationError != nil)
+                .disabled(!hasChanges || validationError != nil)
                 .keyboardShortcut(.defaultAction)
             }
         }
@@ -116,9 +117,11 @@ public struct TimeOffsetSheet: View {
             }
             let milliseconds = try SubtitleTimeOffset.milliseconds(from: seconds)
             shiftedCues = try SubtitleTimeOffset.shifted(cues, by: milliseconds, withinDuration: mediaDurationMilliseconds)
+            hasChanges = shiftedCues != cues
             validationError = nil
         } catch {
             shiftedCues = []
+            hasChanges = false
             validationError = error.localizedDescription
         }
     }

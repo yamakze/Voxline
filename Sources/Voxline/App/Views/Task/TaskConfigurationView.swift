@@ -611,7 +611,7 @@ public struct TaskConfigurationView: View {
                             let selectedProtocol = session.selectedCloudServiceID == session.originalTask.parameters.transcription.cloud?.serviceID
                                 ? session.originalTask.parameters.transcription.cloud?.protocolKind ?? .audioTranscriptions
                                 : session.selectedCloudServiceID.flatMap { id in cloudStore.services.first(where: { $0.id == id })?.protocolKind } ?? .audioTranscriptions
-                            LanguagePicker(title: String(localized: "语言代码", bundle: appLocalizationBundle), selection: $session.languageCode, identifiers: cloudLanguageIdentifiers(for: selectedProtocol))
+                            LanguagePicker(title: String(localized: "语言代码", bundle: appLocalizationBundle), selection: $session.languageCode, identifiers: (selectedProtocol).languageIdentifiers)
                         }
                     }
                 }
@@ -771,16 +771,6 @@ public struct TaskConfigurationView: View {
         } catch {
             session.errorMessage = error.localizedDescription
         }
-    }
-
-    private func cloudLanguageIdentifiers(for proto: CloudTranscriptionProtocol) -> [String] {
-        let allowedRange: ClosedRange<Int> = proto == .qwenAudioChat ? 2...3 : 2...2
-        let baseCodes = Locale.LanguageCode.isoLanguageCodes.map(\.identifier)
-        let extraCodes = proto == .qwenAudioChat ? ["yue", "fil"] : []
-        let filtered = (baseCodes + extraCodes).filter { code in
-            allowedRange.contains(code.count) && code.allSatisfy({ $0.isASCII && $0.isLetter })
-        }
-        return Array(Set(filtered)).sorted()
     }
 
     // MARK: - Media Drag & Drop Zone

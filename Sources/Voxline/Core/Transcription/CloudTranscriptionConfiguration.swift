@@ -5,6 +5,15 @@ public enum CloudTranscriptionProtocol: String, Codable, CaseIterable, Sendable 
 
     public var usesSpeechChunks: Bool { self != .audioTranscriptions }
 
+    public var languageIdentifiers: [String] {
+        self == .qwenAudioChat ? Self.qwenLanguages : Self.twoLetterLanguages
+    }
+
+    private static let twoLetterLanguages = Locale.LanguageCode.isoLanguageCodes.map(\.identifier)
+        .filter { $0.count == 2 && $0.allSatisfy { $0.isASCII && $0.isLetter } }.sorted()
+    private static let qwenLanguages = Array(Set(Locale.LanguageCode.isoLanguageCodes.map(\.identifier) + ["yue", "fil"]))
+        .filter { (2...3).contains($0.count) && $0.allSatisfy { $0.isASCII && $0.isLetter } }.sorted()
+
     public var label: String {
         switch self {
         case .audioTranscriptions: "Audio Transcriptions"

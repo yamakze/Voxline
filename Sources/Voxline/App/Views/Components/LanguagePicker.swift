@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct LanguagePicker: View {
     let title: String
     @Binding var selection: String

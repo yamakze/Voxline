@@ -81,6 +81,8 @@ public struct StorageBreakdownBar<Trailing: View>: View {
 public struct PasswordVisibilityField: View {
     public let title: String
     @Binding public var text: String
+    private enum Field { case plain, secure }
+    @FocusState private var focusedField: Field?
     @State private var isRevealed: Bool = false
 
     public init(_ title: String, text: Binding<String>) {
@@ -92,15 +94,16 @@ public struct PasswordVisibilityField: View {
         HStack(spacing: 6) {
             Group {
                 if isRevealed {
-                    TextField(title, text: $text)
+                    TextField(title, text: $text).focused($focusedField, equals: .plain)
                 } else {
-                    SecureField(title, text: $text)
+                    SecureField(title, text: $text).focused($focusedField, equals: .secure)
                 }
             }
             .textFieldStyle(.roundedBorder)
 
             Button {
                 isRevealed.toggle()
+                focusedField = isRevealed ? .plain : .secure
             } label: {
                 Image(systemName: isRevealed ? "eye.slash" : "eye")
                     .font(.body)
