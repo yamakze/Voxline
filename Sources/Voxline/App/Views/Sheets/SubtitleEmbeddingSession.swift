@@ -13,7 +13,6 @@ final class SubtitleEmbeddingSession {
     var fileName: String
     var errorMessage: String?
     var exportedURL: URL?
-    var requiresOverwriteConfirmation = false
     private(set) var isExporting = false
     private(set) var progress: Double = 0
     @ObservationIgnored private var exportTask: Task<Void, Never>?
@@ -37,7 +36,6 @@ final class SubtitleEmbeddingSession {
     func startExport(to destination: URL, accessDirectory directory: URL, allowOverwrite: Bool) {
         errorMessage = nil
         exportedURL = nil
-        requiresOverwriteConfirmation = false
         isExporting = true
         progress = 0
         let kind = selectedKind
@@ -55,9 +53,6 @@ final class SubtitleEmbeddingSession {
                 exportedURL = destination
             } catch is CancellationError {
                 errorMessage = String(localized: "导出已取消。", bundle: appLocalizationBundle)
-            } catch VideoExportFileError.fileAlreadyExists {
-                if allowOverwrite { errorMessage = VideoExportFileError.fileAlreadyExists.localizedDescription }
-                else { requiresOverwriteConfirmation = true }
             } catch {
                 errorMessage = error.localizedDescription
             }

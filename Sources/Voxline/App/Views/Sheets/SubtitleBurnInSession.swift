@@ -34,7 +34,6 @@ final class SubtitleBurnInSession {
     var errorMessage: String?
     var exportedURL: URL?
     private(set) var temporaryExport: TemporaryExportFile?
-    var requiresOverwriteConfirmation = false
     private(set) var isPreparing = false
     private(set) var isExporting = false
     private(set) var progress: Double = 0
@@ -78,7 +77,6 @@ final class SubtitleBurnInSession {
         errorMessage = nil
         exportedURL = nil
         temporaryExport = nil
-        requiresOverwriteConfirmation = false
         operation = Task { @MainActor in
             let access = directory.startAccessingSecurityScopedResource()
             defer {
@@ -94,9 +92,6 @@ final class SubtitleBurnInSession {
                 try Task.checkCancellation()
                 temporaryExport = temporaryFile
                 exportedURL = destination
-            } catch VideoExportFileError.fileAlreadyExists {
-                if allowOverwrite { errorMessage = VideoExportFileError.fileAlreadyExists.localizedDescription }
-                else { requiresOverwriteConfirmation = true }
             } catch {
                 errorMessage = error is CancellationError ? String(localized: "烧录已取消，未发布输出文件。", bundle: appLocalizationBundle) : error.localizedDescription
             }

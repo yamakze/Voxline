@@ -8,8 +8,7 @@ import VoxlineMedia
 struct SubtitleBurnInSheet: View {
     @State private var session: SubtitleBurnInSession
     @Environment(\.dismiss) private var dismiss
-    @State private var targetDirectory: URL?
-    @State private var showDirectoryPicker = false
+    @State private var isChoosingDestination = false
 
     init(item: TaskMediaItem) {
         _session = State(initialValue: SubtitleBurnInSession(item: item))
@@ -56,9 +55,9 @@ struct SubtitleBurnInSheet: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
                         BurnInPreviewCuePicker(options: session.previewOptions, selection: $session.previewCueID)
-                        .disabled(session.isPreparing || session.isExporting)
+                        .disabled(session.isPreparing || session.isExporting || isChoosingDestination)
                         Button(session.isPreparing ? String(localized: "正在生成预览…", bundle: appLocalizationBundle) : String(localized: "更新预览", bundle: appLocalizationBundle)) { session.refreshPreview() }
-                            .disabled(session.isPreparing || session.isExporting)
+                            .disabled(session.isPreparing || session.isExporting || isChoosingDestination)
                         if let plan = session.plan {
                             Text("\(Int(plan.renderSize.width)) × \(Int(plan.renderSize.height)) · \(1 / plan.videoComposition.frameDuration.seconds, specifier: "%.2f") fps")
                                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
@@ -86,14 +85,8 @@ struct SubtitleBurnInSheet: View {
                             }
                         }
                     }
-                    .disabled(session.isPreparing || session.isExporting)
+                    .disabled(session.isPreparing || session.isExporting || isChoosingDestination)
                     .frame(width: 340)
-                }
-                TextField(String(localized: "输出文件名", bundle: appLocalizationBundle), text: $session.fileName).textFieldStyle(.roundedBorder).disabled(session.isExporting)
-                HStack {
-                    Text(targetDirectory?.path ?? String(localized: "请选择保存目录", bundle: appLocalizationBundle)).lineLimit(1).truncationMode(.middle)
-                    Spacer()
-                    Button(String(localized: "选择目录…", bundle: appLocalizationBundle)) { showDirectoryPicker = true }.disabled(session.isExporting)
                 }
                 if let errorMessage = session.errorMessage { Text(errorMessage).foregroundStyle(.red).textSelection(.enabled) }
                 if session.isExporting { BurnInProgressBar(session: session) }
@@ -112,10 +105,10 @@ struct SubtitleBurnInSheet: View {
                 Spacer()
                 Button(String(localized: "取消", bundle: appLocalizationBundle)) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                    .disabled(session.isPreparing || session.isExporting)
-                Button(String(localized: "烧录并导出", bundle: appLocalizationBundle)) { startExport(allowOverwrite: false) }
+                    .disabled(session.isPreparing || session.isExporting || isChoosingDestination)
+                Button(String(localized: "烧录并导出", bundle: appLocalizationBundle)) { startExport() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(session.plan == nil || session.previewImage == nil || targetDirectory == nil || session.isPreparing || session.isExporting)
+                    .disabled(session.plan == nil || session.previewImage == nil || session.isPreparing || session.isExporting || isChoosingDestination)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -128,25 +121,20 @@ struct SubtitleBurnInSheet: View {
             }
         }
         .frame(width: 820)
-        .onChange(of: session.fileName) { _, _ in session.exportedURL = nil }
         .onDisappear { session.close() }
-        .fileImporter(isPresented: $showDirectoryPicker, allowedContentTypes: [.folder]) { result in
-            do { targetDirectory = try result.get(); session.errorMessage = nil; session.exportedURL = nil }
-            catch { session.errorMessage = error.localizedDescription }
-        }
-        .alert(String(localized: "输出文件已存在", bundle: appLocalizationBundle), isPresented: $session.requiresOverwriteConfirmation) {
-            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
-            Button(String(localized: "覆盖并导出", bundle: appLocalizationBundle), role: .destructive) { startExport(allowOverwrite: true) }
-        } message: { Text(String(localized: "是否覆盖“\(session.fileName)”？原视频始终保留。", bundle: appLocalizationBundle)) }
     }
 
-    private func startExport(allowOverwrite: Bool) {
-        guard let directory = targetDirectory else { return }
-        guard !session.fileName.contains("/"), !session.fileName.contains("\\") else {
-            session.errorMessage = VideoExportFileError.invalidFileName.localizedDescription
-            return
+    private func startExport() {
+        guard !session.isPreparing, !session.isExporting, !isChoosingDestination else { return }
+        isChoosingDestination = true
+        Task { @MainActor in
+            defer { isChoosingDestination = false }
+            guard let url = await MacExportDestinationPicker.choose(
+                suggestedName: session.fileName,
+                contentType: .mpeg4Movie
+            ) else { return }
+            session.startExport(to: url, accessDirectory: url, allowOverwrite: true)
         }
-        session.startExport(to: directory.appendingPathComponent(session.fileName), accessDirectory: directory, allowOverwrite: allowOverwrite)
     }
 
 }
