@@ -398,7 +398,7 @@ public final class TaskProcessingQueue {
         }
         if batchIDs.isEmpty {
             try updateMedia(taskID: taskID, mediaID: mediaID) {
-                $0.status = $0.cues.allSatisfy(\.hasTranslation) ? .completed : .needsTranslation
+                try $0.settleProcessingStatus()
             }
             return
         }

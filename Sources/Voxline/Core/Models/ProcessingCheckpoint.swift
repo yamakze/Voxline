@@ -301,14 +301,7 @@ public extension TaskMediaItem {
         }
         record.chunks[index].state = .completed(.init(sourceID: result.sourceID))
         updated.checkpoint = record
-        if let reason = record.chunks.compactMap({ chunk -> String? in
-            if case .failed(let reason, _) = chunk.state { return reason }
-            return nil
-        }).first { updated.status = .failed(reason: reason) }
-        else if record.chunks.contains(where: { if case .cancelled = $0.state { true } else { false } }) { updated.status = .cancelled }
-        else if record.chunks.contains(where: { $0.state == .interrupted }) { updated.status = .interrupted(stage: .transcription) }
-        else { updated.status = record.chunks.allSatisfy(\.isCompleted) && record.parameters.translation == nil ? .completed : .pending }
-        try updated.validate()
+        try updated.settleProcessingStatus()
         self = updated
     }
 
@@ -319,11 +312,12 @@ public extension TaskMediaItem {
         guard let index = position ?? record.chunks.firstIndex(where: { $0.id == chunkID }),
               record.chunks.indices.contains(index), record.chunks[index].id == chunkID else { throw CheckpointError.unknownWork }
         guard record.chunks[index].state == .running(sourceID: sourceID) else { throw CheckpointError.staleResult }
+        guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw CheckpointError.invalidRecord }
+        if let evidence { try record.validateEvidence(evidence, range: record.chunks[index].range) }
         var updated = self
         record.chunks[index].state = .failed(reason: reason, evidence: evidence)
         updated.checkpoint = record
         updated.status = .failed(reason: reason)
-        try updated.validate()
         self = updated
     }
 
@@ -334,11 +328,14 @@ public extension TaskMediaItem {
         guard let index = position ?? record.chunks.firstIndex(where: { $0.id == chunkID }),
               record.chunks.indices.contains(index), record.chunks[index].id == chunkID else { throw CheckpointError.unknownWork }
         guard record.chunks[index].state == .running(sourceID: sourceID) else { throw CheckpointError.staleResult }
+        if let evidence {
+            try record.validateEvidence(evidence, range: record.chunks[index].range)
+            guard evidence.outcome == .cancelled else { throw CheckpointError.invalidRecord }
+        }
         var updated = self
         record.chunks[index].state = .cancelled(evidence: evidence)
         updated.checkpoint = record
         updated.status = .cancelled
-        try updated.validate()
         self = updated
     }
 
@@ -413,37 +410,62 @@ public extension TaskMediaItem {
         record.translationBatches[index].state = .completed
         record.translationBatches[index].inputs = []
         updated.checkpoint = record
-        if updated.cues.allSatisfy(\.hasTranslation) { updated.status = .completed }
-        else {
-            var failure: String?
-            var cancelled = false
-            var interrupted = false
-            var pending = false
-            for other in record.translationBatches where !other.isCompleted {
-                switch other.state {
-                case .pending, .running:
-                    // Pending inputs are checked when they begin, not after every other commit.
-                    pending = true
-                case .failed, .cancelled, .interrupted:
-                    guard other.inputs.allSatisfy({ input in
-                        workIndex.cuePosition(input.cueID, in: updated.cues).map { input.matches(updated.cues[$0]) } == true
-                    }) else { continue }
-                    switch other.state {
-                    case .failed(let reason): if failure == nil { failure = reason }
-                    case .cancelled: cancelled = true
-                    case .interrupted: interrupted = true
-                    default: break
-                    }
-                case .completed: break
-                }
-            }
-            if let failure { updated.status = .failed(reason: failure) }
-            else if cancelled { updated.status = .cancelled }
-            else if interrupted { updated.status = .interrupted(stage: .translation) }
-            else { updated.status = pending ? .running(stage: .translation) : .needsTranslation }
-        }
+        try updated.settleProcessingStatus(using: workIndex)
         // Only text and this batch changed; full document validation belongs to persistence.
         self = updated
+    }
+
+    /// Reconcile durable work after a successful commit without losing an active execution stage.
+    mutating func settleProcessingStatus(using workIndex: TranslationCheckpointIndex? = nil) throws {
+        let record = try requiredCheckpoint()
+        var failure: String?
+        var cancelled = false
+        var interrupted = false
+        var unfinished = false
+        for chunk in record.chunks {
+            switch chunk.state {
+            case .failed(let reason, _): if failure == nil { failure = reason }
+            case .cancelled: cancelled = true
+            case .interrupted: interrupted = true
+            case .pending, .running: unfinished = true
+            case .completed: break
+            }
+        }
+        if let failure { status = .failed(reason: failure); return }
+        if cancelled { status = .cancelled; return }
+        if interrupted { status = .interrupted(stage: .transcription); return }
+        if unfinished {
+            status = .pending
+            return
+        }
+        if subtitleAvailability(translationEnabled: record.parameters.translation != nil) == .completed {
+            status = .completed
+            return
+        }
+        guard !record.translationBatches.isEmpty else { status = .needsTranslation; return }
+        let workIndex = try workIndex ?? TranslationCheckpointIndex(item: self)
+        var pending = false
+        for batch in record.translationBatches where !batch.isCompleted {
+            switch batch.state {
+            case .pending, .running: pending = true
+            case .failed, .cancelled, .interrupted:
+                guard batch.inputs.allSatisfy({ input in
+                    workIndex.cuePosition(input.cueID, in: cues).map { input.matches(cues[$0]) } == true
+                }) else { continue }
+                switch batch.state {
+                case .failed(let reason): if failure == nil { failure = reason }
+                case .cancelled: cancelled = true
+                case .interrupted: interrupted = true
+                default: break
+                }
+            case .completed: break
+            }
+        }
+        if let failure { status = .failed(reason: failure) }
+        else if cancelled { status = .cancelled }
+        else if interrupted { status = .interrupted(stage: .translation) }
+        else if pending { status = status == .running(stage: .translation) ? .running(stage: .translation) : .pending }
+        else { status = .needsTranslation }
     }
 
     mutating func recordTranslationFailure(_ batchID: UUID, reason: String, pauseForRetry: Bool = false) throws {

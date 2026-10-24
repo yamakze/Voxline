@@ -70,8 +70,7 @@ public struct ProcessingTask: Codable, Equatable, Identifiable, Sendable {
             updated.items[index].checkpoint = checkpoint
             if translationChanged && updated.items[index].hasSourceSubtitles {
                 let item = updated.items[index]
-                updated.items[index].status = parameters.translation == nil || item.cues.allSatisfy(\.hasTranslation)
-                    ? .completed : .needsTranslation
+                updated.items[index].status = item.subtitleAvailability(translationEnabled: parameters.translation != nil)
             }
         }
         try updated.validate()
@@ -237,8 +236,11 @@ public struct TaskMediaItem: Codable, Equatable, Identifiable, Sendable {
     internal mutating func updateProofreadingStatus() {
         guard status == .completed || status == .needsTranslation,
               let checkpoint, hasSourceSubtitles else { return }
-        status = checkpoint.parameters.translation == nil || cues.allSatisfy(\.hasTranslation)
-            ? .completed : .needsTranslation
+        status = subtitleAvailability(translationEnabled: checkpoint.parameters.translation != nil)
+    }
+
+    internal func subtitleAvailability(translationEnabled: Bool) -> TaskMediaStatus {
+        !translationEnabled || cues.allSatisfy(\.hasTranslation) ? .completed : .needsTranslation
     }
 
     private var isProcessing: Bool {
@@ -351,7 +353,7 @@ public extension ProcessingTask {
         updated.items[index].importedSubtitleOrigin = origin
         updated.items[index].unmatchedTranslationEntries = nil
         updated.items[index].checkpoint = .init(media: media, parameters: parameters, chunks: [], translationBatches: [])
-        updated.items[index].status = parameters.translation == nil ? .completed : .needsTranslation
+        updated.items[index].status = updated.items[index].subtitleAvailability(translationEnabled: parameters.translation != nil)
         updated.startedAt = updated.startedAt ?? Date()
         try updated.validate()
         self = updated
