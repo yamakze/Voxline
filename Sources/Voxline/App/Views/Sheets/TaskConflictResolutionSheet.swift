@@ -125,28 +125,57 @@ public struct TaskConflictResolutionSheet: View {
                 .padding(20)
             }
 
-            HStack(spacing: 12) {
-                if let draft = draftTask {
-                    Button(String(localized: "草稿另存为副本", bundle: appLocalizationBundle)) {
-                        saveRecoveryCopy(draft)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    if let draft = draftTask {
+                        Button(String(localized: "草稿另存为副本", bundle: appLocalizationBundle)) {
+                            saveRecoveryCopy(draft)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.regular)
+                        .disabled(isResolving)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
-                    .disabled(isResolving)
+
+                    Spacer()
+
+                    Button(String(localized: "关闭", bundle: appLocalizationBundle)) { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                        .disabled(isResolving)
+
+                    Button(String(localized: "保留选定版本", bundle: appLocalizationBundle)) {
+                        keepSelectedVersion()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(isResolving || isTaskBusy || selectedVersionID == nil)
                 }
 
-                Spacer()
+                VStack(spacing: 8) {
+                    Button(String(localized: "保留选定版本", bundle: appLocalizationBundle)) {
+                        keepSelectedVersion()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .frame(maxWidth: .infinity)
+                    .disabled(isResolving || isTaskBusy || selectedVersionID == nil)
 
-                Button(String(localized: "关闭", bundle: appLocalizationBundle)) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(isResolving)
+                    HStack(spacing: 12) {
+                        if let draft = draftTask {
+                            Button(String(localized: "草稿另存为副本", bundle: appLocalizationBundle)) {
+                                saveRecoveryCopy(draft)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.regular)
+                            .disabled(isResolving)
+                        }
 
-                Button(String(localized: "保留选定版本", bundle: appLocalizationBundle)) {
-                    keepSelectedVersion()
+                        Spacer()
+
+                        Button(String(localized: "关闭", bundle: appLocalizationBundle)) { dismiss() }
+                            .keyboardShortcut(.cancelAction)
+                            .disabled(isResolving)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(isResolving || isTaskBusy || selectedVersionID == nil)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
@@ -162,7 +191,9 @@ public struct TaskConflictResolutionSheet: View {
             .background(.regularMaterial)
             #endif
         }
+        #if os(macOS)
         .frame(minWidth: 540, minHeight: 480)
+        #endif
         .onAppear {
             loadVersions()
         }

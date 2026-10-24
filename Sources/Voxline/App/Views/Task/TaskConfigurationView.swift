@@ -686,6 +686,7 @@ public struct TaskConfigurationView: View {
                                 VStack(alignment: .trailing, spacing: 4) {
                                     TextEditor(text: $session.translationSystemPrompt)
                                         .font(.callout)
+                                        .scrollContentBackground(.hidden)
                                         .frame(minHeight: 75)
                                         .padding(4)
                                         .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))

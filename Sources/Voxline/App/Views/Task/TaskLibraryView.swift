@@ -9,7 +9,6 @@ public struct TaskLibraryView: View {
     @State private var deletingEntry: TaskLibrary.Entry?
     @State private var conflictResolutionTaskID: UUID?
     @State private var errorMessage: String?
-    @State private var hoveredEntryID: String?
     @State private var isEditing = false
     var onSelectTask: ((ProcessingTask) -> Void)?
     var onNewTask: (() -> Void)?
@@ -264,19 +263,7 @@ public struct TaskLibraryView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .nativeControlSurface()
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(rowBorderColor(for: entry.id), lineWidth: 1.2)
-        )
-        .onHover { isHovered in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                if isHovered {
-                    hoveredEntryID = entry.id
-                } else if hoveredEntryID == entry.id {
-                    hoveredEntryID = nil
-                }
-            }
-        }
+        .overlay { TaskEntryHoverBorder() }
         .contentShape(Rectangle())
         .onTapGesture {
             guard !isEditing else { return }
@@ -330,14 +317,6 @@ public struct TaskLibraryView: View {
         }
     }
 
-    private func rowBorderColor(for entryID: String) -> Color {
-        if hoveredEntryID == entryID {
-            return Color.voxlineAccent.opacity(0.45)
-        } else {
-            return Color.clear
-        }
-    }
-
     private func moveUp(entry: TaskLibrary.Entry) {
         guard let index = library.entries.firstIndex(where: { $0.id == entry.id }), index > 0 else { return }
         let target = library.entries[index - 1]
@@ -378,6 +357,18 @@ public struct TaskLibraryView: View {
             components.append(problem)
         }
         return components.joined(separator: " · ")
+    }
+}
+
+private struct TaskEntryHoverBorder: View {
+    @State private var isHovered = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(isHovered ? Color.voxlineAccent.opacity(0.45) : .clear, lineWidth: 1.2)
+            .onHover { hovered in
+                withAnimation(.easeInOut(duration: 0.15)) { isHovered = hovered }
+            }
     }
 }
 

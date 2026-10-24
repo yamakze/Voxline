@@ -51,6 +51,44 @@ struct InsertSubtitleSheet: View {
             .background(.regularMaterial)
             #endif
 
+            formContent
+
+            HStack {
+                Spacer()
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button(String(localized: "保存", bundle: appLocalizationBundle)) {
+                    save()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
+            .background(.regularMaterial)
+            #endif
+        }
+        #if os(macOS)
+        .frame(width: 480)
+        .frame(minHeight: 440, maxHeight: 560)
+        #endif
+    }
+
+    private var formContent: some View {
+        VStack(spacing: 0) {
             Form {
                 Section(String(localized: "时间轴", bundle: appLocalizationBundle)) {
                     LabeledContent(String(localized: "开始时间", bundle: appLocalizationBundle)) {
@@ -82,6 +120,7 @@ struct InsertSubtitleSheet: View {
                             .foregroundStyle(.secondary)
                         TextEditor(text: $sourceText)
                             .font(.body)
+                            .scrollContentBackground(.hidden)
                             .frame(minHeight: 56, maxHeight: 110)
                             .padding(4)
                             .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
@@ -97,6 +136,7 @@ struct InsertSubtitleSheet: View {
                             .foregroundStyle(.secondary)
                         TextEditor(text: $translationText)
                             .font(.body)
+                            .scrollContentBackground(.hidden)
                             .frame(minHeight: 56, maxHeight: 110)
                             .padding(4)
                             .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
@@ -121,38 +161,7 @@ struct InsertSubtitleSheet: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 4)
             }
-
-            HStack {
-                Spacer()
-                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button(String(localized: "保存", bundle: appLocalizationBundle)) {
-                    save()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            #if os(macOS)
-            .background {
-                Color(nsColor: .windowBackgroundColor).opacity(0.7)
-                    .background(.regularMaterial)
-            }
-            .overlay(alignment: .top) {
-                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
-            }
-            #else
-            .background(.regularMaterial)
-            #endif
         }
-        #if os(macOS)
-        .frame(width: 480, height: 460)
-        #endif
     }
 
     private func save() {
@@ -238,6 +247,43 @@ struct AdjustTimingSheet: View {
             .background(.regularMaterial)
             #endif
 
+            formContent
+
+            HStack {
+                Spacer()
+                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button(String(localized: "保存", bundle: appLocalizationBundle)) {
+                    save()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            #if os(macOS)
+            .background {
+                Color(nsColor: .windowBackgroundColor).opacity(0.7)
+                    .background(.regularMaterial)
+            }
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
+            }
+            #else
+            .background(.regularMaterial)
+            #endif
+        }
+        #if os(macOS)
+        .frame(width: 460)
+        .frame(minHeight: 360, maxHeight: 480)
+        #endif
+    }
+
+    private var formContent: some View {
+        VStack(spacing: 0) {
             Form {
                 Section(String(localized: "当前字幕", bundle: appLocalizationBundle)) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -289,37 +335,7 @@ struct AdjustTimingSheet: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 4)
             }
-
-            HStack {
-                Spacer()
-                Button(String(localized: "取消", bundle: appLocalizationBundle)) {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button(String(localized: "保存", bundle: appLocalizationBundle)) {
-                    save()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            #if os(macOS)
-            .background {
-                Color(nsColor: .windowBackgroundColor).opacity(0.7)
-                    .background(.regularMaterial)
-            }
-            .overlay(alignment: .top) {
-                Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
-            }
-            #else
-            .background(.regularMaterial)
-            #endif
         }
-        #if os(macOS)
-        .frame(width: 460, height: 380)
-        #endif
     }
 
     private func save() {
@@ -412,107 +428,7 @@ struct SplitSubtitleSheet: View {
             .background(.regularMaterial)
             #endif
 
-            Form {
-                Section(String(localized: "拆分时间点", bundle: appLocalizationBundle)) {
-                    LabeledContent(String(localized: "时间点", bundle: appLocalizationBundle)) {
-                        HStack(spacing: 4) {
-                            TextField("", text: $splitSecondsText)
-                                .textFieldStyle(.roundedBorder)
-                                .font(.body.monospacedDigit())
-                                .frame(width: 90)
-                            Text(String(localized: "秒", bundle: appLocalizationBundle))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    let startStr = TimecodeFormatter.formatTimestamp(milliseconds: cue.startMilliseconds)
-                    let endStr = TimecodeFormatter.formatTimestamp(milliseconds: cue.endMilliseconds)
-                    Text(String(format: String(localized: "原时间：%@ – %@", bundle: appLocalizationBundle), locale: .current, startStr, endStr))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-
-                Section(String(localized: "前半句", bundle: appLocalizationBundle)) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(String(localized: "前半句原文", bundle: appLocalizationBundle))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $firstSource)
-                            .font(.body)
-                            .frame(minHeight: 48, maxHeight: 85)
-                            .padding(4)
-                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                            )
-                    }
-
-                    if cue.hasTranslation {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(String(localized: "前半句译文", bundle: appLocalizationBundle))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            TextEditor(text: $firstTranslation)
-                                .font(.body)
-                                .frame(minHeight: 48, maxHeight: 85)
-                                .padding(4)
-                                .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
-                                .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                            )
-                        }
-                    }
-                }
-
-                Section(String(localized: "后半句", bundle: appLocalizationBundle)) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(String(localized: "后半句原文", bundle: appLocalizationBundle))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $secondSource)
-                            .font(.body)
-                            .frame(minHeight: 48, maxHeight: 85)
-                            .padding(4)
-                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                            )
-                    }
-
-                    if cue.hasTranslation {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(String(localized: "后半句译文", bundle: appLocalizationBundle))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            TextEditor(text: $secondTranslation)
-                                .font(.body)
-                                .frame(minHeight: 48, maxHeight: 85)
-                                .padding(4)
-                                .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
-                                .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                            )
-                        }
-                    }
-                }
-            }
-            .formStyle(.grouped)
-
-            if let errorMessage {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.circle")
-                        .foregroundStyle(.red)
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 4)
-            }
+            formContent
 
             HStack {
                 Spacer()
@@ -543,8 +459,119 @@ struct SplitSubtitleSheet: View {
             #endif
         }
         #if os(macOS)
-        .frame(width: 500, height: 560)
+        .frame(width: 500)
+        .frame(minHeight: 520, maxHeight: 680)
         #endif
+    }
+
+    private var formContent: some View {
+        VStack(spacing: 0) {
+            Form {
+                Section(String(localized: "拆分时间点", bundle: appLocalizationBundle)) {
+                    LabeledContent(String(localized: "时间点", bundle: appLocalizationBundle)) {
+                        HStack(spacing: 4) {
+                            TextField("", text: $splitSecondsText)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.body.monospacedDigit())
+                                .frame(width: 90)
+                            Text(String(localized: "秒", bundle: appLocalizationBundle))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    let startStr = TimecodeFormatter.formatTimestamp(milliseconds: cue.startMilliseconds)
+                    let endStr = TimecodeFormatter.formatTimestamp(milliseconds: cue.endMilliseconds)
+                    Text(String(format: String(localized: "原时间：%@ – %@", bundle: appLocalizationBundle), locale: .current, startStr, endStr))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+
+                Section(String(localized: "前半句", bundle: appLocalizationBundle)) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "前半句原文", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $firstSource)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 48, maxHeight: 85)
+                            .padding(4)
+                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                    }
+
+                    if cue.hasTranslation {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(String(localized: "前半句译文", bundle: appLocalizationBundle))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $firstTranslation)
+                                .font(.body)
+                                .scrollContentBackground(.hidden)
+                                .frame(minHeight: 48, maxHeight: 85)
+                                .padding(4)
+                                .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                                .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                        }
+                    }
+                }
+
+                Section(String(localized: "后半句", bundle: appLocalizationBundle)) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "后半句原文", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $secondSource)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 48, maxHeight: 85)
+                            .padding(4)
+                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                    }
+
+                    if cue.hasTranslation {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(String(localized: "后半句译文", bundle: appLocalizationBundle))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $secondTranslation)
+                                .font(.body)
+                                .scrollContentBackground(.hidden)
+                                .frame(minHeight: 48, maxHeight: 85)
+                                .padding(4)
+                                .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                                .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                        }
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            if let errorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
+            }
+        }
     }
 
     private func save() {
@@ -664,69 +691,7 @@ struct MergeSubtitlesSheet: View {
             .background(.regularMaterial)
             #endif
 
-            Form {
-                Section(String(localized: "合并范围", bundle: appLocalizationBundle)) {
-                    if let first = cues.first, let last = cues.last {
-                        LabeledContent(String(localized: "起止时间", bundle: appLocalizationBundle)) {
-                            let startStr = TimecodeFormatter.formatTimestamp(milliseconds: first.startMilliseconds)
-                            let endStr = TimecodeFormatter.formatTimestamp(milliseconds: last.endMilliseconds)
-                            Text("\(startStr) – \(endStr)")
-                                .font(.body.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    LabeledContent(String(localized: "合并条数", bundle: appLocalizationBundle)) {
-                        Text(String(localized: "\(cues.count) 句", bundle: appLocalizationBundle))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Section(String(localized: "合并后内容", bundle: appLocalizationBundle)) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(String(localized: "合并后原文", bundle: appLocalizationBundle))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $mergedSource)
-                            .font(.body)
-                            .frame(minHeight: 56, maxHeight: 110)
-                            .padding(4)
-                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                            )
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(String(localized: "合并后译文（选填）", bundle: appLocalizationBundle))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $mergedTranslation)
-                            .font(.body)
-                            .frame(minHeight: 56, maxHeight: 110)
-                            .padding(4)
-                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                            )
-                    }
-                }
-            }
-            .formStyle(.grouped)
-
-            if let errorMessage {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.circle")
-                        .foregroundStyle(.red)
-                    Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 4)
-            }
+            formContent
 
             HStack {
                 Spacer()
@@ -757,8 +722,79 @@ struct MergeSubtitlesSheet: View {
             #endif
         }
         #if os(macOS)
-        .frame(width: 480, height: 460)
+        .frame(width: 480)
+        .frame(minHeight: 440, maxHeight: 560)
         #endif
+    }
+
+    private var formContent: some View {
+        VStack(spacing: 0) {
+            Form {
+                Section(String(localized: "合并范围", bundle: appLocalizationBundle)) {
+                    if let first = cues.first, let last = cues.last {
+                        LabeledContent(String(localized: "起止时间", bundle: appLocalizationBundle)) {
+                            let startStr = TimecodeFormatter.formatTimestamp(milliseconds: first.startMilliseconds)
+                            let endStr = TimecodeFormatter.formatTimestamp(milliseconds: last.endMilliseconds)
+                            Text("\(startStr) – \(endStr)")
+                                .font(.body.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    LabeledContent(String(localized: "合并条数", bundle: appLocalizationBundle)) {
+                        Text(String(localized: "\(cues.count) 句", bundle: appLocalizationBundle))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section(String(localized: "合并后内容", bundle: appLocalizationBundle)) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "合并后原文", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $mergedSource)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 56, maxHeight: 110)
+                            .padding(4)
+                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(String(localized: "合并后译文（选填）", bundle: appLocalizationBundle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $mergedTranslation)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .frame(minHeight: 56, maxHeight: 110)
+                            .padding(4)
+                            .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                            )
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            if let errorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
+            }
+        }
     }
 
     private func save() {

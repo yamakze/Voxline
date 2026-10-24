@@ -183,7 +183,7 @@ struct ProofreadingCueRow: View {
             } else {
                 if session.previewKind != .translation {
                     Text(cue.sourceText)
-                        .font(.system(size: isActive ? 18 : 16, weight: isActive ? .bold : .medium))
+                        .font(.system(size: 16, weight: isActive ? .semibold : .medium))
                         .lineSpacing(3)
                         .contentShape(Rectangle())
                         .onTapGesture { onSeek(cue.startMilliseconds) }
@@ -193,7 +193,7 @@ struct ProofreadingCueRow: View {
                     switch cue.translation {
                     case .succeeded(let trans, _):
                         Text(trans)
-                            .font(.system(size: isActive ? 16 : 14, weight: isActive ? .semibold : .regular))
+                            .font(.system(size: 14, weight: isActive ? .semibold : .regular))
                             .foregroundStyle(session.previewKind == .bilingual ? Color.voxlineTranslationText : .primary)
                             .lineSpacing(2)
                             .contentShape(Rectangle())

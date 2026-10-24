@@ -358,7 +358,8 @@ private struct ServiceEditorModal: View {
                 Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.4)).frame(height: 1)
             }
         }
-        .frame(width: 500, height: 480)
+        .frame(width: 500)
+        .frame(minHeight: 480, maxHeight: 620)
         .interactiveDismissDisabled(isSaving || isTesting)
         .onDisappear { connectionTask?.cancel() }
         .task { await loadCredential() }
@@ -401,13 +402,14 @@ private struct ServiceEditorModal: View {
                         VStack(alignment: .trailing, spacing: 4) {
                             TextEditor(text: $systemPrompt)
                                 .font(.callout)
+                                .scrollContentBackground(.hidden)
                                 .frame(minHeight: 75)
                                 .padding(4)
                                 .background(Color.voxlineTextBackground, in: .rect(cornerRadius: 6))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 6)
                                         .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                                    )
+                                )
 
                             Button(String(localized: "恢复默认", bundle: appLocalizationBundle)) {
                                 systemPrompt = TranslationSettings.defaultSystemPrompt

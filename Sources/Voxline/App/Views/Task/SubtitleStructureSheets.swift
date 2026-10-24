@@ -3,24 +3,25 @@ import VoxlineCore
 
 @Observable @MainActor
 final class SubtitleStructureState {
-    struct Insertion: Identifiable {
-        let id = UUID()
-        let startSeconds: Double
+    enum Presentation: Identifiable {
+        case insertion(startSeconds: Double)
+        case timing(SubtitleCue)
+        case splitting(SubtitleCue)
+        case merging([SubtitleCue])
+
+        var id: Int {
+            switch self {
+            case .insertion: 0
+            case .timing: 1
+            case .splitting: 2
+            case .merging: 3
+            }
+        }
     }
 
-    var insertion: Insertion?
-    var timingCue: SubtitleCue?
-    var splittingCue: SubtitleCue?
-    var mergingCues: [SubtitleCue]?
+    var presentation: Presentation?
 
-    func insert(at seconds: Double) {
-        insertion = Insertion(startSeconds: seconds)
-    }
-}
-
-private struct IdentifiableCueList: Identifiable {
-    var id: [UUID] { cues.map(\.id) }
-    let cues: [SubtitleCue]
+    func insert(at seconds: Double) { presentation = .insertion(startSeconds: seconds) }
 }
 
 private struct SubtitleStructureSheetsModifier: ViewModifier {
@@ -31,46 +32,43 @@ private struct SubtitleStructureSheetsModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(item: $state.insertion) { request in
-                InsertSubtitleSheet(initialStartSeconds: request.startSeconds) { newCue in
-                    var updated = item
-                    try updated.insertSubtitle(newCue)
-                    try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
-                }
-            }
-            .sheet(item: $state.timingCue) { cue in
-                AdjustTimingSheet(cue: cue) { startMs, endMs in
-                    var updated = item
-                    try updated.setSubtitleTiming(comparedTo: cue, startMilliseconds: startMs, endMilliseconds: endMs)
-                    try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
-                }
-            }
-            .sheet(item: $state.splittingCue) { cue in
-                SplitSubtitleSheet(cue: cue) { atMs, s1, s2, t1, t2 in
-                    var updated = item
-                    try updated.splitSubtitle(
-                        comparedTo: cue,
-                        atMilliseconds: atMs,
-                        firstSourceText: s1,
-                        secondSourceText: s2,
-                        firstTranslationText: t1,
-                        secondTranslationText: t2
-                    )
-                    try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
-                }
-            }
-            .sheet(item: Binding(
-                get: { state.mergingCues.map { IdentifiableCueList(cues: $0) } },
-                set: { state.mergingCues = $0?.cues }
-            )) { payload in
-                MergeSubtitlesSheet(cues: payload.cues) { mergedSource, mergedTrans in
-                    var updated = item
-                    try updated.mergeSubtitles(
-                        comparedTo: payload.cues,
-                        sourceText: mergedSource,
-                        translationText: mergedTrans
-                    )
-                    try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
+            .sheet(item: $state.presentation) { presentation in
+                switch presentation {
+                case .insertion(let startSeconds):
+                    InsertSubtitleSheet(initialStartSeconds: startSeconds) { newCue in
+                        var updated = item
+                        try updated.insertSubtitle(newCue)
+                        try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
+                    }
+                case .timing(let cue):
+                    AdjustTimingSheet(cue: cue) { startMs, endMs in
+                        var updated = item
+                        try updated.setSubtitleTiming(comparedTo: cue, startMilliseconds: startMs, endMilliseconds: endMs)
+                        try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
+                    }
+                case .splitting(let cue):
+                    SplitSubtitleSheet(cue: cue) { atMs, s1, s2, t1, t2 in
+                        var updated = item
+                        try updated.splitSubtitle(
+                            comparedTo: cue,
+                            atMilliseconds: atMs,
+                            firstSourceText: s1,
+                            secondSourceText: s2,
+                            firstTranslationText: t1,
+                            secondTranslationText: t2
+                        )
+                        try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
+                    }
+                case .merging(let cues):
+                    MergeSubtitlesSheet(cues: cues) { mergedSource, mergedTrans in
+                        var updated = item
+                        try updated.mergeSubtitles(
+                            comparedTo: cues,
+                            sourceText: mergedSource,
+                            translationText: mergedTrans
+                        )
+                        try session.saveChanges(updated, comparedTo: item, onCommit: onCommit)
+                    }
                 }
             }
     }

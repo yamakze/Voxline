@@ -463,9 +463,9 @@ public struct MediaDetailProofreadingView: View {
                                         do { try session.saveEditing(in: item, onCommit: onCommit) }
                                         catch { session.errorMessage = error.localizedDescription }
                                     },
-                                    onAdjustTiming: { targetCue in structureState.timingCue = targetCue },
-                                    onSplit: { targetCue in structureState.splittingCue = targetCue },
-                                    onMerge: { cues in structureState.mergingCues = cues },
+                                    onAdjustTiming: { targetCue in structureState.presentation = .timing(targetCue) },
+                                    onSplit: { targetCue in structureState.presentation = .splitting(targetCue) },
+                                    onMerge: { cues in structureState.presentation = .merging(cues) },
                                     onDelete: { targetCue in deleteCue(targetCue) }
                                 )
                                 .id(cue.id)

@@ -61,14 +61,13 @@ struct IOSMediaDetailView: View {
                     .frame(width: landscape ? geometry.size.width * 0.48 : nil)
 
                     // 字幕列表与多选区域
-                    ZStack(alignment: .bottom) {
-                        subtitlesList(item)
-
-                        if session.isSelecting {
-                            selectionActionBar(item)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                    subtitlesList(item)
+                        .safeAreaInset(edge: .bottom) {
+                            if session.isSelecting {
+                                selectionActionBar(item)
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                            }
                         }
-                    }
                 }
             }
             .navigationTitle(item.title)
@@ -361,9 +360,9 @@ struct IOSMediaDetailView: View {
                             do { try library.queue.startRetranslation(taskID: taskID, mediaID: mediaID, cueIDs: [targetCue.id]) }
                             catch { session.errorMessage = error.localizedDescription }
                         },
-                        onAdjustTiming: { targetCue in structureState.timingCue = targetCue },
-                        onSplit: { targetCue in structureState.splittingCue = targetCue },
-                        onMerge: { cues in structureState.mergingCues = cues },
+                        onAdjustTiming: { targetCue in structureState.presentation = .timing(targetCue) },
+                        onSplit: { targetCue in structureState.presentation = .splitting(targetCue) },
+                        onMerge: { cues in structureState.presentation = .merging(cues) },
                         onDelete: { targetCue in deleteCue(targetCue) }
                     )
                     .id(cue.id)
@@ -405,7 +404,7 @@ struct IOSMediaDetailView: View {
 
             if let adjacent = selectedAdjacentCues(in: item) {
                 Button {
-                    structureState.mergingCues = adjacent
+                    structureState.presentation = .merging(adjacent)
                 } label: {
                     Label(String(localized: "合并", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge")
                         .font(.subheadline)
@@ -438,6 +437,7 @@ struct IOSMediaDetailView: View {
             .controlSize(.small)
             .tint(.red)
             .disabled(session.selectedCueIDs.isEmpty || library.queue.taskID != nil)
+            .accessibilityLabel(String(localized: "删除", bundle: appLocalizationBundle))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
