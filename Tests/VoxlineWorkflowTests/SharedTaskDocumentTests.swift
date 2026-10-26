@@ -92,7 +92,10 @@ struct SharedTaskDocumentTests {
         for i in 0..<20 { try library.commitCheckpoint(taskID: initial.id) { $0.title = "Checkpoint \(i)" } }
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == initial)
         #expect(documents.pendingURLs.count == 1)
-        try await Task.sleep(for: .milliseconds(200))
+        let publicationDeadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !documents.pendingURLs.isEmpty, ContinuousClock.now < publicationDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)).title == "Checkpoint 19")
         #expect(documents.pendingURLs.isEmpty)
         try library.commitCheckpoint(taskID: initial.id) { $0.title = "New pending checkpoint" }
