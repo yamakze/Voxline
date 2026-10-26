@@ -1,5 +1,63 @@
 # Changelog
 
+## 1.2.0 - 2026-10-26
+
+### Added
+
+- Mac appearance settings with live preview, supporting Light, Dark, and System modes, binary accent tinting (Glacier Azure or None), and opacity adjustment.
+
+### Improved
+
+- Used native macOS save panels for SRT, embedded soft subtitle, and burned-in video exports with overwrite confirmation.
+- Unified task and model status signals across the task library and settings, with full VoiceOver accessibility support.
+- Separated floating glass controls from content card materials on macOS, and isolated appearance tint previews to commit only on slider release.
+- Unified subtitle editing sheet routes (insert, adjust timing, split, merge) and localized hover states to reduce view redraws.
+- Consolidated video export file transactions across soft subtitle muxing and GPU burn-in rendering.
+- Cached language picker options and stabilized task configuration form drafts.
+- Limited playback progress display updates to 10 Hz and displayed the playback clock in whole seconds while retaining precise subtitle timing.
+- Aligned transcription provider interfaces, and decoupled diagnostic evidence caching from task checkpoint commits.
+- Scoped audio extraction checks to the selected track without blocking on unrelated video track errors.
+- Refactored core documentation to consolidate architecture boundaries, product specifications, and development workflows.
+
+### Fixed
+
+- Stabilized timeline scrubbing and playback seeking: paused and coarse-seeked while dragging, accurately aligned and restored playback state on release, and coalesced redundant seek requests.
+- Prevented transcript auto-follow from interrupting manual browsing until playback resumes or a cue is clicked.
+- Rendered accurate video frames during paused seeks on macOS via synchronized sample decoding within native video bounds, and released resources upon playback resume.
+- Disabled video frame analysis during macOS proofreading to reduce CPU and GPU overhead.
+- Preserved complete transcript text and segment timing when word-level tokenization is incomplete or missing.
+- Handled generative cloud transcription results with invalid or missing timestamps by falling back to audio chunk boundaries without discarding text.
+- Ensured sheet actions and buttons remain visible and accessible across different proofreading window sizes.
+
+---
+
+### 新增
+
+- Mac 外观偏好设置：支持浅色、深色与跟随系统模式，提供冰川天青二元微染与浓度调节，并支持设置页实时联动预览。
+
+### 改进
+
+- Mac 字幕导出（SRT 外挂、软字幕封装、硬字幕压制）改用系统原生保存面板，支持目标路径选取与文件覆盖确认。
+- 统一任务库与偏好设置中的任务与模型状态指示器（信号灯体系），并完善 VoiceOver 辅助功能标签。
+- 分离 Mac 悬浮玻璃控件与内容卡片材质，外观微染浓度调节改为松手后一次性提交，避免频繁触发界面重绘。
+- 统一字幕结构编辑（单句插入、校时、拆分、合并）弹窗路由，将悬停状态收敛在行内，降低列表刷新开销。
+- 规范视频导出文件事务，统一软字幕内封与硬字幕压制的文件覆盖检查、临时写入与原子发布逻辑。
+- 缓存语言选择器选项与排序结果，稳定任务配置表单草稿状态。
+- 播放进度显示最多每秒刷新 10 次，播放时间显示到秒，字幕定位与校时仍保留毫秒精度。
+- 统一转写引擎接口抽象，将诊断证据缓存与核心检查点落盘解耦，缓存异常不阻断转写成果提交。
+- 音频提取仅核验所选音轨解码能力，非目标轨道错误不阻断主流程。
+- 重构收敛工程架构、产品需求规格与开发工作流核心文档，消除重复说明。
+
+### 修复
+
+- 稳定进度条拖动与定位交互：拖动期间暂停播放并进行粗定位，松手后精确对齐并恢复播放状态，合并冗余 Seek 请求。
+- 手动滚动字幕列表后持续暂停自动跟随，点击字幕定位或恢复播放时重新对齐。
+- Mac 暂停定位时通过同步样本解码精准补偿视频帧，画面严格限制在视频边界内，恢复播放或离页时即时释放。
+- Mac 校对播放期间禁用原生视频帧分析，降低 CPU 与 GPU 功耗。
+- 词级对齐失效或分词不完整时保留宏观分段起止时间戳，切片末尾空白不丢弃正文字符。
+- 云端生成式转写服务返回无效或缺失时间标注时，自动回退至音频块区间承载正文，保障台词完整。
+- 修复双语校对与弹窗表单在不同窗口尺寸与动态字体下的布局遮挡问题。
+
 ## 1.1.2 - 2026-10-23
 
 ### Improved
