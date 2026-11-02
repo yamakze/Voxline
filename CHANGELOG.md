@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.1 - 2026-11-02
+
+### Fixed
+
+- Retry malformed or truncated translation responses once, then split a failing batch into smaller, independently validated batches. Completed batches are saved so retrying only processes unfinished subtitles.
+- Fixed sandbox permission errors when exporting videos with embedded or burned-in subtitles by staging output in a system-provided replacement directory.
+
+---
+
+### 修复
+
+- 翻译响应格式错误或被截断时先重试一次，再将失败批次拆小并逐批完整校验、保存；重试时复用已完成成果，仅处理未完成字幕。
+- 视频导出使用系统提供的临时替换目录，修复内封软字幕与烧录硬字幕导出时的沙盒存储权限错误。
+
 ## 1.2.0 - 2026-10-26
 
 ### Added
