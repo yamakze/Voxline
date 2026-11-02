@@ -408,8 +408,12 @@ public final class TaskProcessingQueue {
     private func translateBatches(taskID: UUID, mediaID: UUID, settings: TranslationSettings, batchIDs: [UUID]) async throws {
         defer { translationRetryWait = nil }
         guard let initial = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }) else { throw CheckpointError.taskUnavailable }
-        let workIndex = try TranslationCheckpointIndex(item: initial)
-        for batchID in batchIDs {
+        var workIndex = try TranslationCheckpointIndex(item: initial)
+        var pendingBatchIDs = batchIDs
+        var splitChildren = Set<UUID>()
+        var batchPosition = 0
+        batchLoop: while batchPosition < pendingBatchIDs.count {
+            let batchID = pendingBatchIDs[batchPosition]
             if Task.isCancelled {
                 try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { $0.status = .cancelled }
                 return
@@ -429,10 +433,11 @@ public final class TaskProcessingQueue {
             progressText = String(localized: "正在翻译 \(current.cues.isEmpty ? 100 : current.cues.filter(\.hasTranslation).count * 100 / current.cues.count)%", bundle: voxlineLocalizationBundle)
             var outputs: [TranslationBatchOutput]?
             var retries = 0
+            var responseRetries = 0
             while outputs == nil {
                 do {
                     try Task.checkCancellation()
-                    if retries > 0 {
+                    if retries > 0 || responseRetries > 0 {
                         guard let latest = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }),
                               request.inputs.allSatisfy({ input in
                                   workIndex.cuePosition(input.cueID, in: latest.cues).map { input.matches(latest.cues[$0]) } == true
@@ -446,6 +451,34 @@ public final class TaskProcessingQueue {
                     if Task.isCancelled || error is CancellationError {
                         try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { try $0.recordTranslationCancellation(batchID) }
                         return
+                    }
+                    if (error as? SubtitleTranslationError)?.isRecoverableResponse == true {
+                        if responseRetries == 0 {
+                            responseRetries += 1
+                            continue
+                        }
+                        // Each original batch may split once; each child gets one response retry.
+                        // This bounds model calls while keeping successful children durable.
+                        if request.inputs.count > 1, !splitChildren.contains(batchID) {
+                            let childIDs: [UUID]
+                            do {
+                                childIDs = try updateMedia(taskID: taskID, mediaID: mediaID) {
+                                    try $0.splitTranslationBatch(batchID, using: workIndex)
+                                }
+                            } catch let error as CheckpointError {
+                                try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) {
+                                    try $0.recordTranslationFailure(batchID, reason: error.localizedDescription)
+                                }
+                                return
+                            }
+                            guard let latest = library.task(for: taskID)?.items.first(where: { $0.id == mediaID }) else {
+                                throw CheckpointError.taskUnavailable
+                            }
+                            workIndex = try TranslationCheckpointIndex(item: latest)
+                            pendingBatchIDs.replaceSubrange(batchPosition...batchPosition, with: childIDs)
+                            splitChildren.formUnion(childIDs)
+                            continue batchLoop
+                        }
                     }
                     let delay = (error as? SubtitleTranslationError)?.retryDelay(attempt: retries + 1, jitter: retryJitter())
                     guard let delay, retries < 3 else {
@@ -478,6 +511,7 @@ public final class TaskProcessingQueue {
                 try updateMedia(taskID: taskID, mediaID: mediaID, publishingImmediately: true) { try $0.recordTranslationFailure(batchID, reason: error.localizedDescription) }
                 return
             }
+            batchPosition += 1
         }
     }
 

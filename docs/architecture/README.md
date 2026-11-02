@@ -70,6 +70,7 @@ graph TD
 ### VoxlineTranslation
 - **Apple 本机翻译**：`AppleTranslationCoordinator` 调度系统级翻译会话，核验本地离线语言包可用性，支持无网络离线端侧翻译。
 - **OpenAI 兼容翻译**：`OpenAICompatibleTranslationClient` 执行批量字幕翻译，维护双向滑动上下文窗口（前后各 2 句）保障对白语境连贯，支持自定义批大小与系统提示词。
+- **响应格式恢复**：漏项、重复 ID、无效字幕 JSON 或输出长度截断时，队列先对同一批重试一次，再将失败批次二分并持久化；每个子批次仍完整校验后独立提交，子批次最多再重试一次，本次运行不继续拆分。手动恢复仅请求未完成的工作；HTTP 退避、鉴权错误和取消沿用各自规则。
 - **云端转写协议**：`CloudTranscriptionProtocol` 适配 OpenAI Audio Transcriptions、Google Gemini 与阿里云百炼 Qwen 音频协议。
 - **时间标注对齐**：针对 Gemini 等生成式服务提供的时间戳异常，回退至音频块时间区间承载正文，并保留原始响应用于诊断。
 - **凭据安全隔离**：`KeychainTranslationCredentialVault` 将 API Key 安全加密存储于系统 Keychain，凭据绝不写入任务文档或同步存储。

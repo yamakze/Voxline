@@ -107,7 +107,16 @@ public enum SubtitleTranslationError: Error, LocalizedError, Equatable {
     case missingCredential, authenticationFailed, rateLimited(retryAfter: String?), timeout, connectionFailed, httpFailure(Int)
     case temporarilyUnavailable(statusCode: Int, retryAfter: String?)
 
-    /// Nil means the error requires intervention rather than an automatic retry.
+    /// Retry only malformed subtitle data and output-limit truncation, not refusals or tool calls.
+    public var isRecoverableResponse: Bool {
+        switch self {
+        case .invalidTranslationResult: true
+        case .incompleteResponse(let reason): reason == "length"
+        default: false
+        }
+    }
+
+    /// HTTP retry timing is independent from recovery of an otherwise successful response.
     public func retryDelay(attempt: Int, now: Date = .now, jitter: Double) -> TimeInterval? {
         let retryAfter: String?
         switch self {

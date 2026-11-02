@@ -483,6 +483,100 @@ struct TaskProcessingQueueTests {
         #expect(await transcription.events == previousEvents)
     }
 
+    @Test(arguments: [SubtitleTranslationError.invalidTranslationResult, .incompleteResponse("length")])
+    func malformedResponseRetriesSameSnapshotBeforeSplitting(error: SubtitleTranslationError) async throws {
+        let (directory, library, initial) = try fixture(count: 1)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        var parameters = task.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!,
+            modelID: "frozen-model", targetLanguage: "zh-Hans", serviceID: UUID())
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let translation = ControlledTranslationPipeline(errors: [1: error])
+        let queue = TaskProcessingQueue(library: library, pipeline: ControlledPipeline(), translationPipeline: translation)
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        let saved = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        #expect(saved.status == .completed)
+        #expect(saved.items[0].checkpoint?.translationBatches.count == 1)
+        #expect(await translation.requests.count == 2)
+        #expect(await Set(translation.requests).count == 1)
+    }
+
+    @Test func splitTranslationPersistsSuccessfulChildAndResumesOnlyUnfinishedWork() async throws {
+        let (directory, library, initial) = try fixture(count: 1)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        var parameters = task.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!,
+            modelID: "frozen-model", targetLanguage: "zh-Hans", serviceID: UUID(), batchSize: 4)
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let transcription = ControlledPipeline(cuesPerChunk: 4)
+        let translation = ControlledTranslationPipeline(errors: [1: .invalidTranslationResult,
+            2: .incompleteResponse("length"), 4: .invalidTranslationResult, 5: .invalidTranslationResult])
+        let queue = TaskProcessingQueue(library: library, pipeline: transcription, translationPipeline: translation)
+        try queue.start(taskID: task.id)
+        await queue.waitUntilIdle()
+        let failed = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        let batches = try #require(failed.items[0].checkpoint).translationBatches
+        #expect(batches.map(\.isCompleted) == [true, false, false])
+        #expect(batches.map { $0.inputs.count } == [0, 2, 4])
+        #expect(failed.items[0].cues.filter(\.hasTranslation).count == 2)
+        let requests = await translation.requests
+        #expect(requests.map(\.count) == [4, 4, 2, 2, 2])
+        #expect(requests[0] == requests[1])
+        #expect(requests[2] + requests[3] == requests[0])
+        #expect(requests[3] == requests[4])
+
+        let reopened = TaskLibrary(tasksDirectory: directory)
+        try reopened.commitCheckpoint(taskID: task.id) {
+            $0.items[0].cues[0].translation = .succeeded(text: "人工译文", sourceRevision: 1)
+        }
+        let previousTranscription = await transcription.events
+        let resumedTranslation = ControlledTranslationPipeline()
+        let resumed = TaskProcessingQueue(library: reopened, pipeline: transcription, translationPipeline: resumedTranslation)
+        try resumed.start(taskID: task.id)
+        await resumed.waitUntilIdle()
+        let saved = try TaskDocumentCodec.decode(Data(contentsOf: reopened.defaultURL(for: task.id)))
+        #expect(saved.status == .completed)
+        #expect(saved.items[0].cues[0].translation == .succeeded(text: "人工译文", sourceRevision: 1))
+        #expect(saved.items[0].checkpoint?.translationBatches[0] == batches[0])
+        #expect(await resumedTranslation.requests == [requests[3], batches[2].inputs.map(\.cueID)])
+        #expect(await transcription.events == previousTranscription)
+    }
+
+    @Test(arguments: ["cancel", "source", "translation"])
+    func formatRetryProtectsCancellationAndEdits(action: String) async throws {
+        let (directory, library, initial) = try fixture(count: 1)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var task = initial
+        var parameters = task.parameters
+        parameters.translation = try TranslationSettings(baseURL: URL(string: "https://test.example/v1")!,
+            modelID: "frozen-model", targetLanguage: "zh-Hans", serviceID: UUID())
+        try task.updateParameters(parameters)
+        try library.save(task)
+        let translation = ControlledTranslationPipeline(holdFirstCall: true, errors: [1: .invalidTranslationResult])
+        let queue = TaskProcessingQueue(library: library, pipeline: ControlledPipeline(), translationPipeline: translation)
+        try queue.start(taskID: task.id)
+        await translation.waitForRequest()
+        if action == "cancel" { try queue.cancel() }
+        else {
+            try library.commitCheckpoint(taskID: task.id) {
+                if action == "source" { try $0.items[0].cues[0].replaceSourceText(with: "人工修正") }
+                else { $0.items[0].cues[0].translation = .succeeded(text: "人工译文", sourceRevision: 1) }
+            }
+        }
+        await translation.releaseRequest()
+        await queue.waitUntilIdle()
+        let saved = try TaskDocumentCodec.decode(Data(contentsOf: library.defaultURL(for: task.id)))
+        #expect(await translation.requests.count == 1)
+        #expect(saved.items[0].status == (action == "cancel" ? .cancelled : .failed(reason: CheckpointError.editedCue.localizedDescription)))
+        if action == "source" { #expect(saved.items[0].cues[0].sourceText == "人工修正") }
+        if action == "translation" { #expect(saved.items[0].cues[0].translation == .succeeded(text: "人工译文", sourceRevision: 1)) }
+    }
+
     @Test func transientFailuresPauseAfterThreeRetriesAndResumeWithoutTranscription() async throws {
         let (directory, library, initial) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }

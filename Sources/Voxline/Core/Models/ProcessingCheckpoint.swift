@@ -373,6 +373,27 @@ public extension TaskMediaItem {
         return added.map(\.id)
     }
 
+    /// Replace one unsuccessful request with two durable, independently committable snapshots.
+    mutating func splitTranslationBatch(_ batchID: UUID, using workIndex: TranslationCheckpointIndex? = nil) throws -> [UUID] {
+        var record = try requiredCheckpoint()
+        let workIndex = try workIndex ?? TranslationCheckpointIndex(item: self)
+        guard let index = workIndex.batchPosition(batchID, in: record.translationBatches) else { throw CheckpointError.unknownWork }
+        let batch = record.translationBatches[index]
+        guard batch.state == .running else { throw CheckpointError.staleResult }
+        guard batch.inputs.count > 1 else { throw CheckpointError.invalidTranslationResult }
+        guard batch.inputs.allSatisfy({ input in
+            workIndex.cuePosition(input.cueID, in: cues).map { input.matches(cues[$0]) } == true
+        }) else { throw CheckpointError.editedCue }
+        let middle = batch.inputs.count / 2
+        let children = [
+            TranslationBatchCheckpoint(id: UUID(), inputs: Array(batch.inputs[..<middle]), state: .pending),
+            TranslationBatchCheckpoint(id: UUID(), inputs: Array(batch.inputs[middle...]), state: .pending)
+        ]
+        record.translationBatches.replaceSubrange(index...index, with: children)
+        checkpoint = record
+        return children.map(\.id)
+    }
+
     @discardableResult
     mutating func beginTranslationBatch(_ batchID: UUID, using workIndex: TranslationCheckpointIndex? = nil) throws -> TranslationBatchCheckpoint {
         var record = try requiredCheckpoint()
