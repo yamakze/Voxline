@@ -225,6 +225,5 @@ struct SubtitleEmbeddingTests {
             try await SubtitleEmbeddingExporter.export(item: stale, kind: .bilingual, to: output, allowOverwrite: true, mediaStore: store)
         }
         #expect(try Data(contentsOf: output) == original)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).allSatisfy { !$0.contains(".partial.") })
     }
 }

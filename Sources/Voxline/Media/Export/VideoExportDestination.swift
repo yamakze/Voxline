@@ -15,6 +15,7 @@ public enum VideoExportFileError: Error, LocalizedError, Equatable {
 /// One unpublished output, atomically promoted only after the exporter validates its result.
 final class VideoExportDestination {
     let temporaryURL: URL
+    private let temporaryDirectory: URL
     private let destination: URL
     private let source: URL
     private let allowOverwrite: Bool
@@ -24,17 +25,21 @@ final class VideoExportDestination {
         self.destination = destination
         self.source = source
         self.allowOverwrite = allowOverwrite
-        temporaryURL = destination.deletingLastPathComponent().appendingPathComponent(".\(UUID()).partial.mp4")
         let name = destination.lastPathComponent
         guard destination.isFileURL, destination.pathExtension.lowercased() == "mp4",
               !name.contains("\\"), !name.contains("\0"),
               !destination.deletingPathExtension().lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw VideoExportFileError.invalidFileName
         }
-        try validateDestination()
+        try Self.validateDestination(destination, source: source, allowOverwrite: allowOverwrite)
+        // Save panels authorize the chosen file, not arbitrary siblings in its parent folder.
+        // Foundation supplies a writable replacement directory on the destination's volume.
+        temporaryDirectory = try FileManager.default.url(for: .itemReplacementDirectory,
+            in: .userDomainMask, appropriateFor: destination, create: true)
+        temporaryURL = temporaryDirectory.appendingPathComponent(name)
     }
 
-    private func validateDestination() throws {
+    private static func validateDestination(_ destination: URL, source: URL, allowOverwrite: Bool) throws {
         let manager = FileManager.default
         guard destination.standardizedFileURL.resolvingSymlinksInPath() != source.standardizedFileURL.resolvingSymlinksInPath() else {
             throw VideoExportFileError.sourceIsOutput
@@ -52,15 +57,15 @@ final class VideoExportDestination {
 
     func publish() throws {
         try Task.checkCancellation()
-        try validateDestination()
+        try Self.validateDestination(destination, source: source, allowOverwrite: allowOverwrite)
         if FileManager.default.fileExists(atPath: destination.path) {
             _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporaryURL)
         } else { try FileManager.default.moveItem(at: temporaryURL, to: destination) }
     }
 
     func removeTemporaryFile() throws {
-        if FileManager.default.fileExists(atPath: temporaryURL.path) {
-            try FileManager.default.removeItem(at: temporaryURL)
+        if FileManager.default.fileExists(atPath: temporaryDirectory.path) {
+            try FileManager.default.removeItem(at: temporaryDirectory)
         }
     }
 

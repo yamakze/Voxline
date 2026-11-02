@@ -168,7 +168,6 @@ struct SubtitleBurnInTests {
         cancelled.cancel()
         await #expect(throws: CancellationError.self) { try await cancelled.value }
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("cancelled.mp4").path))
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).allSatisfy { !$0.contains("partial") })
     }
 
     @Test func portraitOutputMatchesPreviewAndCancellingDuringExportPreservesExistingFile() async throws {
@@ -203,7 +202,6 @@ struct SubtitleBurnInTests {
         await #expect(throws: CancellationError.self) { try await exportTask?.value }
         #expect(sawExportProgress)
         #expect(try Data(contentsOf: destination) == before)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).allSatisfy { !$0.contains("partial") })
     }
 
     @Test func translatedSnapshotValidationAndOriginalFileProtection() async throws {

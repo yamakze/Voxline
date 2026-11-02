@@ -60,7 +60,7 @@ graph TD
 - **字幕导出与封装**：
   - `SubtitleBurnInExporter`：基于 Core Image 滤镜与 `AVAssetExportSession` 在 GPU 上逐帧渲染字幕，支持 H.264 与 HEVC 编码。
   - `SubtitleEmbeddingExporter`：基于 `AVAssetReader` 与 `AVAssetWriter` 将字幕写入独立 tx3g 轨道并封装为 MP4 容器，音视频样本直通不重编码。
-  - `VideoExportDestination`：统一处理文件覆盖确认、临时路径写入与原子发布事务。
+  - `VideoExportDestination`：统一处理文件覆盖确认、临时路径写入与原子发布事务。使用 Foundation 为目标卷提供的替换目录暂存视频，验证完成后移动或替换用户授权的目标文件，不在仅获单文件授权的父目录创建随机临时文件；成功、失败和取消后清理整个暂存目录。
 
 ### VoxlineWhisperKit
 - **模型生命周期**：`WhisperModelStore` 与 `ModelManager` 管理 Tiny、Base、Small、Large v3、Turbo 5 款模型的下载、SHA-256 完整性校验、沙盒存储占用统计与文件清理。
