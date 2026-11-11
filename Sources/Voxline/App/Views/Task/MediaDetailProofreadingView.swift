@@ -236,7 +236,7 @@ public struct MediaDetailProofreadingView: View {
                     if item.kind == .video {
                         NativeVideoPlayer(player: player, pausedFrame: playbackController.pausedVideoFrame?.image)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Color.black)
+                            .background(Color.black, ignoresSafeAreaEdges: [])
                     } else {
                         // Podcasts Audio artwork style
                         ZStack {
