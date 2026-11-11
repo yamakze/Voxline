@@ -20,6 +20,55 @@ public struct TaskSyncSettingsView: View {
     public init() {}
 
     public var body: some View {
+        Group {
+            #if os(iOS)
+            mobileSettings
+            #else
+            desktopSettings
+            #endif
+        }
+        .fileImporter(
+            isPresented: $isSelectingFolder,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .failure(let error):
+                localError = error.localizedDescription
+            case .success(let urls):
+                guard let folder = urls.first else { return }
+                prepareMigration(for: folder)
+            }
+        }
+        .sheet(isPresented: $showMigrationSheet) {
+            if let folder = pendingFolderURL, let summary = pendingSummary {
+                migrationConfirmationSheet(folder: folder, summary: summary)
+            }
+        }
+        .confirmationDialog(
+            String(localized: "关闭 iCloud 文件夹同步？", bundle: appLocalizationBundle),
+            isPresented: $showDisableConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "保存本地成果并关闭", bundle: appLocalizationBundle), role: .destructive) {
+                disableSync()
+            }
+            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
+        } message: {
+            Text(String(localized: "关闭后任务将仅保存在本机，云端现有文件不会被删除。", bundle: appLocalizationBundle))
+        }
+        .alert(String(localized: "操作失败", bundle: appLocalizationBundle), isPresented: Binding(
+            get: { localError != nil },
+            set: { if !$0 { localError = nil } }
+        )) {
+            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { localError = nil }
+        } message: {
+            Text(localError ?? "")
+        }
+    }
+
+    #if os(macOS)
+    private var desktopSettings: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 if !settings.isEnabled {
@@ -83,49 +132,117 @@ public struct TaskSyncSettingsView: View {
             }
             .padding(24)
         }
-        #if os(iOS)
-        .navigationTitle(String(localized: "iCloud 同步", bundle: appLocalizationBundle))
-        #endif
-        .fileImporter(
-            isPresented: $isSelectingFolder,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .failure(let error):
-                localError = error.localizedDescription
-            case .success(let urls):
-                guard let folder = urls.first else { return }
-                prepareMigration(for: folder)
-            }
-        }
-        .sheet(isPresented: $showMigrationSheet) {
-            if let folder = pendingFolderURL, let summary = pendingSummary {
-                migrationConfirmationSheet(folder: folder, summary: summary)
-            }
-        }
-        .confirmationDialog(
-            String(localized: "关闭 iCloud 文件夹同步？", bundle: appLocalizationBundle),
-            isPresented: $showDisableConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "保存本地成果并关闭", bundle: appLocalizationBundle), role: .destructive) {
-                disableSync()
-            }
-            Button(String(localized: "取消", bundle: appLocalizationBundle), role: .cancel) {}
-        } message: {
-            Text(String(localized: "关闭后任务将仅保存在本机，云端现有文件不会被删除。", bundle: appLocalizationBundle))
-        }
-        .alert(String(localized: "操作失败", bundle: appLocalizationBundle), isPresented: Binding(
-            get: { localError != nil },
-            set: { if !$0 { localError = nil } }
-        )) {
-            Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { localError = nil }
-        } message: {
-            Text(localError ?? "")
-        }
     }
+    #endif
 
+    #if os(iOS)
+    private var mobileSettings: some View {
+        Form {
+            if settings.isEnabled {
+                Section {
+                    if let folder = settings.folderURL {
+                        HStack(spacing: 12) {
+                            Label(folder.lastPathComponent, systemImage: "folder")
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            StatusSignal(kind: .ready)
+                                .accessibilityLabel(String(localized: "已启用", bundle: appLocalizationBundle))
+                                .fixedSize()
+                        }
+                    }
+                    Button(String(localized: "更换文件夹…", bundle: appLocalizationBundle)) {
+                        isSelectingFolder = true
+                    }
+                    .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
+                } header: {
+                    Text(String(localized: "目标同步文件夹", bundle: appLocalizationBundle))
+                }
+
+                Section {
+                    Toggle(String(localized: "同步原音视频媒体文件", bundle: appLocalizationBundle), isOn: Binding(
+                        get: { settings.syncOriginalMedia },
+                        set: { setOriginalMediaSync($0) }
+                    ))
+                    .disabled(settings.isChanging || settings.isCopyingOriginalMedia || isProcessing)
+
+                    if settings.isCopyingOriginalMedia {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text(String(localized: "正在同步原媒体文件…", bundle: appLocalizationBundle))
+                                .font(.subheadline)
+                        }
+                    } else if settings.syncOriginalMedia {
+                        Button(String(localized: "重试原媒体上传", bundle: appLocalizationBundle), systemImage: "arrow.clockwise") {
+                            retryOriginalMediaUpload()
+                        }
+                        .disabled(settings.isChanging || isProcessing)
+                    }
+                } footer: {
+                    Text(String(localized: "任务与字幕自动同步，音视频文件可选。", bundle: appLocalizationBundle))
+                }
+
+                Section(String(localized: "同步状态", bundle: appLocalizationBundle)) {
+                    let counts = settings.fileStates.reduce(into: (tasks: 0, media: 0, uploads: 0, downloads: 0, conflicts: 0)) { counts, file in
+                        if file.key.pathExtension == "voxline" { counts.tasks += 1 }
+                        else { counts.media += 1 }
+                        switch file.value {
+                        case .uploading, .waitingForUpload: counts.uploads += 1
+                        case .downloading, .notDownloaded: counts.downloads += 1
+                        case .conflict: counts.conflicts += 1
+                        default: break
+                        }
+                    }
+                    LabeledContent(String(localized: "任务文档", bundle: appLocalizationBundle), value: counts.tasks.formatted())
+                    LabeledContent(String(localized: "原媒体文件", bundle: appLocalizationBundle), value: counts.media.formatted())
+                    if counts.uploads > 0 {
+                        LabeledContent(String(localized: "上传中", bundle: appLocalizationBundle), value: counts.uploads.formatted())
+                    }
+                    if counts.downloads > 0 {
+                        LabeledContent(String(localized: "下载中", bundle: appLocalizationBundle), value: counts.downloads.formatted())
+                    }
+                    if counts.conflicts > 0 {
+                        LabeledContent(String(localized: "版本冲突", bundle: appLocalizationBundle), value: counts.conflicts.formatted())
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                Section {
+                    Button(String(localized: "关闭 iCloud 同步", bundle: appLocalizationBundle), role: .destructive) {
+                        showDisableConfirmation = true
+                    }
+                    .disabled(settings.isChanging || isProcessing)
+                }
+            } else {
+                Section {
+                    Label(String(localized: "未启用 iCloud 同步", bundle: appLocalizationBundle), systemImage: "icloud.slash")
+                        .foregroundStyle(.secondary)
+                    Button(String(localized: "选择同步文件夹…", bundle: appLocalizationBundle), systemImage: "folder.badge.plus") {
+                        isSelectingFolder = true
+                    }
+                    .disabled(settings.isChanging || isProcessing)
+                } footer: {
+                    Text(String(localized: "通过 iCloud Drive 目录跨设备同步您的任务项目与字幕成果。", bundle: appLocalizationBundle))
+                }
+            }
+
+            if let error = settings.errorMessage {
+                Section(String(localized: "同步异常", bundle: appLocalizationBundle)) {
+                    Text(error).font(.subheadline).textSelection(.enabled)
+                    Button(String(localized: "重试 / 刷新", bundle: appLocalizationBundle), systemImage: "arrow.clockwise") {
+                        localError = nil
+                        do { try settings.retryPublication() }
+                        catch { localError = error.localizedDescription }
+                    }
+                    .disabled(settings.isChanging || isProcessing)
+                }
+            }
+        }
+        .navigationTitle(String(localized: "iCloud 同步", bundle: appLocalizationBundle))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+    #endif
+
+    #if os(macOS)
     // MARK: - Folder Location Card
     private var folderLocationCard: some View {
         Group {
@@ -164,9 +281,7 @@ public struct TaskSyncSettingsView: View {
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
                             .background(Color.green.opacity(0.12), in: .capsule)
-                            #if os(macOS)
                             .overlay(Capsule().strokeBorder(Color.green.opacity(0.25), lineWidth: 0.6))
-                            #endif
                         }
 
                         Text(folder.path)
@@ -180,13 +295,11 @@ public struct TaskSyncSettingsView: View {
                     Spacer()
 
                     HStack(spacing: 8) {
-                        #if os(macOS)
                         Button(String(localized: "在访达中显示", bundle: appLocalizationBundle)) {
                             NSWorkspace.shared.activateFileViewerSelecting([folder])
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        #endif
 
                         Button(String(localized: "更换文件夹…", bundle: appLocalizationBundle)) {
                             isSelectingFolder = true
@@ -221,17 +334,7 @@ public struct TaskSyncSettingsView: View {
 
                 Toggle("", isOn: Binding(
                     get: { settings.syncOriginalMedia },
-                    set: { newValue in
-                        Task {
-                            isProcessing = true
-                            defer { isProcessing = false }
-                            do {
-                                try await settings.setOriginalMediaSync(newValue)
-                            } catch {
-                                localError = error.localizedDescription
-                            }
-                        }
-                    }
+                    set: { setOriginalMediaSync($0) }
                 ))
                 .labelsHidden()
                 .toggleStyle(.switch)
@@ -250,15 +353,7 @@ public struct TaskSyncSettingsView: View {
                 HStack {
                     Spacer()
                     Button(String(localized: "重试原媒体上传", bundle: appLocalizationBundle), systemImage: "arrow.clockwise") {
-                        Task {
-                            isProcessing = true
-                            defer { isProcessing = false }
-                            do {
-                                try await settings.retryOriginalMediaUpload()
-                            } catch {
-                                localError = error.localizedDescription
-                            }
-                        }
+                        retryOriginalMediaUpload()
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -362,6 +457,8 @@ public struct TaskSyncSettingsView: View {
         .padding(14)
         .background(Color.red.opacity(0.08), in: .rect(cornerRadius: 12))
     }
+
+    #endif
 
     // MARK: - Migration Sheet & Helpers
     private func prepareMigration(for folder: URL) {
@@ -499,6 +596,24 @@ public struct TaskSyncSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func setOriginalMediaSync(_ enabled: Bool) {
+        isProcessing = true
+        Task {
+            defer { isProcessing = false }
+            do { try await settings.setOriginalMediaSync(enabled) }
+            catch { localError = error.localizedDescription }
+        }
+    }
+
+    private func retryOriginalMediaUpload() {
+        isProcessing = true
+        Task {
+            defer { isProcessing = false }
+            do { try await settings.retryOriginalMediaUpload() }
+            catch { localError = error.localizedDescription }
+        }
     }
 
     private func commitEnable(folder: URL, originals: Bool) {
