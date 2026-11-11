@@ -203,10 +203,6 @@ public struct MainWindowView: View {
             } else {
                 TaskDetailView(
                     task: task,
-                    isConfiguring: Binding(
-                        get: { configurationTask != nil },
-                        set: { configurationTask = $0 ? task : nil }
-                    ),
                     selectedMediaID: Binding(get: { selectedMediaID }, set: { mediaID in
                         if let item = task.items.first(where: { $0.id == mediaID }) {
                             proofreadingSession = ProofreadingSession(

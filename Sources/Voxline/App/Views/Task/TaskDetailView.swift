@@ -5,7 +5,6 @@ import VoxlineCore
 
 public struct TaskDetailView: View {
     let task: ProcessingTask
-    @Binding var isConfiguring: Bool
     @Binding var selectedMediaID: UUID?
 
     @State private var queue = TaskProcessingQueue.shared
@@ -13,9 +12,8 @@ public struct TaskDetailView: View {
     @State private var showConflictSheet = false
     @State private var errorMessage: String?
 
-    public init(task: ProcessingTask, isConfiguring: Binding<Bool>, selectedMediaID: Binding<UUID?>) {
+    public init(task: ProcessingTask, selectedMediaID: Binding<UUID?>) {
         self.task = task
-        _isConfiguring = isConfiguring
         _selectedMediaID = selectedMediaID
     }
 
@@ -25,37 +23,71 @@ public struct TaskDetailView: View {
 
     public var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 if fileState == .conflict {
-                    conflictBanner
+                    HStack(spacing: 12) {
+                        Label(String(localized: "此任务存在云端冲突版本", bundle: appLocalizationBundle), systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button(String(localized: "解决冲突…", bundle: appLocalizationBundle)) {
+                            showConflictSheet = true
+                        }
+                        .disabled(queue.taskID == task.id)
+                    }
+                    .font(.callout)
                 }
 
                 if let error = queue.errorMessage(for: task.id) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                        Text(error)
-                            .font(.callout)
-                            .foregroundStyle(.red)
-                            .textSelection(.enabled)
-                        Spacer()
-                    }
-                    .padding(12)
-                    .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    TaskFailureDisclosure(message: error, tint: .red)
                 }
 
-                // Compact Metrics Bar
-                compactMetricsBar
+                HStack(spacing: 12) {
+                    Text(String(localized: "\(task.items.count) 媒体", bundle: appLocalizationBundle))
+                    if case .running = task.status {
+                        Text(String(localized: "\(task.completedCount) 完成", bundle: appLocalizationBundle))
+                    }
+                    if task.failedCount > 0 {
+                        Text(String(localized: "\(task.failedCount) 失败", bundle: appLocalizationBundle))
+                            .foregroundStyle(.red)
+                    }
+                    Spacer()
+                    if let state = fileState { SyncFileStatusBadge(state: state) }
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
 
-                // Media processing queue
-                mediaQueue
+                if task.items.isEmpty {
+                    ContentUnavailableView(String(localized: "暂无媒体", bundle: appLocalizationBundle), systemImage: "film.stack")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 36)
+                } else {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(task.items.enumerated()), id: \.element.id) { index, item in
+                            TaskMediaRow(
+                                taskID: task.id,
+                                item: item,
+                                hasTranslation: task.parameters.translation != nil,
+                                provider: task.parameters.transcription.provider,
+                                onOpen: { selectedMediaID = item.id },
+                                onError: { errorMessage = $0 }
+                            )
+                            if index < task.items.count - 1 {
+                                Divider().padding(.leading, 44).padding(.trailing, 12)
+                            }
+                        }
+                    }
+                    .padding(4)
+                    .nativeControlSurface(cornerRadius: 14)
+                }
             }
-            .padding(24)
+            .frame(maxWidth: 960)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
+            .frame(maxWidth: .infinity)
         }
         .sheet(isPresented: $showConflictSheet) {
-            TaskConflictResolutionSheet(taskID: task.id, draftTask: task) {
-                syncSettings.refresh()
-            }
+            TaskConflictResolutionSheet(taskID: task.id, draftTask: task) { syncSettings.refresh() }
         }
         .alert(String(localized: "处理未开始或操作失败", bundle: appLocalizationBundle), isPresented: Binding(
             get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } }
@@ -63,349 +95,137 @@ public struct TaskDetailView: View {
             Button(String(localized: "好", bundle: appLocalizationBundle), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
     }
-
-    private var conflictBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-                .font(.title3)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "此任务存在云端冲突版本", bundle: appLocalizationBundle))
-                    .font(.subheadline.bold())
-                Text(String(localized: "检测到其他设备保存的冲突文档，请选择保留版本或保存草稿副本。", bundle: appLocalizationBundle))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Button(String(localized: "解决冲突…", bundle: appLocalizationBundle)) {
-                showConflictSheet = true
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-        }
-        .padding(14)
-        .background(Color.orange.opacity(0.12), in: .rect(cornerRadius: 10))
-    }
-
-    // MARK: - Compact Metrics Bar
-    private var compactMetricsBar: some View {
-        HStack(spacing: 20) {
-            HStack(spacing: 6) {
-                Image(systemName: "film.stack")
-                    .foregroundStyle(.secondary)
-                Text(String(localized: "\(task.items.count) 媒体", bundle: appLocalizationBundle))
-                    .font(.subheadline.weight(.medium))
-            }
-
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text(String(localized: "\(task.completedCount) 完成", bundle: appLocalizationBundle))
-                    .font(.subheadline.weight(.medium))
-            }
-
-            if task.failedCount > 0 {
-                HStack(spacing: 6) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.red)
-                    Text(String(localized: "\(task.failedCount) 失败", bundle: appLocalizationBundle))
-                        .font(.subheadline.weight(.medium))
-                }
-            }
-
-            let totalCues = task.items.reduce(0) { $0 + $1.cues.count }
-            HStack(spacing: 6) {
-                Image(systemName: "captions.bubble")
-                    .foregroundStyle(.secondary)
-                Text(String(localized: "\(totalCues) 句字幕", bundle: appLocalizationBundle))
-                    .font(.subheadline.weight(.medium))
-            }
-
-            Spacer()
-
-            if let state = fileState {
-                SyncFileStatusBadge(state: state)
-            }
-
-            if !task.items.isEmpty && task.completedCount < task.items.count {
-                let progress = Double(task.completedCount) / Double(task.items.count)
-                HStack(spacing: 8) {
-                    ProgressView(value: progress)
-                        .frame(width: 100)
-                    Text(String(format: "%.0f%%", progress * 100))
-                        .font(.caption.monospacedDigit().bold())
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .nativeControlSurface(cornerRadius: 12)
-    }
-
-    // MARK: - Media processing queue
-    private var mediaQueue: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label(String(localized: "媒体列表", bundle: appLocalizationBundle), systemImage: "film.stack")
-                    .font(.headline)
-                Spacer()
-            }
-
-            if task.items.isEmpty {
-                ContentUnavailableView(
-                    String(localized: "暂无媒体", bundle: appLocalizationBundle),
-                    systemImage: "film.stack",
-                    description: Text(String(localized: "请点击右上角“调整参数”添加音视频。", bundle: appLocalizationBundle))
-                )
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 36)
-            } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(task.items.enumerated()), id: \.element.id) { index, item in
-                        TaskMediaRow(
-                            taskID: task.id,
-                            item: item,
-                            position: index + 1,
-                            hasTranslation: task.parameters.translation != nil,
-                            provider: task.parameters.transcription.provider,
-                            onOpen: { selectedMediaID = item.id },
-                            onError: { errorMessage = $0 }
-                        )
-
-                        if index < task.items.count - 1 {
-                            Rectangle()
-                                .fill(Color(nsColor: .separatorColor).opacity(0.4))
-                                .frame(height: 1)
-                                .padding(.leading, 54)
-                        }
-                    }
-                }
-                .nativeControlSurface(cornerRadius: 12)
-            }
-        }
-    }
 }
 
 private struct TaskMediaRow: View {
     let taskID: UUID
     let item: TaskMediaItem
-    let position: Int
     let hasTranslation: Bool
     let provider: TranscriptionSettings.Provider
     let onOpen: () -> Void
     let onError: (String) -> Void
     @State private var queue = TaskProcessingQueue.shared
-    @State private var isRowHovered = false
+    @State private var isHovered = false
+    @State private var showingDetails = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 10) {
-                // Media Subject: Clickable surface to enter proofreading
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
                 Button(action: onOpen) {
-                    ViewThatFits(in: .horizontal) {
-                        // 1. Wide Layout: Single-row, steps right-aligned before actions
-                        HStack(alignment: .center, spacing: 12) {
-                            indexView
-                            mediaKindIcon
-                            titleMetaView
-                                .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
-                            Spacer(minLength: 8)
-                            stepsView
-                        }
-                        .contentShape(Rectangle())
-
-                        // 2. Narrow Layout: Process steps moved to the next line under title/meta
-                        HStack(alignment: .center, spacing: 12) {
-                            indexView
-                            mediaKindIcon
-                            VStack(alignment: .leading, spacing: 6) {
-                                titleMetaView
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                stepsView
+                    HStack(spacing: 12) {
+                        Image(systemName: item.kind == .video ? "film" : "waveform")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 20)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.title)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .help(item.title)
+                            if let media = item.media {
+                                Text(TimecodeFormatter.formatDuration(milliseconds: media.durationMilliseconds))
+                                    .monospacedDigit()
+                            } else {
+                                Text(String(localized: "未关联文件", bundle: appLocalizationBundle))
+                                    .foregroundStyle(.red)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .contentShape(Rectangle())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        StatusSignal(mediaStatus: item.status)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.tertiary)
                     }
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(MediaRowSubjectButtonStyle())
+                .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(item.title)
-                .accessibilityValue(accessibilityDescription)
+                .accessibilityValue(item.status.label)
                 .accessibilityHint(String(localized: "进入校对", bundle: appLocalizationBundle))
 
-                // Independent Action Buttons: No gesture crosstalk with media subject
-                HStack(spacing: 5) {
-                    if item.status.isRetryable {
-                        Button {
-                            do {
-                                try queue.start(taskID: taskID, mediaID: item.id)
-                            } catch {
-                                onError(error.localizedDescription)
-                            }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                        .buttonStyle(RowIconButtonStyle(isPrimary: false))
-                        .help(item.status.isTranslationPaused ? String(localized: "继续翻译", bundle: appLocalizationBundle) : String(localized: "重试", bundle: appLocalizationBundle))
-                        .accessibilityLabel(item.status.isTranslationPaused ? String(localized: "继续翻译", bundle: appLocalizationBundle) : String(localized: "重试", bundle: appLocalizationBundle))
-                        .disabled(queue.taskID != nil)
-                    }
-
-                    if queue.taskID == taskID, queue.isScheduled(mediaID: item.id) {
-                        Button {
-                            do {
-                                try queue.cancel(mediaID: item.id)
-                            } catch {
-                                onError(error.localizedDescription)
-                            }
-                        } label: {
-                            Image(systemName: "xmark")
-                        }
-                        .buttonStyle(RowIconButtonStyle(isPrimary: false))
-                        .help(String(localized: "取消处理", bundle: appLocalizationBundle))
-                        .accessibilityLabel(String(localized: "取消处理", bundle: appLocalizationBundle))
-                        .disabled(queue.isCancelling && queue.mediaID == item.id)
-                    }
-
-                    Button(action: onOpen) {
-                        Image(systemName: "chevron.right")
-                    }
-                    .buttonStyle(RowIconButtonStyle(isPrimary: true))
-                    .help(String(localized: "进入校对", bundle: appLocalizationBundle))
-                    .accessibilityLabel(String(localized: "进入校对", bundle: appLocalizationBundle))
+                if item.status.isRetryable {
+                    Button {
+                        do { try queue.start(taskID: taskID, mediaID: item.id) }
+                        catch { onError(error.localizedDescription) }
+                    } label: { Image(systemName: "arrow.clockwise").frame(width: 28, height: 28) }
+                    .help(item.status.isTranslationPaused ? String(localized: "继续翻译", bundle: appLocalizationBundle) : String(localized: "重试", bundle: appLocalizationBundle))
+                    .accessibilityLabel(item.status.isTranslationPaused ? String(localized: "继续翻译", bundle: appLocalizationBundle) : String(localized: "重试", bundle: appLocalizationBundle))
+                    .disabled(queue.taskID != nil)
                 }
-                .fixedSize(horizontal: true, vertical: false)
+                if queue.taskID == taskID, queue.isScheduled(mediaID: item.id) {
+                    Button {
+                        do { try queue.cancel(mediaID: item.id) }
+                        catch { onError(error.localizedDescription) }
+                    } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
+                    .help(String(localized: "取消处理", bundle: appLocalizationBundle))
+                    .accessibilityLabel(String(localized: "取消处理", bundle: appLocalizationBundle))
+                    .disabled(queue.isCancelling && queue.mediaID == item.id)
+                }
+                Button { showingDetails = true } label: {
+                    Image(systemName: "ellipsis").frame(width: 28, height: 28)
+                }
+                .help(String(localized: "媒体详情", bundle: appLocalizationBundle))
+                .accessibilityLabel(String(localized: "媒体详情", bundle: appLocalizationBundle))
+                .popover(isPresented: $showingDetails) { mediaDetails }
             }
-            .padding(.vertical, 10)
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
-            .background(
+            .padding(.vertical, 14)
+            .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isRowHovered ? Color.voxlineAccent.opacity(0.06) : Color.clear)
-            )
-            .onHover { isRowHovered = $0 }
+                    .fill(isHovered ? Color.voxlineAccent.opacity(0.04) : Color.clear)
+            }
+            .onHover { isHovered = $0 }
 
             MediaQueueProgress(taskID: taskID, mediaID: item.id)
 
-            // Inline Failure Diagnosis Drawer
-            if case .translationPaused(let reason) = item.status {
-                Label {
-                    Text(String(localized: "翻译暂停，成果已保存。\(reason) 可稍后继续翻译，或进入校对导出原文。", bundle: appLocalizationBundle))
-                        .foregroundStyle(.primary)
-                } icon: {
-                    Image(systemName: "pause.circle").foregroundStyle(.orange)
-                }
-                .font(.caption)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color.orange.opacity(0.08))
-            }
-            if case .failed(let reason) = item.status {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.octagon.fill")
-                        .foregroundStyle(.red)
-                        .font(.caption)
-                    Text(String(localized: "失败原因：\(reason)", bundle: appLocalizationBundle))
-                        .font(.caption2)
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color.red.opacity(0.08))
+            switch item.status {
+            case .failed(let reason):
+                TaskFailureDisclosure(message: reason, tint: .red)
+                    .padding(.horizontal, 12).padding(.bottom, 10)
+            case .translationPaused(let reason):
+                TaskFailureDisclosure(message: String(localized: "翻译暂停：\(reason)", bundle: appLocalizationBundle), tint: .orange)
+                    .padding(.horizontal, 12).padding(.bottom, 10)
+            default: EmptyView()
             }
         }
     }
 
-    private var indexView: some View {
-        Text(String(format: "%02d", position))
-            .font(.caption2.monospacedDigit().bold())
-            .foregroundStyle(.secondary)
-            .frame(width: 22, alignment: .trailing)
-    }
-
-    private var titleMetaView: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(item.title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-
-            HStack(spacing: 8) {
-                if let media = item.media {
-                    Text(TimecodeFormatter.formatDuration(milliseconds: media.durationMilliseconds))
-                        .font(.caption2.monospacedDigit())
-                    Text(String(localized: "音轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
-                    Text(String(localized: "\(item.cues.count) 句字幕", bundle: appLocalizationBundle))
-                } else {
-                    Text(String(localized: "未关联文件", bundle: appLocalizationBundle))
-                        .foregroundStyle(.red)
+    private var mediaDetails: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(item.title).font(.headline).textSelection(.enabled)
+            if let media = item.media {
+                Text(String(localized: "音轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
+            }
+            Text(String(localized: "\(item.cues.count) 句字幕", bundle: appLocalizationBundle))
+            Divider()
+            Text(String(localized: "处理阶段", bundle: appLocalizationBundle)).font(.subheadline.weight(.medium))
+            if item.importedSubtitleOrigin != nil {
+                LabeledContent(String(localized: "导入原文", bundle: appLocalizationBundle)) {
+                    StatusSignal(kind: StatusSignalKind(stepState: .completed))
+                }
+            } else {
+                LabeledContent(String(localized: "提取音频", bundle: appLocalizationBundle)) {
+                    StatusSignal(kind: StatusSignalKind(stepState: item.extractionState))
+                }
+                LabeledContent(provider == .whisperKit ? String(localized: "本地转写", bundle: appLocalizationBundle) : String(localized: "云端转写", bundle: appLocalizationBundle)) {
+                    StatusSignal(kind: StatusSignalKind(stepState: item.transcriptionState))
                 }
             }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.tail)
-
+            if hasTranslation {
+                LabeledContent(String(localized: "字幕翻译", bundle: appLocalizationBundle)) {
+                    StatusSignal(kind: StatusSignalKind(stepState: item.translationState))
+                }
+            }
         }
-    }
-
-    private var stepsView: some View {
-        MediaProcessingStepsView(
-            item: item,
-            hasTranslation: hasTranslation,
-            provider: provider
-        )
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    private var mediaKindIcon: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(
-                    (item.kind == .video ? Color.blue : Color.purple)
-                        .opacity(0.12)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(
-                            (item.kind == .video ? Color.blue : Color.purple).opacity(0.24),
-                            lineWidth: 0.8
-                        )
-                )
-            Image(systemName: item.kind == .video ? "film" : "waveform")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(item.kind == .video ? .blue : .purple)
-        }
-        .frame(width: 32, height: 32)
-    }
-
-    private var accessibilityDescription: String {
-        var parts: [String] = []
-        if let media = item.media {
-            parts.append(TimecodeFormatter.formatDuration(milliseconds: media.durationMilliseconds))
-            parts.append(String(localized: "音轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
-            parts.append(String(localized: "\(item.cues.count) 句字幕", bundle: appLocalizationBundle))
-        } else {
-            parts.append(String(localized: "未关联文件", bundle: appLocalizationBundle))
-        }
-        parts.append(item.status.label)
-        return parts.joined(separator: " · ")
-    }
-}
-
-private struct MediaRowSubjectButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .contentShape(Rectangle())
-            .opacity(configuration.isPressed ? 0.75 : 1.0)
+        .font(.callout)
+        .padding(20)
+        .frame(width: 360, alignment: .leading)
     }
 }
 
@@ -418,62 +238,47 @@ private struct MediaQueueProgress: View {
         if queue.taskID == taskID, queue.mediaID == mediaID {
             VStack(alignment: .leading, spacing: 4) {
                 Text(queue.isCancelling ? String(localized: "正在取消，等待当前操作结束", bundle: appLocalizationBundle) : queue.progressText ?? String(localized: "处理中", bundle: appLocalizationBundle))
-                    .font(.caption2).foregroundStyle(.tint)
+                    .foregroundStyle(.tint)
                 if let wait = queue.translationRetryWait, !queue.isCancelling {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text(wait.label(at: context.date))
-                            .font(.caption2.monospacedDigit()).foregroundStyle(.primary)
+                        Text(wait.label(at: context.date)).monospacedDigit()
                     }
                 }
                 if let fraction = queue.extractionFraction {
                     ProgressView(value: fraction).frame(maxWidth: 180)
                 }
             }
+            .font(.caption)
             .accessibilityElement(children: .combine)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 90)
+            .padding(.leading, 44)
             .padding(.trailing, 12)
-            .padding(.bottom, 10)
+            .padding(.bottom, 12)
         }
     }
 }
 
-private struct RowIconButtonStyle: ButtonStyle {
-    var isPrimary: Bool
-    @Environment(\.isEnabled) private var isEnabled
-    @State private var isHovered = false
+private struct TaskFailureDisclosure: View {
+    let message: String
+    let tint: Color
 
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(
-                !isEnabled
-                    ? Color.secondary.opacity(0.35)
-                    : (isPrimary ? Color.voxlineAccent : (isHovered ? Color.primary : Color.secondary.opacity(0.85)))
-            )
-            .frame(width: 26, height: 24)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(
-                        isPrimary
-                            ? Color.voxlineAccent.opacity(configuration.isPressed ? 0.22 : (isHovered ? 0.14 : 0.08))
-                            : Color(nsColor: .controlBackgroundColor).opacity(configuration.isPressed ? 0.9 : (isHovered ? 0.8 : 0.45))
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .strokeBorder(
-                        isPrimary
-                            ? Color.voxlineAccent.opacity(isHovered ? 0.38 : 0.22)
-                            : Color(nsColor: .separatorColor).opacity(isHovered ? 0.75 : 0.45),
-                        lineWidth: 0.8
-                    )
-            )
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: isHovered)
-            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
-            .onHover { isHovered = $0 }
+    var body: some View {
+        DisclosureGroup {
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+        } label: {
+            Label {
+                Text(message).lineLimit(1)
+            } icon: {
+                Image(systemName: "exclamationmark.circle").foregroundStyle(tint)
+            }
+            .font(.callout)
+        }
+        .tint(tint)
     }
 }
-
 #endif

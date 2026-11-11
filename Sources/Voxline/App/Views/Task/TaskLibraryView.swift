@@ -35,8 +35,6 @@ public struct TaskLibraryView: View {
                 if library.entries.isEmpty {
                     ContentUnavailableView {
                         Label(String(localized: "暂无任务", bundle: appLocalizationBundle), systemImage: "waveform.and.mic")
-                    } description: {
-                        Text(String(localized: "创建新任务开始音视频转写与双语翻译，或打开已有工程。", bundle: appLocalizationBundle))
                     } actions: {
                         HStack(spacing: 12) {
                             Button(String(localized: "新建任务", bundle: appLocalizationBundle), systemImage: "plus") {
@@ -56,7 +54,7 @@ public struct TaskLibraryView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 70)
                 } else {
-                    LazyVStack(spacing: 10) {
+                    LazyVStack(spacing: 0) {
                         ForEach(library.entries) { entry in
                             TaskLibraryRow(
                                 entry: entry,
@@ -70,11 +68,18 @@ public struct TaskLibraryView: View {
                                 onDownload: requestDownload,
                                 onResolveConflict: { conflictResolutionTaskID = entry.taskID }
                             )
+                            if entry.id != library.entries.last?.id {
+                                Divider().padding(.horizontal, 16)
+                            }
                         }
                     }
+                    .padding(4)
+                    .nativeControlSurface(cornerRadius: 14)
                 }
             }
+            .frame(maxWidth: 960)
             .padding(28)
+            .frame(maxWidth: .infinity)
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -181,28 +186,12 @@ private struct TaskLibraryRow: View {
                 .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .scale.combined(with: .opacity)))
             }
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.voxlineAccent.opacity(0.18),
-                                Color.voxlineAccent.opacity(0.08)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(Color.voxlineAccent.opacity(0.24), lineWidth: 0.8)
-                    )
-
-                Image(systemName: isPlaceholder ? "icloud.and.arrow.down" : "film.stack")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.voxlineAccent)
+            if isPlaceholder {
+                Image(systemName: "icloud.and.arrow.down")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24)
             }
-            .frame(width: 38, height: 38)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -214,36 +203,22 @@ private struct TaskLibraryRow: View {
                 }
 
                 if let task = entry.task {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Text(String(localized: "\(task.items.count) 媒体", bundle: appLocalizationBundle))
-                        Text("·")
-                        Text(String(localized: "\(task.completedCount) 完成", bundle: appLocalizationBundle))
-                        if task.failedCount > 0 {
+                        if case .running = task.status {
                             Text("·")
-                            Text(String(localized: "\(task.failedCount) 失败", bundle: appLocalizationBundle))
-                                .foregroundStyle(.red)
-                        }
-                        if let started = task.startedAt {
+                            Text(String(localized: "\(task.completedCount) 完成", bundle: appLocalizationBundle))
+                        } else if let started = task.startedAt {
                             Text("·")
-                            Text(started.formatted(date: .abbreviated, time: .shortened))
+                            Text(started.formatted(.dateTime.month(.abbreviated).day()))
+                                .help(started.formatted(date: .complete, time: .shortened))
                         }
                     }
-                    .font(.caption2.monospacedDigit())
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(.tail)
-
-                    if !task.items.isEmpty && task.startedAt != nil && task.completedCount < task.items.count {
-                        ProgressView(
-                            value: Double(task.completedCount),
-                            total: Double(task.items.count)
-                        )
-                        .controlSize(.mini)
-                        .tint(Color.voxlineAccent)
-                        .padding(.top, 2)
-                    }
                 } else if isPlaceholder {
-                    Text(String(localized: "云端任务占位，点击下载即可加载完整任务成果与字幕。", bundle: appLocalizationBundle))
+                    Text(String(localized: "云端任务尚未下载完整内容与字幕。", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -312,8 +287,7 @@ private struct TaskLibraryRow: View {
             .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .nativeControlSurface()
+        .padding(.vertical, 14)
         .modifier(TaskEntryHoverBorder())
         .contentShape(Rectangle())
         .onTapGesture {
@@ -393,18 +367,12 @@ private struct TaskEntryHoverBorder: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(isHovered ? Color.voxlineAccent.opacity(0.04) : Color.clear)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(isHovered ? Color.voxlineAccent.opacity(0.40) : .clear, lineWidth: 1.2)
-                    }
                     .allowsHitTesting(false)
             }
-            .onHover { hovered in
-                withAnimation(.easeInOut(duration: 0.15)) { isHovered = hovered }
-            }
+            .onHover { isHovered = $0 }
     }
 }
 

@@ -764,3 +764,9 @@
 "主题色浓度" = "Tint Intensity";
 "默认" = "Default";
 "无" = "None";
+"媒体详情" = "Media Details";
+"处理阶段" = "Processing Stages";
+"预览" = "Preview";
+"字号" = "Font Size";
+"共 %lld 条字幕" = "%1$lld subtitles";
+"进入校对" = "Open Proofreading";
