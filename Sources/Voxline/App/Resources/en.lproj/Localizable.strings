@@ -170,7 +170,6 @@
 "多设备无缝接力" = "Multi-device seamless relay";
 "失败" = "Failed";
 "失败原因：%@" = "Reason for failure: %1$@";
-"失败项" = "Failed items";
 "好" = "OK";
 "媒体 (%lld)" = "Media (%1$lld)";
 "媒体“%@”尚未选择音轨。" = "The media \"%1$@\" has not yet selected the audio track.";
@@ -178,14 +177,12 @@
 "媒体列表" = "Media";
 "媒体尚未关联" = "The media has not been related yet.";
 "媒体待关联" = "Media Not Linked";
-"媒体总数" = "Total number of media";
 "媒体条目 (%lld)" = "Media (%1$lld)";
 "媒体检查已取消。" = "The media inspection has been canceled.";
 "媒体管理与准备…" = "Manage Media…";
 "字号：%lld（1080p 基准）" = "Font size: %1$lld (1080p reference)";
 "字幕" = "Subtitles";
 "字幕字号（1080p 基准）" = "Subtitle Font Size (1080p reference)";
-"字幕总句" = "Total Subtitles";
 "字幕条数" = "Subtitle Count";
 "字幕类型" = "Subtitle Type";
 "字幕翻译" = "Subtitle translation";
@@ -656,11 +653,8 @@
 "结束时间" = "End Time";
 "拆分时间点" = "Split Point";
 "全部就绪" = "All Ready";
-"提取音频 · %@ · 字幕翻译已就绪" = "Audio extraction · %@ · Subtitle translation ready";
-"提取音频 · %@已就绪" = "Audio extraction · %@ ready";
 "工具" = "Tools";
 "校对与媒体工具" = "Proofreading and media tools";
-"全部媒体已处理完成" = "All media processing complete";
 
 "正在读取媒体，请稍后再试。" = "Reading media. Please try again shortly.";
 "版本信息无效。" = "Invalid version information.";
@@ -718,8 +712,6 @@
 "字幕导入" = "Subtitle Import";
 "清除已有字幕并改用语音识别？" = "Clear Existing Subtitles and Use Speech Recognition?";
 "导入原文" = "Import Subtitles";
-"导入原文 · 字幕翻译已就绪" = "Original Subtitles Imported · Subtitle Translation Ready";
-"导入原文已就绪" = "Original Subtitles Imported and Ready";
 
 "原文字幕已就绪" = "Source subtitles ready";
 "待匹配译文" = "Unmatched translations";
@@ -772,3 +764,4 @@
 "进入校对" = "Open Proofreading";
 "同步状态" = "Sync Status";
 "任务与字幕自动同步，音视频文件可选。" = "Tasks and subtitles sync automatically. Media files are optional.";
+"音轨" = "Audio Track";

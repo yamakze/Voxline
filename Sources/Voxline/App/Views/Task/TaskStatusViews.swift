@@ -33,148 +33,6 @@ public struct MediaStatusBadge: View {
     }
 }
 
-// MARK: - Media processing steps
-public struct MediaProcessingStepsView: View {
-    public let item: TaskMediaItem
-    public let hasTranslation: Bool
-    public let provider: TranscriptionSettings.Provider?
-
-    public init(item: TaskMediaItem, hasTranslation: Bool = true, provider: TranscriptionSettings.Provider? = nil) {
-        self.item = item
-        self.hasTranslation = hasTranslation
-        self.provider = provider
-    }
-
-    private var status: TaskMediaStatus { item.status }
-
-    private var transcriptionTitle: String {
-        switch provider {
-        case .openAICompatible: return String(localized: "云端转写", bundle: appLocalizationBundle)
-        case .whisperKit: return String(localized: "本地转写", bundle: appLocalizationBundle)
-        case nil: return String(localized: "语音转写", bundle: appLocalizationBundle)
-        }
-    }
-
-    private var isImported: Bool { item.importedSubtitleOrigin != nil }
-
-    private var failureReason: String? {
-        if case .failed(let reason) = status {
-            return reason
-        }
-        return nil
-    }
-
-    private var translationFailureReason: String? {
-        if case .translationPaused(let reason) = status {
-            return reason
-        }
-        return item.translationState == .failed ? failureReason : nil
-    }
-
-    public var body: some View {
-        if isCompleted {
-            StatusSignal(
-                kind: .ready,
-                accessibilityLabel: String(localized: "已就绪", bundle: appLocalizationBundle),
-                help: completedSummaryTooltip
-            )
-            .accessibilityValue(completedSummaryTooltip)
-        } else if isImported {
-            HStack(spacing: 4) {
-                stepChip(
-                    title: String(localized: "导入原文", bundle: appLocalizationBundle),
-                    state: .completed
-                )
-
-                if hasTranslation {
-                    connectorLine(isActive: item.translationState != .waiting)
-                    stepChip(
-                        title: String(localized: "字幕翻译", bundle: appLocalizationBundle),
-                        state: item.translationState,
-                        failureReason: translationFailureReason
-                    )
-                }
-            }
-            .font(.caption2)
-        } else {
-            HStack(spacing: 4) {
-                stepChip(
-                    title: String(localized: "提取音频", bundle: appLocalizationBundle),
-                    state: item.extractionState,
-                    failureReason: item.extractionState == .failed ? failureReason : nil
-                )
-                connectorLine(isActive: item.transcriptionState != .waiting)
-                stepChip(
-                    title: transcriptionTitle,
-                    state: item.transcriptionState,
-                    failureReason: item.transcriptionState == .failed ? failureReason : nil
-                )
-
-                if hasTranslation {
-                    connectorLine(isActive: item.translationState != .waiting)
-                    stepChip(
-                        title: String(localized: "字幕翻译", bundle: appLocalizationBundle),
-                        state: item.translationState,
-                        failureReason: translationFailureReason
-                    )
-                }
-            }
-            .font(.caption2)
-        }
-    }
-
-    private var completedSummaryTooltip: String {
-        if isImported {
-            if hasTranslation {
-                return String(localized: "导入原文 · 字幕翻译已就绪", bundle: appLocalizationBundle)
-            } else {
-                return String(localized: "导入原文已就绪", bundle: appLocalizationBundle)
-            }
-        }
-        if hasTranslation {
-            return String(localized: "提取音频 · \(transcriptionTitle) · 字幕翻译已就绪", bundle: appLocalizationBundle)
-        } else {
-            return String(localized: "提取音频 · \(transcriptionTitle)已就绪", bundle: appLocalizationBundle)
-        }
-    }
-
-    private var isCompleted: Bool {
-        if case .completed = status { return true }
-        return false
-    }
-
-    @ViewBuilder
-    private func stepChip(title: String, state: ProcessingStepState, failureReason: String? = nil) -> some View {
-        let signalKind = StatusSignalKind(stepState: state)
-        let detail = [signalKind.defaultLabel, failureReason].compactMap { $0 }.joined(separator: " · ")
-        let signalColor = signalKind.tintColor
-        let backgroundOpacity = state == .inProgress ? 0.15 : (state == .waiting || state == .cancelled ? 0.08 : 0.12)
-
-        HStack(spacing: 3) {
-            StatusSignal(kind: signalKind)
-                .scaleEffect(0.7)
-                .frame(width: 14, height: 14)
-                .accessibilityHidden(true)
-            Text(title)
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(signalColor.opacity(backgroundOpacity), in: .capsule)
-        .foregroundStyle(state == .completed ? Color.primary : signalColor)
-        .help("\(title) · \(detail)")
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
-        .accessibilityValue(detail)
-    }
-
-    @ViewBuilder
-    private func connectorLine(isActive: Bool) -> some View {
-        Rectangle()
-            .fill(isActive ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.2))
-            .frame(width: 8, height: 1.5)
-    }
-}
-
 // MARK: - Sync File Status Badge
 public struct SyncFileStatusBadge: View {
     public let state: TaskSyncCoordinator.FileState
@@ -242,11 +100,11 @@ public struct SyncFileStatusBadge: View {
 
 struct TaskQueueProgress: View {
     let taskID: UUID
-    var mediaID: UUID? = nil
+    let mediaID: UUID
     let queue: TaskProcessingQueue
 
     var body: some View {
-        if queue.taskID == taskID, (mediaID == nil || queue.mediaID == mediaID) {
+        if queue.taskID == taskID, queue.mediaID == mediaID {
             VStack(alignment: .leading, spacing: 4) {
                 Text(queue.isCancelling ? String(localized: "正在取消，等待当前操作结束", bundle: appLocalizationBundle) : queue.progressText ?? String(localized: "处理中", bundle: appLocalizationBundle))
                     .foregroundStyle(.tint)
