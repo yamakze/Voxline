@@ -144,7 +144,10 @@ struct TaskProcessingQueueTests {
         let local = try #require(library.task(for: task.id))
         #expect(local.status == .completed)
         #expect(local.items.allSatisfy { $0.cues.count == 2 && $0.hasCompletedTranscription })
-        #expect(queue.errorMessage != nil && library.errorMessage != nil)
+        #expect(queue.publicationErrorMessage != nil && library.errorMessage != nil)
+        #expect(queue.taskFailure == nil)
+        #expect(queue.errorMessage(for: task.id) == nil)
+        #expect(queue.errorMessage(for: UUID()) == nil)
         #expect(documents.pendingURLs == [url.standardizedFileURL])
         #expect(try TaskDocumentCodec.decode(Data(contentsOf: url)) == remote)
         let restarted = TaskLibrary(tasksDirectory: directory)
@@ -358,13 +361,16 @@ struct TaskProcessingQueueTests {
 
         #expect(throws: (any Error).self) { try queue.cancel() }
         #expect(queue.isCancelling)
-        #expect(queue.errorMessage?.isEmpty == false)
+        #expect(queue.errorMessage(for: task.id)?.isEmpty == false)
+        #expect(queue.errorMessage(for: UUID()) == nil)
         #expect(finishes == 0)
         #expect(throws: QueueError.busy) { try queue.start(taskID: task.id) }
         await pipeline.releaseDecode()
         await queue.waitUntilIdle()
         #expect(finishes == 1)
-        #expect(queue.errorMessage != nil)
+        #expect(queue.taskID == nil)
+        #expect(queue.errorMessage(for: task.id) != nil)
+        #expect(queue.errorMessage(for: UUID()) == nil)
         #expect(await !pipeline.events.contains("extract:\(task.items[1].id)"))
         #expect(try Data(contentsOf: originalURL) == originalData)
 
@@ -373,6 +379,8 @@ struct TaskProcessingQueueTests {
         try queue.start(taskID: task.id)
         await queue.waitUntilIdle()
         #expect(finishes == 2)
+        #expect(queue.taskFailure == nil)
+        #expect(queue.publicationErrorMessage == nil)
         #expect(library.task(for: task.id)?.status == .completed)
     }
 

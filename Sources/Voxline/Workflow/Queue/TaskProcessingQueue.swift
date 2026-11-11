@@ -24,7 +24,18 @@ public final class TaskProcessingQueue {
     public private(set) var isCancelling = false
     public private(set) var progressText: String?
     public private(set) var extractionFraction: Double?
-    public private(set) var errorMessage: String?
+    public struct TaskFailure: Equatable, Sendable {
+        public let taskID: UUID
+        public let message: String
+    }
+
+    public private(set) var taskFailure: TaskFailure?
+    public private(set) var publicationErrorMessage: String?
+    public var errorMessage: String? { taskFailure?.message ?? publicationErrorMessage }
+
+    public func errorMessage(for taskID: UUID) -> String? {
+        taskFailure.flatMap { $0.taskID == taskID ? $0.message : nil }
+    }
     public private(set) var translationRetryWait: TranslationRetryWait?
     @ObservationIgnored public var onFinish: (@MainActor () -> Void)?
 
@@ -89,7 +100,8 @@ public final class TaskProcessingQueue {
                     }
                 }
             } catch {
-                errorMessage = String(localized: "取消状态保存失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)
+                taskFailure = TaskFailure(taskID: taskID,
+                    message: String(localized: "取消状态保存失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle))
                 throw error
             }
         }
@@ -129,14 +141,17 @@ public final class TaskProcessingQueue {
         cancelledIDs = []
         stopRequested = false
         isCancelling = false
-        errorMessage = nil
+        taskFailure = nil
+        publicationErrorMessage = nil
         worker = Task { await self.consume(taskID: taskID, parameters: parameters, mediaIDs: mediaIDs, translationBatchIDs: translationBatchIDs) }
     }
 
     private func consume(taskID: UUID, parameters: TaskParameters, mediaIDs: [UUID], translationBatchIDs: [UUID]? = nil) async {
         defer {
-            do { try library.publishSharedCheckpoints() }
-            catch { errorMessage = library.errorMessage ?? error.localizedDescription }
+            do {
+                try library.publishSharedCheckpoints()
+                publicationErrorMessage = nil
+            } catch { publicationErrorMessage = library.errorMessage ?? error.localizedDescription }
             progressID = nil
             progressText = nil
             extractionFraction = nil
@@ -170,19 +185,22 @@ public final class TaskProcessingQueue {
                 // Provider failures are persisted inside transcribeMedia. An escaped failure is a
                 // checkpoint/storage error: stop scheduling, preserve edits, and expose recovery.
                 let stoppedReason = String(localized: "队列停止，未提交的工作需要恢复：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)
-                errorMessage = stoppedReason
+                taskFailure = TaskFailure(taskID: taskID, message: stoppedReason)
                 if var interrupted = library.task(for: taskID) {
                     interrupted.interruptRunningItems()
                     library.register(interrupted, at: library.url(for: taskID))
                     do { try library.save(interrupted) }
                     catch {
-                        errorMessage = stoppedReason + String(localized: " 中断状态仅保留在内存，保存失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle)
+                        taskFailure = TaskFailure(taskID: taskID,
+                            message: stoppedReason + String(localized: " 中断状态仅保留在内存，保存失败：\(error.localizedDescription)", bundle: voxlineLocalizationBundle))
                     }
                 }
                 break
             }
-            do { try library.publishSharedCheckpoints() }
-            catch { errorMessage = library.errorMessage ?? error.localizedDescription }
+            do {
+                try library.publishSharedCheckpoints()
+                publicationErrorMessage = nil
+            } catch { publicationErrorMessage = library.errorMessage ?? error.localizedDescription }
             mediaWork = nil
             progressID = nil
         }

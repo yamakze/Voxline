@@ -648,7 +648,7 @@ private struct IOSTaskDetailView: View {
                 }
             }
 
-            if let error = library.queue.errorMessage {
+            if let error = library.queue.errorMessage(for: task.id) {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.circle")
                         .foregroundStyle(.red)

@@ -209,6 +209,8 @@ private struct TaskLibraryRow: View {
                     Text(entry.title)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
 
                 if let task = entry.task {
@@ -218,7 +220,8 @@ private struct TaskLibraryRow: View {
                         Text(String(localized: "\(task.completedCount) 完成", bundle: appLocalizationBundle))
                         if task.failedCount > 0 {
                             Text("·")
-                            Text(String(localized: "\(task.failedCount) 失败", bundle: appLocalizationBundle)).foregroundStyle(.red)
+                            Text(String(localized: "\(task.failedCount) 失败", bundle: appLocalizationBundle))
+                                .foregroundStyle(.red)
                         }
                         if let started = task.startedAt {
                             Text("·")
@@ -227,6 +230,8 @@ private struct TaskLibraryRow: View {
                     }
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
                     if !task.items.isEmpty && task.startedAt != nil && task.completedCount < task.items.count {
                         ProgressView(
@@ -241,59 +246,70 @@ private struct TaskLibraryRow: View {
                     Text(String(localized: "云端任务占位，点击下载即可加载完整任务成果与字幕。", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
 
                 if let problem = entry.error {
-                    Text(problem).font(.caption2).foregroundStyle(.red)
+                    Text(problem)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            if isPlaceholder, let url = entry.url {
-                Button(String(localized: "下载", bundle: appLocalizationBundle), systemImage: "arrow.down.circle") {
-                    onDownload(url)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-
-            if let task = entry.task {
-                TaskStatusBadge(status: task.status)
-            }
-
-            if isEditing {
-                HStack(spacing: 5) {
+            HStack(spacing: 8) {
+                if isPlaceholder, let url = entry.url {
                     Button {
-                        onMove(-1)
+                        onDownload(url)
                     } label: {
-                        Image(systemName: "chevron.up")
-                            .font(.system(size: 10, weight: .semibold))
-                            .frame(width: 24, height: 24)
-                            .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        Label(String(localized: "下载", bundle: appLocalizationBundle), systemImage: "arrow.down.circle")
                     }
-                    .buttonStyle(.plain)
-                    .help(String(localized: "上移", bundle: appLocalizationBundle))
-                    .disabled(isFirst)
-
-                    Button {
-                        onMove(1)
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .frame(width: 24, height: 24)
-                            .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .help(String(localized: "下移", bundle: appLocalizationBundle))
-                    .disabled(isLast)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .scale.combined(with: .opacity)))
-            } else {
-                Image(systemName: "chevron.right")
-                    .font(.caption.bold())
-                    .foregroundStyle(.tertiary)
+
+                if let task = entry.task {
+                    TaskStatusBadge(status: task.status)
+                }
+
+                if isEditing {
+                    HStack(spacing: 4) {
+                        Button {
+                            onMove(-1)
+                        } label: {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 10, weight: .semibold))
+                                .frame(width: 24, height: 24)
+                                .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .help(String(localized: "上移", bundle: appLocalizationBundle))
+                        .disabled(isFirst)
+
+                        Button {
+                            onMove(1)
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 10, weight: .semibold))
+                                .frame(width: 24, height: 24)
+                                .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .help(String(localized: "下移", bundle: appLocalizationBundle))
+                        .disabled(isLast)
+                    }
+                    .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .scale.combined(with: .opacity)))
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(.tertiary)
+                }
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -308,20 +324,28 @@ private struct TaskLibraryRow: View {
                 onDownload(url)
             }
         }
-        .focusable(!isEditing && entry.task != nil, interactions: .activate)
+        .focusable(!isEditing, interactions: .activate)
         .onKeyPress(keys: [.space, .return]) { _ in
-            guard !isEditing, let task = entry.task else { return .ignored }
-            onSelectTask(task)
-            return .handled
+            guard !isEditing else { return .ignored }
+            if let task = entry.task {
+                onSelectTask(task)
+                return .handled
+            } else if let url = entry.url {
+                onDownload(url)
+                return .handled
+            }
+            return .ignored
         }
         .accessibilityElement(children: isEditing ? .contain : .ignore)
         .accessibilityLabel(entry.title)
         .accessibilityValue(accessibilityValue)
-        .accessibilityAddTraits(!isEditing && entry.task != nil ? .isButton : [])
+        .accessibilityAddTraits(!isEditing ? .isButton : [])
         .accessibilityAction {
             guard !isEditing else { return }
             if let task = entry.task {
                 onSelectTask(task)
+            } else if let url = entry.url {
+                onDownload(url)
             }
         }
         .contextMenu {
@@ -344,6 +368,9 @@ private struct TaskLibraryRow: View {
 
     private var accessibilityValue: String {
         var components: [String] = []
+        if hasConflict {
+            components.append(String(localized: "版本冲突", bundle: appLocalizationBundle))
+        }
         if let task = entry.task {
             components.append(task.status.label)
             components.append(String(localized: "\(task.items.count) 媒体", bundle: appLocalizationBundle))
@@ -368,7 +395,11 @@ private struct TaskEntryHoverBorder: ViewModifier {
         content
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(isHovered ? Color.voxlineAccent.opacity(0.45) : .clear, lineWidth: 1.2)
+                    .fill(isHovered ? Color.voxlineAccent.opacity(0.04) : Color.clear)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(isHovered ? Color.voxlineAccent.opacity(0.40) : .clear, lineWidth: 1.2)
+                    }
                     .allowsHitTesting(false)
             }
             .onHover { hovered in

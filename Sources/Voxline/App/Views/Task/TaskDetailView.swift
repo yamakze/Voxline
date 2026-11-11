@@ -30,6 +30,20 @@ public struct TaskDetailView: View {
                     conflictBanner
                 }
 
+                if let error = queue.errorMessage(for: task.id) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                        Text(error)
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+
                 // Compact Metrics Bar
                 compactMetricsBar
 
@@ -37,12 +51,6 @@ public struct TaskDetailView: View {
                 mediaQueue
             }
             .padding(24)
-            if task.items.isEmpty {
-                Text(String(localized: "请先添加本地音视频。", bundle: appLocalizationBundle)).font(.callout).foregroundStyle(.secondary).padding()
-            }
-            if let error = queue.errorMessage {
-                Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled).padding()
-            }
         }
         .sheet(isPresented: $showConflictSheet) {
             TaskConflictResolutionSheet(taskID: task.id, draftTask: task) {
@@ -191,71 +199,54 @@ private struct TaskMediaRow: View {
     let onOpen: () -> Void
     let onError: (String) -> Void
     @State private var queue = TaskProcessingQueue.shared
+    @State private var isRowHovered = false
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 12) {
-                // Index
-                Text(String(format: "%02d", position))
-                    .font(.caption2.monospacedDigit().bold())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22)
-
-                // Media Kind Icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(
-                            (item.kind == .video ? Color.blue : Color.purple)
-                                .opacity(0.12)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(
-                                    (item.kind == .video ? Color.blue : Color.purple).opacity(0.24),
-                                    lineWidth: 0.8
-                                )
-                        )
-                    Image(systemName: item.kind == .video ? "film" : "waveform")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(item.kind == .video ? .blue : .purple)
-                }
-                .frame(width: 32, height: 32)
-
-                // Title & Meta
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
-
-                    HStack(spacing: 8) {
-                        if let media = item.media {
-                            Text(TimecodeFormatter.formatDuration(milliseconds: media.durationMilliseconds))
-                                .font(.caption2.monospacedDigit())
-                            Text(String(localized: "音轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
-                            Text(String(localized: "\(item.cues.count) 句字幕", bundle: appLocalizationBundle))
-                        } else {
-                            Text(String(localized: "未关联文件", bundle: appLocalizationBundle)).foregroundStyle(.red)
+            HStack(alignment: .center, spacing: 10) {
+                // Media Subject: Clickable surface to enter proofreading
+                Button(action: onOpen) {
+                    ViewThatFits(in: .horizontal) {
+                        // 1. Wide Layout: Single-row, steps right-aligned before actions
+                        HStack(alignment: .center, spacing: 12) {
+                            indexView
+                            mediaKindIcon
+                            titleMetaView
+                                .frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
+                            Spacer(minLength: 8)
+                            stepsView
                         }
+                        .contentShape(Rectangle())
+
+                        // 2. Narrow Layout: Process steps moved to the next line under title/meta
+                        HStack(alignment: .center, spacing: 12) {
+                            indexView
+                            mediaKindIcon
+                            VStack(alignment: .leading, spacing: 6) {
+                                titleMetaView
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                stepsView
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    MediaQueueProgress(taskID: taskID, mediaID: item.id)
                 }
+                .buttonStyle(MediaRowSubjectButtonStyle())
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(item.title)
+                .accessibilityValue(accessibilityDescription)
+                .accessibilityHint(String(localized: "进入校对", bundle: appLocalizationBundle))
 
-                Spacer()
-
-                MediaProcessingStepsView(
-                    item: item,
-                    hasTranslation: hasTranslation,
-                    provider: provider
-                )
-
-                // In-line Action Buttons
+                // Independent Action Buttons: No gesture crosstalk with media subject
                 HStack(spacing: 5) {
                     if item.status.isRetryable {
                         Button {
-                            do { try queue.start(taskID: taskID, mediaID: item.id) }
-                            catch { onError(error.localizedDescription) }
+                            do {
+                                try queue.start(taskID: taskID, mediaID: item.id)
+                            } catch {
+                                onError(error.localizedDescription)
+                            }
                         } label: {
                             Image(systemName: "arrow.clockwise")
                         }
@@ -267,8 +258,11 @@ private struct TaskMediaRow: View {
 
                     if queue.taskID == taskID, queue.isScheduled(mediaID: item.id) {
                         Button {
-                            do { try queue.cancel(mediaID: item.id) }
-                            catch { onError(error.localizedDescription) }
+                            do {
+                                try queue.cancel(mediaID: item.id)
+                            } catch {
+                                onError(error.localizedDescription)
+                            }
                         } label: {
                             Image(systemName: "xmark")
                         }
@@ -278,18 +272,24 @@ private struct TaskMediaRow: View {
                         .disabled(queue.isCancelling && queue.mediaID == item.id)
                     }
 
-                    Button {
-                        onOpen()
-                    } label: {
+                    Button(action: onOpen) {
                         Image(systemName: "chevron.right")
                     }
                     .buttonStyle(RowIconButtonStyle(isPrimary: true))
                     .help(String(localized: "进入校对", bundle: appLocalizationBundle))
                     .accessibilityLabel(String(localized: "进入校对", bundle: appLocalizationBundle))
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isRowHovered ? Color.voxlineAccent.opacity(0.06) : Color.clear)
+            )
+            .onHover { isRowHovered = $0 }
+
+            MediaQueueProgress(taskID: taskID, mediaID: item.id)
 
             // Inline Failure Diagnosis Drawer
             if case .translationPaused(let reason) = item.status {
@@ -299,9 +299,11 @@ private struct TaskMediaRow: View {
                 } icon: {
                     Image(systemName: "pause.circle").foregroundStyle(.orange)
                 }
-                    .font(.caption)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.08))
             }
             if case .failed(let reason) = item.status {
                 HStack(spacing: 8) {
@@ -311,6 +313,7 @@ private struct TaskMediaRow: View {
                     Text(String(localized: "失败原因：\(reason)", bundle: appLocalizationBundle))
                         .font(.caption2)
                         .foregroundStyle(.red)
+                        .textSelection(.enabled)
                     Spacer()
                 }
                 .padding(.horizontal, 14)
@@ -318,6 +321,91 @@ private struct TaskMediaRow: View {
                 .background(Color.red.opacity(0.08))
             }
         }
+    }
+
+    private var indexView: some View {
+        Text(String(format: "%02d", position))
+            .font(.caption2.monospacedDigit().bold())
+            .foregroundStyle(.secondary)
+            .frame(width: 22, alignment: .trailing)
+    }
+
+    private var titleMetaView: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(item.title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            HStack(spacing: 8) {
+                if let media = item.media {
+                    Text(TimecodeFormatter.formatDuration(milliseconds: media.durationMilliseconds))
+                        .font(.caption2.monospacedDigit())
+                    Text(String(localized: "音轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
+                    Text(String(localized: "\(item.cues.count) 句字幕", bundle: appLocalizationBundle))
+                } else {
+                    Text(String(localized: "未关联文件", bundle: appLocalizationBundle))
+                        .foregroundStyle(.red)
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+
+        }
+    }
+
+    private var stepsView: some View {
+        MediaProcessingStepsView(
+            item: item,
+            hasTranslation: hasTranslation,
+            provider: provider
+        )
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var mediaKindIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(
+                    (item.kind == .video ? Color.blue : Color.purple)
+                        .opacity(0.12)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(
+                            (item.kind == .video ? Color.blue : Color.purple).opacity(0.24),
+                            lineWidth: 0.8
+                        )
+                )
+            Image(systemName: item.kind == .video ? "film" : "waveform")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(item.kind == .video ? .blue : .purple)
+        }
+        .frame(width: 32, height: 32)
+    }
+
+    private var accessibilityDescription: String {
+        var parts: [String] = []
+        if let media = item.media {
+            parts.append(TimecodeFormatter.formatDuration(milliseconds: media.durationMilliseconds))
+            parts.append(String(localized: "音轨 \(media.audioTrackID)", bundle: appLocalizationBundle))
+            parts.append(String(localized: "\(item.cues.count) 句字幕", bundle: appLocalizationBundle))
+        } else {
+            parts.append(String(localized: "未关联文件", bundle: appLocalizationBundle))
+        }
+        parts.append(item.status.label)
+        return parts.joined(separator: " · ")
+    }
+}
+
+private struct MediaRowSubjectButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(Rectangle())
+            .opacity(configuration.isPressed ? 0.75 : 1.0)
     }
 }
 
@@ -328,17 +416,24 @@ private struct MediaQueueProgress: View {
 
     var body: some View {
         if queue.taskID == taskID, queue.mediaID == mediaID {
-            Text(queue.isCancelling ? String(localized: "正在取消，等待当前操作结束", bundle: appLocalizationBundle) : queue.progressText ?? String(localized: "处理中", bundle: appLocalizationBundle))
-                .font(.caption2).foregroundStyle(.tint)
-            if let wait = queue.translationRetryWait, !queue.isCancelling {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(wait.label(at: context.date))
-                        .font(.caption2.monospacedDigit()).foregroundStyle(.primary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(queue.isCancelling ? String(localized: "正在取消，等待当前操作结束", bundle: appLocalizationBundle) : queue.progressText ?? String(localized: "处理中", bundle: appLocalizationBundle))
+                    .font(.caption2).foregroundStyle(.tint)
+                if let wait = queue.translationRetryWait, !queue.isCancelling {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(wait.label(at: context.date))
+                            .font(.caption2.monospacedDigit()).foregroundStyle(.primary)
+                    }
+                }
+                if let fraction = queue.extractionFraction {
+                    ProgressView(value: fraction).frame(maxWidth: 180)
                 }
             }
-            if let fraction = queue.extractionFraction {
-                ProgressView(value: fraction).frame(width: 180)
-            }
+            .accessibilityElement(children: .combine)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 90)
+            .padding(.trailing, 12)
+            .padding(.bottom, 10)
         }
     }
 }
@@ -350,15 +445,15 @@ private struct RowIconButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 10, weight: .semibold))
+            .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(
                 !isEnabled
                     ? Color.secondary.opacity(0.35)
                     : (isPrimary ? Color.voxlineAccent : (isHovered ? Color.primary : Color.secondary.opacity(0.85)))
             )
-            .frame(width: 22, height: 20)
+            .frame(width: 26, height: 24)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(
                         isPrimary
                             ? Color.voxlineAccent.opacity(configuration.isPressed ? 0.22 : (isHovered ? 0.14 : 0.08))
@@ -366,7 +461,7 @@ private struct RowIconButtonStyle: ButtonStyle {
                     )
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(
                         isPrimary
                             ? Color.voxlineAccent.opacity(isHovered ? 0.38 : 0.22)
