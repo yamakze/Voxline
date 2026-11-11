@@ -56,9 +56,20 @@ public struct TaskLibraryView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 70)
                 } else {
-                    VStack(spacing: 10) {
+                    LazyVStack(spacing: 10) {
                         ForEach(library.entries) { entry in
-                            taskEntryRow(entry: entry)
+                            TaskLibraryRow(
+                                entry: entry,
+                                isEditing: isEditing,
+                                isFirst: library.entries.first?.id == entry.id,
+                                isLast: library.entries.last?.id == entry.id,
+                                hasConflict: entry.url.map { syncSettings.fileStates[$0.standardizedFileURL] == .conflict } ?? false,
+                                onSelectTask: { onSelectTask?($0) },
+                                onDelete: { deletingEntry = entry },
+                                onMove: { move(entry: entry, offset: $0) },
+                                onDownload: requestDownload,
+                                onResolveConflict: { conflictResolutionTaskID = entry.taskID }
+                            )
                         }
                     }
                 }
@@ -122,14 +133,43 @@ public struct TaskLibraryView: View {
         }
     }
 
-    @ViewBuilder
-    private func taskEntryRow(entry: TaskLibrary.Entry) -> some View {
+    private func requestDownload(_ url: URL) {
+        do {
+            try syncSettings.requestDownload(url)
+            syncSettings.refresh()
+        } catch { errorMessage = error.localizedDescription }
+    }
+
+    private func move(entry: TaskLibrary.Entry, offset: Int) {
+        guard let index = library.entries.firstIndex(where: { $0.id == entry.id }),
+              library.entries.indices.contains(index + offset) else { return }
+        let target = library.entries[index + offset]
+        withAnimation(.easeInOut(duration: 0.2)) {
+            do { try library.move(entryID: entry.id, to: target.id) }
+            catch { errorMessage = error.localizedDescription }
+        }
+    }
+}
+
+private struct TaskLibraryRow: View {
+    let entry: TaskLibrary.Entry
+    let isEditing: Bool
+    let isFirst: Bool
+    let isLast: Bool
+    let hasConflict: Bool
+    let onSelectTask: (ProcessingTask) -> Void
+    let onDelete: () -> Void
+    let onMove: (Int) -> Void
+    let onDownload: (URL) -> Void
+    let onResolveConflict: () -> Void
+
+    var body: some View {
         let isPlaceholder = entry.task == nil
 
         HStack(alignment: .center, spacing: 14) {
             if isEditing {
                 Button {
-                    deletingEntry = entry
+                    onDelete()
                 } label: {
                     Image(systemName: "minus.circle.fill")
                         .font(.title3)
@@ -212,12 +252,7 @@ public struct TaskLibraryView: View {
 
             if isPlaceholder, let url = entry.url {
                 Button(String(localized: "下载", bundle: appLocalizationBundle), systemImage: "arrow.down.circle") {
-                    do {
-                        try syncSettings.requestDownload(url)
-                        syncSettings.refresh()
-                    } catch {
-                        errorMessage = error.localizedDescription
-                    }
+                    onDownload(url)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -230,7 +265,7 @@ public struct TaskLibraryView: View {
             if isEditing {
                 HStack(spacing: 5) {
                     Button {
-                        moveUp(entry: entry)
+                        onMove(-1)
                     } label: {
                         Image(systemName: "chevron.up")
                             .font(.system(size: 10, weight: .semibold))
@@ -239,10 +274,10 @@ public struct TaskLibraryView: View {
                     }
                     .buttonStyle(.plain)
                     .help(String(localized: "上移", bundle: appLocalizationBundle))
-                    .disabled(library.entries.first?.id == entry.id)
+                    .disabled(isFirst)
 
                     Button {
-                        moveDown(entry: entry)
+                        onMove(1)
                     } label: {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 10, weight: .semibold))
@@ -251,7 +286,7 @@ public struct TaskLibraryView: View {
                     }
                     .buttonStyle(.plain)
                     .help(String(localized: "下移", bundle: appLocalizationBundle))
-                    .disabled(library.entries.last?.id == entry.id)
+                    .disabled(isLast)
                 }
                 .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .scale.combined(with: .opacity)))
             } else {
@@ -268,80 +303,46 @@ public struct TaskLibraryView: View {
         .onTapGesture {
             guard !isEditing else { return }
             if let task = entry.task {
-                onSelectTask?(task)
+                onSelectTask(task)
             } else if let url = entry.url {
-                do {
-                    try syncSettings.requestDownload(url)
-                    syncSettings.refresh()
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
+                onDownload(url)
             }
         }
         .focusable(!isEditing && entry.task != nil, interactions: .activate)
         .onKeyPress(keys: [.space, .return]) { _ in
             guard !isEditing, let task = entry.task else { return .ignored }
-            onSelectTask?(task)
+            onSelectTask(task)
             return .handled
         }
         .accessibilityElement(children: isEditing ? .contain : .ignore)
         .accessibilityLabel(entry.title)
-        .accessibilityValue(rowAccessibilityValue(for: entry))
+        .accessibilityValue(accessibilityValue)
         .accessibilityAddTraits(!isEditing && entry.task != nil ? .isButton : [])
         .accessibilityAction {
             guard !isEditing else { return }
             if let task = entry.task {
-                onSelectTask?(task)
+                onSelectTask(task)
             }
         }
         .contextMenu {
-            if let url = entry.url, syncSettings.fileStates[url.standardizedFileURL] == .conflict {
+            if hasConflict {
                 Button(String(localized: "解决版本冲突…", bundle: appLocalizationBundle), systemImage: "arrow.triangle.merge") {
-                    conflictResolutionTaskID = entry.taskID
+                    onResolveConflict()
                 }
                 .disabled(TaskProcessingQueue.shared.taskID == entry.taskID)
             }
             if isPlaceholder, let url = entry.url {
                 Button(String(localized: "请求下载云端任务", bundle: appLocalizationBundle), systemImage: "icloud.and.arrow.down") {
-                    do {
-                        try syncSettings.requestDownload(url)
-                        syncSettings.refresh()
-                    } catch {
-                        errorMessage = error.localizedDescription
-                    }
+                    onDownload(url)
                 }
             }
             Divider()
-            Button(String(localized: "删除", bundle: appLocalizationBundle), systemImage: "trash", role: .destructive) { deletingEntry = entry }
+            Button(String(localized: "删除", bundle: appLocalizationBundle), systemImage: "trash", role: .destructive) { onDelete() }
                 .disabled(TaskProcessingQueue.shared.taskID == entry.taskID)
         }
     }
 
-    private func moveUp(entry: TaskLibrary.Entry) {
-        guard let index = library.entries.firstIndex(where: { $0.id == entry.id }), index > 0 else { return }
-        let target = library.entries[index - 1]
-        withAnimation(.easeInOut(duration: 0.2)) {
-            do {
-                try library.move(entryID: entry.id, to: target.id)
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func moveDown(entry: TaskLibrary.Entry) {
-        guard let index = library.entries.firstIndex(where: { $0.id == entry.id }), index < library.entries.count - 1 else { return }
-        let target = library.entries[index + 1]
-        withAnimation(.easeInOut(duration: 0.2)) {
-            do {
-                try library.move(entryID: entry.id, to: target.id)
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func rowAccessibilityValue(for entry: TaskLibrary.Entry) -> String {
+    private var accessibilityValue: String {
         var components: [String] = []
         if let task = entry.task {
             components.append(task.status.label)
