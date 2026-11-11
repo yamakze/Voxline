@@ -32,6 +32,10 @@ public struct MainWindowView: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 280)
         } detail: {
             detailContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .scrollContentBackground(.hidden)
+                .voxlineMicroTintBackground()
+                .toolbarBackground(.hidden, for: .windowToolbar)
         }
         .background(AppleTranslationSessionHost())
         .tint(Color.voxlineAccent)

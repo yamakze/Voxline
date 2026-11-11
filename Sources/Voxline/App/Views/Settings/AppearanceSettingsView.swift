@@ -3,7 +3,6 @@ import SwiftUI
 
 public struct AppearanceSettingsView: View {
     @Environment(\.colorScheme) private var systemColorScheme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var manager = AppearanceManager.shared
     @State private var draftTintOpacity: Double
     @State private var isEditingTintOpacity = false
@@ -105,26 +104,23 @@ public struct AppearanceSettingsView: View {
     // MARK: - 真实联动预览微视窗
     private var previewMockWindow: some View {
         let isDark = previewColorScheme == .dark
-        let windowBg = isDark ? Color(red: 0.12, green: 0.13, blue: 0.15) : Color(red: 0.96, green: 0.96, blue: 0.97)
         let sidebarBg = isDark ? Color(red: 0.16, green: 0.17, blue: 0.19) : Color(red: 0.92, green: 0.92, blue: 0.93)
 
-        return VStack(spacing: 0) {
-            // 迷你标题栏（交通灯小圆点）
-            HStack(spacing: 6) {
-                Circle().fill(Color(red: 1.0, green: 0.38, blue: 0.35)).frame(width: 8, height: 8)
-                Circle().fill(Color(red: 1.0, green: 0.76, blue: 0.20)).frame(width: 8, height: 8)
-                Circle().fill(Color(red: 0.20, green: 0.78, blue: 0.35)).frame(width: 8, height: 8)
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .padding(.top, 9)
-            .padding(.bottom, 7)
-            .background(sidebarBg)
+        return HStack(spacing: 0) {
+            // 迷你侧边栏（贯通顶部红绿灯与原生材质）
+            VStack(alignment: .leading, spacing: 0) {
+                // 迷你交通灯小圆点
+                HStack(spacing: 6) {
+                    Circle().fill(Color(red: 1.0, green: 0.38, blue: 0.35)).frame(width: 8, height: 8)
+                    Circle().fill(Color(red: 1.0, green: 0.76, blue: 0.20)).frame(width: 8, height: 8)
+                    Circle().fill(Color(red: 0.20, green: 0.78, blue: 0.35)).frame(width: 8, height: 8)
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 9)
+                .padding(.bottom, 8)
 
-            Divider()
-
-            HStack(spacing: 0) {
-                // 迷你侧边栏
+                // 侧边栏列表项
                 VStack(alignment: .leading, spacing: 6) {
                     // 激活项：“全部任务”
                     HStack(spacing: 6) {
@@ -166,81 +162,94 @@ public struct AppearanceSettingsView: View {
 
                     Spacer()
                 }
-                .padding(8)
-                .frame(width: 140, alignment: .leading)
-                .background(sidebarBg)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+            }
+            .frame(width: 140)
+            .background(sidebarBg)
+
+            Divider()
+
+            // 迷你主工作区（集中微染覆盖整个主内容背景，包括对应工具栏区域）
+            VStack(alignment: .leading, spacing: 0) {
+                // 迷你工具栏对应区域
+                HStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.secondary.opacity(0.20))
+                        .frame(width: 60, height: 8)
+                    Spacer()
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.secondary.opacity(0.15))
+                        .frame(width: 24, height: 8)
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 9)
+                .padding(.bottom, 7)
 
                 Divider()
 
-                // 迷你工作区（带真实微染叠加）
-                ZStack {
-                    windowBg
-
-                    // 微染光晕注入（开启减少透明度时统一不透明系统背景）
-                    if !reduceTransparency, let tint = manager.resolvedTintColor(opacity: draftTintOpacity, strength: 0.40) {
-                        tint
+                VStack(alignment: .leading, spacing: 8) {
+                    // 顶部迷你控制条
+                    HStack {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.secondary.opacity(0.20))
+                            .frame(width: 80, height: 10)
+                        Spacer()
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.secondary.opacity(0.15))
+                            .frame(width: 32, height: 10)
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        // 顶部迷你控制条
-                        HStack {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.secondary.opacity(0.20))
-                                .frame(width: 80, height: 10)
-                            Spacer()
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.secondary.opacity(0.15))
-                                .frame(width: 32, height: 10)
+                    // 迷你任务卡片（真实反映原生控制表面，由底层微染自然透出）
+                    HStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(manager.tintOption == .appIcon
+                                      ? Color.voxlineGlacierAzure.opacity(0.20)
+                                      : Color.secondary.opacity(0.15))
+                                .frame(width: 28, height: 28)
+                            Image(systemName: "waveform")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(manager.tintOption == .appIcon ? Color.voxlineGlacierAzure : .primary)
                         }
 
-                        // 迷你任务卡片（真实反映 NativeControlSurface）
-                        HStack(spacing: 10) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(manager.tintOption == .appIcon
-                                          ? Color.voxlineGlacierAzure.opacity(0.20)
-                                          : Color.secondary.opacity(0.15))
-                                    .frame(width: 28, height: 28)
-                                Image(systemName: "waveform")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(manager.tintOption == .appIcon ? Color.voxlineGlacierAzure : .primary)
-                            }
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(isDark ? Color.white.opacity(0.70) : Color.black.opacity(0.70))
-                                    .frame(width: 120, height: 8)
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color.secondary.opacity(0.35))
-                                    .frame(width: 70, height: 6)
-                            }
-
-                            Spacer()
-
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 6, height: 6)
-                        }
-                        .padding(10)
-                        .nativeControlSurface(cornerRadius: 8)
-
-                        // 迷你字幕行模拟
-                        HStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 4) {
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.secondary.opacity(0.25))
-                                .frame(width: 160, height: 6)
-                            Spacer()
+                                .fill(isDark ? Color.white.opacity(0.70) : Color.black.opacity(0.70))
+                                .frame(width: 120, height: 8)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.secondary.opacity(0.35))
+                                .frame(width: 70, height: 6)
                         }
-                        .padding(.horizontal, 4)
 
                         Spacer()
+
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
                     }
-                    .padding(12)
+                    .padding(10)
+                    .nativeControlSurface(cornerRadius: 8)
+
+                    // 迷你字幕行模拟
+                    HStack(spacing: 8) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.secondary.opacity(0.25))
+                            .frame(width: 160, height: 6)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 4)
+
+                    Spacer()
                 }
+                .padding(12)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                MainWindowAmbientBackground(opacity: draftTintOpacity)
             }
         }
         .environment(\.colorScheme, previewColorScheme)
-        .environment(\.voxlinePreviewTintOpacity, draftTintOpacity)
     }
 
     // MARK: - 二元微彩色块

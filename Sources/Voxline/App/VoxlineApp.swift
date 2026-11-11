@@ -27,7 +27,6 @@ struct VoxlineApp: App {
         WindowGroup(id: "workspace") {
             MainWindowView()
                 .preferredColorScheme(appearanceManager.mode.colorScheme)
-                .voxlineMicroTintBackground()
                 .tint(Color.voxlineAccent)
                 .task { TaskSyncCoordinator.shared.restore() }
         }

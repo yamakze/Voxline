@@ -95,35 +95,63 @@ public final class AppearanceManager {
         self.tintOpacity = savedOpacity ?? 0.05
     }
 
-    public func resolvedTintColor(opacity: Double? = nil, strength: Double = 1) -> Color? {
+    public func resolvedTintColor(opacity: Double? = nil) -> Color? {
         guard tintOption == .appIcon else { return nil }
         let concentration = opacity ?? tintOpacity
         guard concentration > 0 else { return nil }
-        return Color.voxlineGlacierAzure.opacity(concentration * strength)
+        return Color.voxlineGlacierAzure.opacity(concentration)
     }
 }
 
-extension EnvironmentValues {
-    @Entry var voxlinePreviewTintOpacity: Double? = nil
-}
-
-/// 窗口或顶级视图微染背景修饰器
-public struct VoxlineMicroTintBackgroundModifier: ViewModifier {
+/// 主内容微染氛围背景（覆盖侧边栏之外的主内容与工具栏区域，保持系统材质与文字可读）
+public struct MainWindowAmbientBackground: View {
+    public var opacity: Double?
     private var manager = AppearanceManager.shared
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
+    public init(opacity: Double? = nil) {
+        self.opacity = opacity
+    }
+
+    public var body: some View {
+        ZStack {
+            Color(nsColor: .windowBackgroundColor)
+
+            if !reduceTransparency, let tint = manager.resolvedTintColor(opacity: opacity) {
+                LinearGradient(
+                    colors: [
+                        tint,
+                        tint.opacity(0.35)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                RadialGradient(
+                    colors: [
+                        tint.opacity(0.75),
+                        .clear
+                    ],
+                    center: .topTrailing,
+                    startRadius: 0,
+                    endRadius: 680
+                )
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// 主内容或独立视窗微染背景修饰器
+public struct VoxlineMicroTintBackgroundModifier: ViewModifier {
     public init() {}
 
     public func body(content: Content) -> some View {
         content
             .background {
-                if reduceTransparency {
-                    Color(nsColor: .windowBackgroundColor)
-                        .ignoresSafeArea()
-                } else if let tint = manager.resolvedTintColor(strength: 0.40) {
-                    tint
-                        .ignoresSafeArea()
-                }
+                MainWindowAmbientBackground()
+                    .ignoresSafeArea()
             }
     }
 }
@@ -132,7 +160,6 @@ public extension View {
     func voxlineMicroTintBackground() -> some View {
         modifier(VoxlineMicroTintBackgroundModifier())
     }
-
 }
 
 /// 全局 Dock 图标注入管理器

@@ -10,7 +10,6 @@ public struct NativeControlSurface: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     #if os(macOS)
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.voxlinePreviewTintOpacity) private var previewTintOpacity
     #endif
 
     public init(cornerRadius: CGFloat = 14) {
@@ -26,16 +25,8 @@ public struct NativeControlSurface: ViewModifier {
                 .overlay(shape.strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
         } else {
             // These panels contain task and settings content; glass belongs to the control layer.
-            let manager = AppearanceManager.shared
             content
-                .background {
-                    ZStack {
-                        shape.fill(.regularMaterial)
-                        if let tint = manager.resolvedTintColor(opacity: previewTintOpacity, strength: 0.85) {
-                            shape.fill(tint)
-                        }
-                    }
-                }
+                .background(shape.fill(.regularMaterial))
                 .overlay(
                     shape.strokeBorder(
                         colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06),
@@ -70,20 +61,11 @@ public struct NativeGlassCapsuleSurface: ViewModifier {
                 .background(Color.voxlineControlBackground, in: .capsule)
                 .overlay(Capsule().strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1))
         } else if #available(macOS 26, *) {
-            let manager = AppearanceManager.shared
             content
-                .glassEffect(.regular.tint(manager.resolvedTintColor(strength: 0.90) ?? .clear), in: .capsule)
+                .glassEffect(.regular, in: .capsule)
         } else {
-            let manager = AppearanceManager.shared
             content
-                .background {
-                    ZStack {
-                        Capsule().fill(.ultraThinMaterial)
-                        if let tint = manager.resolvedTintColor(strength: 0.90) {
-                            Capsule().fill(tint)
-                        }
-                    }
-                }
+                .background(.ultraThinMaterial, in: .capsule)
                 .overlay(
                     Capsule().strokeBorder(
                         colorScheme == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.08),
