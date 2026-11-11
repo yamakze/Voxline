@@ -135,9 +135,6 @@ private struct TaskMediaRow: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         StatusSignal(mediaStatus: item.status)
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.tertiary)
                     }
                     .contentShape(Rectangle())
                 }
@@ -182,7 +179,12 @@ private struct TaskMediaRow: View {
             }
             .onHover { isHovered = $0 }
 
-            MediaQueueProgress(taskID: taskID, mediaID: item.id)
+            if queue.taskID == taskID, queue.mediaID == item.id {
+                TaskQueueProgress(taskID: taskID, mediaID: item.id, queue: queue)
+                    .padding(.leading, 44)
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 12)
+            }
 
             switch item.status {
             case .failed(let reason):
@@ -229,56 +231,4 @@ private struct TaskMediaRow: View {
     }
 }
 
-private struct MediaQueueProgress: View {
-    let taskID: UUID
-    let mediaID: UUID
-    @State private var queue = TaskProcessingQueue.shared
-
-    var body: some View {
-        if queue.taskID == taskID, queue.mediaID == mediaID {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(queue.isCancelling ? String(localized: "正在取消，等待当前操作结束", bundle: appLocalizationBundle) : queue.progressText ?? String(localized: "处理中", bundle: appLocalizationBundle))
-                    .foregroundStyle(.tint)
-                if let wait = queue.translationRetryWait, !queue.isCancelling {
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text(wait.label(at: context.date)).monospacedDigit()
-                    }
-                }
-                if let fraction = queue.extractionFraction {
-                    ProgressView(value: fraction).frame(maxWidth: 180)
-                }
-            }
-            .font(.caption)
-            .accessibilityElement(children: .combine)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 44)
-            .padding(.trailing, 12)
-            .padding(.bottom, 12)
-        }
-    }
-}
-
-private struct TaskFailureDisclosure: View {
-    let message: String
-    let tint: Color
-
-    var body: some View {
-        DisclosureGroup {
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 4)
-        } label: {
-            Label {
-                Text(message).lineLimit(1)
-            } icon: {
-                Image(systemName: "exclamationmark.circle").foregroundStyle(tint)
-            }
-            .font(.callout)
-        }
-        .tint(tint)
-    }
-}
 #endif

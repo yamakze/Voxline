@@ -55,13 +55,14 @@ public struct TaskLibraryView: View {
                     .padding(.vertical, 70)
                 } else {
                     LazyVStack(spacing: 0) {
+                        let fileStates = syncSettings.fileStates
                         ForEach(library.entries) { entry in
                             TaskLibraryRow(
                                 entry: entry,
                                 isEditing: isEditing,
                                 isFirst: library.entries.first?.id == entry.id,
                                 isLast: library.entries.last?.id == entry.id,
-                                hasConflict: entry.url.map { syncSettings.fileStates[$0.standardizedFileURL] == .conflict } ?? false,
+                                hasConflict: entry.url.map { fileStates[$0.standardizedFileURL] == .conflict } ?? false,
                                 onSelectTask: { onSelectTask?($0) },
                                 onDelete: { deletingEntry = entry },
                                 onMove: { move(entry: entry, offset: $0) },
@@ -278,10 +279,6 @@ private struct TaskLibraryRow: View {
                         .disabled(isLast)
                     }
                     .transition(.asymmetric(insertion: .scale.combined(with: .opacity), removal: .scale.combined(with: .opacity)))
-                } else {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                        .foregroundStyle(.tertiary)
                 }
             }
             .fixedSize(horizontal: true, vertical: false)

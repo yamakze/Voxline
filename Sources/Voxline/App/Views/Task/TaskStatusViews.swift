@@ -239,3 +239,53 @@ public struct SyncFileStatusBadge: View {
 
     private var backgroundColor: Color { foregroundColor }
 }
+
+struct TaskQueueProgress: View {
+    let taskID: UUID
+    var mediaID: UUID? = nil
+    let queue: TaskProcessingQueue
+
+    var body: some View {
+        if queue.taskID == taskID, (mediaID == nil || queue.mediaID == mediaID) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(queue.isCancelling ? String(localized: "正在取消，等待当前操作结束", bundle: appLocalizationBundle) : queue.progressText ?? String(localized: "处理中", bundle: appLocalizationBundle))
+                    .foregroundStyle(.tint)
+                if let wait = queue.translationRetryWait, !queue.isCancelling {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(wait.label(at: context.date)).monospacedDigit()
+                    }
+                }
+                if let fraction = queue.extractionFraction {
+                    ProgressView(value: fraction).frame(maxWidth: 180)
+                }
+            }
+            .font(.caption)
+            .accessibilityElement(children: .combine)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+struct TaskFailureDisclosure: View {
+    let message: String
+    let tint: Color
+
+    var body: some View {
+        DisclosureGroup {
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 4)
+        } label: {
+            Label {
+                Text(message).lineLimit(1)
+            } icon: {
+                Image(systemName: "exclamationmark.circle").foregroundStyle(tint)
+            }
+            .font(.callout)
+        }
+        .tint(tint)
+    }
+}
