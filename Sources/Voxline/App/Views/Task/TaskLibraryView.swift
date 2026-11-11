@@ -298,7 +298,7 @@ private struct TaskLibraryRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .nativeControlSurface()
-        .overlay { TaskEntryHoverBorder() }
+        .modifier(TaskEntryHoverBorder())
         .contentShape(Rectangle())
         .onTapGesture {
             guard !isEditing else { return }
@@ -361,12 +361,16 @@ private struct TaskLibraryRow: View {
     }
 }
 
-private struct TaskEntryHoverBorder: View {
+private struct TaskEntryHoverBorder: ViewModifier {
     @State private var isHovered = false
 
-    var body: some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(isHovered ? Color.voxlineAccent.opacity(0.45) : .clear, lineWidth: 1.2)
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(isHovered ? Color.voxlineAccent.opacity(0.45) : .clear, lineWidth: 1.2)
+                    .allowsHitTesting(false)
+            }
             .onHover { hovered in
                 withAnimation(.easeInOut(duration: 0.15)) { isHovered = hovered }
             }
