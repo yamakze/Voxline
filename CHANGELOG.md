@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.2.2 - 2026-11-13
+
+### Improved
+
+- Simplified Mac and iOS task lists and media details with lighter grouped rows, concise status signals, and fewer repeated statistics.
+- Moved audio-track information, subtitle counts, and processing-stage details into an on-demand media panel while keeping active progress and retry controls available.
+- Redesigned iOS iCloud settings with native form sections, vertical sync statistics, and better handling of long folder names.
+- Applied Mac accent tinting to the main content background while keeping cards, floating controls, and the sidebar neutral.
+- Isolated progress updates within individual media rows and reused a single sync-state snapshot per list update.
+
+### Fixed
+
+- Restored mouse interaction with Mac task deletion and ordering controls.
+- Prevented errors from one task appearing in another task's details, and kept execution errors separate from sync publication failures.
+- Fixed iOS error expansion and retry controls triggering media navigation, and kept long titles stable when expanding errors.
+- Kept the Mac proofreading video's black background within the video area so it no longer covers the window toolbar.
+
+---
+
+### 改进
+
+- 精简 Mac 与 iOS 任务列表和媒体详情，使用轻量分组行与状态信号，移除重复统计。
+- 音轨、字幕数和完整处理阶段移至按需打开的媒体详情面板，保留当前处理进度与重试操作。
+- iOS iCloud 设置改用原生分组表单和纵向同步统计，改善长文件夹名称的显示。
+- Mac 主题微染集中应用于主内容背景，卡片、悬浮控件和侧边栏保持中性材质。
+- 将进度刷新隔离到媒体行内部，每次列表更新复用一份同步状态快照。
+
+### 修复
+
+- 恢复 Mac 任务删除与排序控件的鼠标点击。
+- 防止其他任务的错误出现在当前任务详情中，分离执行错误与同步发布错误。
+- 修复 iOS 错误展开、重试误触媒体导航，保持错误展开前后的长标题排版稳定。
+- Mac 校对视频的黑色背景限定在视频区域，避免覆盖窗口工具栏。
+
 ## 1.2.1 - 2026-11-02
 
 ### Fixed
